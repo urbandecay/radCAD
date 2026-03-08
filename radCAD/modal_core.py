@@ -1,0 +1,533 @@
+import math
+import time
+import bpy
+import bmesh
+from mathutils import Vector, Matrix
+from mathutils.geometry import intersect_line_plane
+from bpy_extras.view3d_utils import region_2d_to_origin_3d, region_2d_to_vector_3d, location_3d_to_region_2d
+
+from .modal_state import state, reset_state_from_context
+from .orientation_utils import orthonormal_basis_from_normal
+from .plane_utils import world_to_plane, plane_to_world, project_mouse_to_ground, raycast_under_mouse
+
+_DRAW_HANDLER_REGISTRY = {}
+
+class DrawManager:
+    @staticmethod
+    def add_handler(source_id, draw_func, args, region_type='WINDOW', draw_event='POST_VIEW'):
+        if source_id in _DRAW_HANDLER_REGISTRY:
+            DrawManager.remove_handler(source_id)
+        try:
+            handle = bpy.types.SpaceView3D.draw_handler_add(draw_func, args, region_type, draw_event)
+            _DRAW_HANDLER_REGISTRY[source_id] = (handle, region_type)
+        except Exception as e:
+            print(f"[DrawManager] Failed to register {source_id}: {e}")
+
+    @staticmethod
+    def remove_handler(source_id):
+        if source_id not in _DRAW_HANDLER_REGISTRY:
+            return
+        handle, region_type = _DRAW_HANDLER_REGISTRY[source_id]
+        try:
+            bpy.types.SpaceView3D.draw_handler_remove(handle, region_type)
+        except: pass
+        del _DRAW_HANDLER_REGISTRY[source_id]
+
+    @staticmethod
+    def clear_all():
+        for source_id in list(_DRAW_HANDLER_REGISTRY.keys()):
+            DrawManager.remove_handler(source_id)
+
+def is_event_over_ui(context, event):
+    if context.area.type != 'VIEW_3D': return False
+    for region in context.area.regions:
+        if region.type == 'WINDOW': continue
+        if (region.x <= event.mouse_x <= region.x + region.width) and \
+           (region.y <= event.mouse_y <= region.y + region.height):
+            return True
+    return False
+
+def is_number_input(ev):
+    valid_keys = {
+        'ZERO', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE',
+        'PERIOD', 'MINUS',
+        'NUMPAD_0', 'NUMPAD_1', 'NUMPAD_2', 'NUMPAD_3', 'NUMPAD_4',
+        'NUMPAD_5', 'NUMPAD_6', 'NUMPAD_7', 'NUMPAD_8', 'NUMPAD_9',
+        'NUMPAD_PERIOD', 'NUMPAD_MINUS'
+    }
+    return ev.type in valid_keys and ev.value == 'PRESS'
+
+def apply_custom_orbit(context, pivot, dx, dy):
+    rv3d = context.region_data
+    if not rv3d: return
+    speed = 0.01
+    view_mat = rv3d.view_matrix
+    cam_mat = view_mat.inverted()
+    trans_to = Matrix.Translation(pivot)
+    trans_from = Matrix.Translation(-pivot)
+    angle_z = -dx * speed
+    rot_z = Matrix.Rotation(angle_z, 4, 'Z')
+    orbit_z = trans_to @ rot_z @ trans_from
+    cam_mat = orbit_z @ cam_mat
+    cam_fwd = -cam_mat.col[2].xyz 
+    world_up = Vector((0, 0, 1))
+    if abs(cam_fwd.dot(world_up)) > 0.99: flat_right = cam_mat.col[0].xyz
+    else: flat_right = cam_fwd.cross(world_up).normalized()
+    angle_x = dy * speed 
+    rot_x = Matrix.Rotation(angle_x, 4, flat_right)
+    orbit_x = trans_to @ rot_x @ trans_from
+    cam_mat = orbit_x @ cam_mat
+    rv3d.view_matrix = cam_mat.inverted()
+
+class ModalManager:
+    def __init__(self, ctx):
+        self.state = state
+        self.active_tool = None
+        self.region = ctx.region
+        self.rv3d = ctx.region_data
+        self.is_navigating = False
+        self.last_mouse_x = 0
+        self.last_mouse_y = 0
+        
+        if ctx.area.type != 'VIEW_3D' or (ctx.region and ctx.region.type != 'WINDOW'):
+            for area in ctx.screen.areas:
+                if area.type == 'VIEW_3D':
+                    for region in area.regions:
+                        if region.type == 'WINDOW':
+                            self.region = region
+                            self.rv3d = area.spaces.active.region_3d
+                            break
+                    if self.region: break
+
+        t_mode = state.get("tool_mode", "1POINT")
+        
+        if t_mode == "1POINT": 
+            from .operators import arc_tools
+            self.active_tool = arc_tools.ArcTool_1Point(self)
+        elif t_mode == "2POINT": 
+            from .operators import arc_tools
+            self.active_tool = arc_tools.ArcTool_2Point(self)
+        elif t_mode == "3POINT": 
+            from .operators import arc_tools
+            self.active_tool = arc_tools.ArcTool_3Point(self)
+            
+        elif t_mode == "CIRCLE_1POINT": 
+            from .operators import circle_tools
+            self.active_tool = circle_tools.CircleTool_1Point(self)
+        elif t_mode == "CIRCLE_2POINT": 
+            from .operators import circle_tools
+            self.active_tool = circle_tools.CircleTool_2Point(self)
+        elif t_mode == "CIRCLE_3POINT": 
+            from .operators import circle_tools
+            self.active_tool = circle_tools.CircleTool_3Point(self)
+            
+        elif t_mode == "CIRCLE_TAN_TAN": 
+            from .operators import circle_tools
+            self.active_tool = circle_tools.CircleTool_TanTan(self)
+
+        elif t_mode == "CIRCLE_TAN_TAN_TAN":
+            from .operators import op_circle_tan_tan_tan
+            self.active_tool = op_circle_tan_tan_tan.CircleTool_TanTanTan(self)
+
+        # === FIX: REGISTERED THE NEW CIRCLES TOOL ===
+        elif t_mode == "CIRCLE_TAN_TAN_TAN_CIRCLES":
+            from .operators import op_circle_tan_tan_tan_circles
+            self.active_tool = op_circle_tan_tan_tan_circles.CircleTool_TanTanTan_Circles(self)
+            
+        elif t_mode == "ELLIPSE_RADIUS": 
+            from .operators import ellipse_tools
+            self.active_tool = ellipse_tools.EllipseTool_FromRadius(self)
+        elif t_mode == "ELLIPSE_FOCI": 
+            from .operators import ellipse_tools
+            self.active_tool = ellipse_tools.EllipseTool_FociPoint(self)
+        elif t_mode == "ELLIPSE_ENDPOINTS": 
+            from .operators import ellipse_tools
+            self.active_tool = ellipse_tools.EllipseTool_FromEndpoints(self)
+        elif t_mode == "ELLIPSE_CORNERS": 
+            from .operators import ellipse_tools
+            self.active_tool = ellipse_tools.EllipseTool_FromCorners(self)
+            
+        elif t_mode == "POLYGON_CENTER_CORNER": 
+            from .operators import polygon_tools
+            self.active_tool = polygon_tools.PolygonTool_CenterCorner(self)
+        elif t_mode == "POLYGON_CENTER_TANGENT": 
+            from .operators import polygon_tools
+            self.active_tool = polygon_tools.PolygonTool_CenterTangent(self)
+        elif t_mode == "POLYGON_CORNER_CORNER": 
+            from .operators import polygon_tools
+            self.active_tool = polygon_tools.PolygonTool_CornerCorner(self)
+            
+        elif t_mode == "LINE_POLY": 
+            from .operators import line_tools
+            self.active_tool = line_tools.LineTool_Poly(self)
+        elif t_mode == "CURVE_INTERPOLATE": 
+            from .operators import curve_tools
+            self.active_tool = curve_tools.CurveTool_Interpolate(self)
+            
+        elif t_mode == "POINT_BY_ARCS": 
+            from .operators import point_tools
+            self.active_tool = point_tools.PointTool_ByArcs(self)
+            
+        else: 
+            from .operators import arc_tools
+            self.active_tool = arc_tools.ArcTool_1Point(self)
+
+    def get_snap_data(self, ctx, x, y):
+        # Lazy import to break circular dependency with modal_core
+        try:
+            from .snapping_utils import snap_to_mesh_components
+        except ImportError:
+            def snap_to_mesh_components(**kwargs): return None
+
+        reg, rv3d = self.region, self.rv3d
+        if not reg or not rv3d: return Vector((0,0,0)), Vector((0,0,1))
+        snap_radius = self.state.get("snap_strength", 6.0) * 2.0
+        snapped_pos = snap_to_mesh_components(
+            ctx, ctx.edit_object, x, y, max_px=snap_radius,
+            do_verts=state.get("snap_verts", True),
+            do_edges=state.get("snap_edges", True),
+            do_edge_center=state.get("snap_edge_center", True),
+            do_faces=False, 
+            do_face_center=state.get("snap_face_center", True)
+        )
+        state["snap_point"] = None 
+        if snapped_pos is not None:
+            state["geometry_snap"] = True
+            state["snap_point"] = snapped_pos
+            state["last_surface_hit"] = snapped_pos
+            locked_normal = state.get("locked_normal")
+            if locked_normal and state.get("locked"):
+                return snapped_pos, locked_normal
+            _, nrm, _ = raycast_under_mouse(ctx, x, y)
+            return snapped_pos, nrm if nrm else Vector((0,0,1))
+        
+        is_locked = state.get("locked")
+        locked_normal = state.get("locked_normal")
+        if is_locked and locked_normal:
+            l_point = state.get("pivot") or state.get("locked_plane_point") or Vector((0,0,0))
+            ray_origin = region_2d_to_origin_3d(reg, rv3d, (x,y))
+            ray_vector = region_2d_to_vector_3d(reg, rv3d, (x,y))
+            hit_plane = intersect_line_plane(ray_origin, ray_origin + ray_vector * 10000, l_point, locked_normal)
+            if hit_plane:
+                state["geometry_snap"] = False
+                state["last_surface_hit"] = hit_plane
+                state["last_surface_normal"] = locked_normal
+                return hit_plane, locked_normal
+
+        view_vec = region_2d_to_vector_3d(reg, rv3d, (x,y))
+        ray_origin = region_2d_to_origin_3d(reg, rv3d, (x,y))
+        depsgraph = ctx.evaluated_depsgraph_get()
+        hit, loc, norm, _, _, _ = ctx.scene.ray_cast(depsgraph, ray_origin, view_vec)
+        if hit:
+            state["geometry_snap"] = False
+            state["last_surface_hit"] = loc
+            state["last_surface_normal"] = norm
+            return loc, norm
+
+        plane_normal = Vector((0, 0, 1))
+        denom = view_vec.dot(plane_normal)
+        if abs(denom) > 1e-6:
+            t = (Vector((0,0,0)) - ray_origin).dot(plane_normal) / denom
+            gpos = ray_origin + view_vec * t
+        else:
+            gpos = Vector((0,0,0))
+        state["geometry_snap"] = False
+        state["last_surface_hit"] = gpos
+        state["last_surface_normal"] = plane_normal
+        return gpos, plane_normal
+
+    def on_move(self, context, event):
+        if self.active_tool:
+            snap_pt, snap_n = self.get_snap_data(context, event.mouse_region_x, event.mouse_region_y)
+            self.active_tool.update(context, event, snap_pt, snap_n)
+            
+            state["stage"] = self.active_tool.stage
+            state["pivot"] = self.active_tool.pivot
+            state["current"] = self.active_tool.current
+            
+            state["start"] = getattr(self.active_tool, "start", None)
+            state["p1"] = getattr(self.active_tool, "p1", None)
+            state["p2"] = getattr(self.active_tool, "p2", None)
+            state["f1"] = getattr(self.active_tool, "f1", None)
+            state["f2"] = getattr(self.active_tool, "f2", None)
+            state["radius"] = getattr(self.active_tool, "radius", 0.0)
+            state["compass_rot"] = getattr(self.active_tool, "compass_rot", 0.0)
+            state["a0"] = getattr(self.active_tool, "a0", 0.0)
+            state["a1"] = getattr(self.active_tool, "a1", 0.0)
+            state["accum_angle"] = getattr(self.active_tool, "accum_angle", 0.0)
+            state["segments"] = getattr(self.active_tool, "segments", 32)
+            state["rx"] = getattr(self.active_tool, "rx", 0.0)
+            state["ry"] = getattr(self.active_tool, "ry", 0.0)
+            state["preview_pts"] = getattr(self.active_tool, "preview_pts", [])
+            state["Xp"] = self.active_tool.Xp
+            state["Yp"] = self.active_tool.Yp
+            state["Zp"] = self.active_tool.Zp
+            
+            context.area.tag_redraw()
+
+def commit_arc_to_mesh(ctx):
+    from . import arc_weld_manager
+
+    obj = ctx.edit_object
+    bm = bmesh.from_edit_mesh(obj.data)
+    imw = obj.matrix_world.inverted()
+    
+    if state["tool_mode"] == "POINT_BY_ARCS":
+        int_pts = state.get("intersection_pts", [])
+        if not int_pts: return
+        bpy.ops.mesh.select_all(action='DESELECT')
+        for wp in int_pts:
+            v = bm.verts.new(imw @ wp)
+            v.select = True
+        bm.select_history.clear()
+        bm.verts.ensure_lookup_table()
+        bmesh.update_edit_mesh(obj.data)
+        return
+
+    pts = state["preview_pts"]
+    if not pts: return
+    is_closed = abs(state["accum_angle"]) >= (2 * math.pi - 0.001)
+    
+    # === FIX: Added CIRCLE_TAN_TAN_TAN_CIRCLES to this list ===
+    if state["tool_mode"] in ["CIRCLE_1POINT", "CIRCLE_2POINT", "CIRCLE_3POINT", "CIRCLE_TAN_TAN", "CIRCLE_TAN_TAN_TAN", "CIRCLE_TAN_TAN_TAN_CIRCLES", "ELLIPSE_RADIUS", "ELLIPSE_FOCI", "ELLIPSE_ENDPOINTS", "ELLIPSE_CORNERS", "POLYGON_CENTER_CORNER", "POLYGON_CENTER_TANGENT", "POLYGON_CORNER_CORNER"]:
+        is_closed = True
+    
+    if state["tool_mode"] == "LINE_POLY":
+        is_closed = False
+        if len(pts) > 1: pts = pts[:-1]
+
+    if state["tool_mode"] == "CURVE_INTERPOLATE":
+        is_closed = False
+
+    bpy.ops.mesh.select_all(action='DESELECT')
+    created_verts = []
+    points_to_create = pts if not is_closed else pts[:-1] 
+    
+    for wp in points_to_create:
+        v = bm.verts.new(imw @ wp)
+        v.select = True 
+        created_verts.append(v)
+    created_edges = []
+    for i in range(len(created_verts) - 1):
+        v1, v2 = created_verts[i], created_verts[i+1]
+        try: e = bm.edges.new((v1, v2))
+        except ValueError: e = bm.edges.get((v1, v2))
+        if e: 
+            e.select = True
+            created_edges.append(e)
+    if is_closed and len(created_verts) > 2:
+        v_last = created_verts[-1]
+        v_first = created_verts[0]
+        try: e = bm.edges.new((v_last, v_first))
+        except ValueError: e = bm.edges.get((v_last, v_first))
+        if e: 
+            e.select = True
+            created_edges.append(e)
+    bm.select_history.clear()
+    bm.verts.ensure_lookup_table()
+    bm.edges.ensure_lookup_table()
+    bmesh.update_edit_mesh(obj.data, loop_triangles=False, destructive=False)
+    
+    if state.get("auto_weld", True): 
+        arc_weld_manager.run(ctx, created_verts, created_edges)
+        
+    bpy.ops.mesh.select_all(action='DESELECT')
+    bmesh.update_edit_mesh(obj.data)
+
+def begin_modal(self, ctx, ev):
+    from .tool_previews import draw_cb_3d
+    from .hud_overlay import draw_hud_2d 
+
+    if ctx.area.type != 'VIEW_3D' or ctx.mode != 'EDIT_MESH':
+        self.report({'WARNING'}, "Run in Edit Mode on a mesh")
+        return {'CANCELLED'}
+    DrawManager.clear_all()
+    reset_state_from_context(ctx)
+    new_tool_id = f"{state['tool_mode']}_{time.time()}"
+    self.tool_instance_id = new_tool_id
+    ctx.scene.active_radCAD_tool_id = new_tool_id
+    self.manager = ModalManager(ctx)
+    self.manager.on_move(ctx, ev)
+    
+    DrawManager.add_handler('MAIN_3D', draw_cb_3d, (), 'WINDOW', 'POST_VIEW')
+    DrawManager.add_handler('HUD_2D', draw_hud_2d, (), 'WINDOW', 'POST_PIXEL')
+    
+    ctx.window_manager.modal_handler_add(self)
+    ctx.area.tag_redraw()
+    return {'RUNNING_MODAL'}
+
+def finish_modal(self, ctx):
+    current_id = getattr(ctx.scene, "active_radCAD_tool_id", "")
+    if current_id == self.tool_instance_id:
+        DrawManager.clear_all()
+        state["active"] = False
+        ctx.scene.active_radCAD_tool_id = ""
+    ctx.area.tag_redraw()
+
+def modal_arc_common(self, ctx, ev):
+    from .text_entry_utils import handle_text_input
+    
+    current_id = getattr(ctx.scene, "active_radCAD_tool_id", "")
+    if current_id != self.tool_instance_id: return {'CANCELLED'}
+
+    if ev.type in {'LEFTMOUSE', 'RIGHTMOUSE', 'MOUSEMOVE', 'WHEELUPMOUSE', 'WHEELDOWNMOUSE', 'MIDDLEMOUSE'}:
+        reg = self.manager.region
+        is_outside_viewport = False
+        if reg:
+            mx, my = ev.mouse_region_x, ev.mouse_region_y
+            rw, rh = reg.width, reg.height
+            if not (0 <= mx <= rw and 0 <= my <= rh): is_outside_viewport = True
+        is_over_ui = is_event_over_ui(ctx, ev)
+        if is_outside_viewport or is_over_ui: return {'PASS_THROUGH'}
+
+    if ev.type in {'SPACE', 'RET', 'NUMPAD_ENTER'} and ev.value == 'PRESS':
+        commit_arc_to_mesh(ctx)
+        finish_modal(self, ctx)
+        return {'FINISHED'}
+    
+    if ev.type == 'RIGHTMOUSE' and ev.value == 'PRESS':
+        commit_arc_to_mesh(ctx)
+        finish_modal(self, ctx)
+        return {'FINISHED'}
+
+    if ev.type == 'ESC':
+        finish_modal(self, ctx)
+        return {'CANCELLED'}
+
+    if state["input_mode"] is not None:
+        consumed = handle_text_input(ctx, ev)
+        if consumed: 
+             if state["input_mode"] is None:
+                 if self.manager.active_tool:
+                     t = self.manager.active_tool
+                     t.update(ctx, ev, t.current, t.Zp)
+             return {'RUNNING_MODAL'}
+
+    if ev.type == 'MIDDLEMOUSE':
+        if state.get("pivot") is None: return {'PASS_THROUGH'}
+        if ev.shift or ev.ctrl or ev.alt: return {'PASS_THROUGH'}
+        if ev.value == 'PRESS':
+            self.manager.is_navigating = True
+            self.manager.last_mouse_x = ev.mouse_x
+            self.manager.last_mouse_y = ev.mouse_y
+            return {'RUNNING_MODAL'}
+        elif ev.value == 'RELEASE':
+            self.manager.is_navigating = False
+            return {'RUNNING_MODAL'}
+
+    if self.manager.is_navigating and ev.type == 'MOUSEMOVE':
+        if state.get("pivot"):
+            dx = ev.mouse_x - self.manager.last_mouse_x
+            dy = ev.mouse_y - self.manager.last_mouse_y
+            apply_custom_orbit(ctx, state["pivot"], dx, dy)
+            self.manager.last_mouse_x = ev.mouse_x
+            self.manager.last_mouse_y = ev.mouse_y
+            return {'RUNNING_MODAL'}
+        else: return {'PASS_THROUGH'}
+
+    if ev.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
+        if ev.ctrl:
+            delta = 1 if ev.type == 'WHEELUPMOUSE' else -1
+            bpy.ops.view3d.zoom('INVOKE_DEFAULT', delta=delta, use_cursor_init=True)
+            return {'RUNNING_MODAL'} 
+
+    if ev.type == 'WHEELUPMOUSE':
+        state["segments"] = min(256, state["segments"] + 1)
+        if self.manager.active_tool: self.manager.active_tool.segments = state["segments"]; self.manager.on_move(ctx, ev)
+        ctx.area.tag_redraw()
+        return {'RUNNING_MODAL'}
+        
+    if ev.type == 'WHEELDOWNMOUSE':
+        state["segments"] = max(3, state["segments"] - 1)
+        if self.manager.active_tool: self.manager.active_tool.segments = state["segments"]; self.manager.on_move(ctx, ev)
+        ctx.area.tag_redraw()
+        return {'RUNNING_MODAL'}
+
+    if ev.type == 'MOUSEMOVE':
+        self.manager.on_move(ctx, ev)
+
+    elif ev.value == 'PRESS':
+        if self.manager.active_tool:
+            if self.manager.active_tool.handle_input(ctx, ev):
+                self.manager.on_move(ctx, ev)
+                return {'RUNNING_MODAL'}
+        
+        if ev.type == 'F1': state["snap_verts"] = not state.get("snap_verts", True); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
+        if ev.type == 'F2': state["snap_edges"] = not state.get("snap_edges", False); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
+        if ev.type == 'F3': state["snap_edge_center"] = not state.get("snap_edge_center", False); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
+        if ev.type == 'F4': state["snap_face_center"] = not state.get("snap_face_center", False); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
+        if ev.type == 'F5': state["use_axis_inference"] = not state.get("use_axis_inference", True); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
+        
+        if ev.type == 'C': state["use_angle_snap"] = not state.get("use_angle_snap", True); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
+        if ev.type == 'W': state["auto_weld"] = not state.get("auto_weld", True); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
+        
+        if ev.type == 'L':
+            if state.get("locked"):
+                state["locked"] = False
+                state["locked_normal"] = None
+                self.report({'INFO'}, "Unlocked")
+            else:
+                n = state.get("last_surface_normal")
+                if n:
+                    state["locked"] = True
+                    state["locked_normal"] = n
+                    self.report({'INFO'}, "Locked to Normal")
+                else:
+                    self.report({'WARNING'}, "No Normal to Lock To")
+            ctx.area.tag_redraw()
+            return {'RUNNING_MODAL'}
+
+        target_mode = None
+        tool_mode = state.get("tool_mode", "1POINT")
+        
+        if ev.type == 'S': target_mode = 'SEGMENTS'
+        elif ev.type == 'R': target_mode = 'RADIUS'
+        elif ev.type == 'D' and tool_mode in ["2POINT", "CIRCLE_2POINT"]: target_mode = 'RADIUS'
+        
+        if is_number_input(ev): target_mode = 'RADIUS'
+            
+        if target_mode:
+            if self.manager.region and self.manager.rv3d and state["pivot"]:
+                p2d = location_3d_to_region_2d(self.manager.region, self.manager.rv3d, state["pivot"])
+                if p2d:
+                    if state["input_mode"] is None: state["input_string"] = ""; state["cursor_index"] = 0
+                    state["input_screen_pos"] = (p2d.x + 25, p2d.y + 10)
+                    state["input_mode"] = target_mode
+                    if is_number_input(ev): handle_text_input(ctx, ev)
+                    ctx.area.tag_redraw()
+                    return {'RUNNING_MODAL'}
+
+        if ev.type == 'LEFTMOUSE' or ev.type in {'RET', 'NUMPAD_ENTER'}:
+            mx, my = ev.mouse_region_x, ev.mouse_region_y
+            clicked_ui_id = None
+            for k, v in state["ui_hitboxes"].items():
+                xmin, xmax, ymin, ymax = v
+                if xmin <= mx <= xmax and ymin <= my <= ymax:
+                    clicked_ui_id = k
+                    if k == "snap_verts": state["snap_verts"] = not state.get("snap_verts", False)
+                    elif k == "snap_edges": state["snap_edges"] = not state.get("snap_edges", False)
+                    elif k == "snap_edge_center": state["snap_edge_center"] = not state.get("snap_edge_center", False)
+                    elif k == "snap_face_center": state["snap_face_center"] = not state.get("snap_face_center", False)
+                    elif k == "toggle_axis": state["use_axis_inference"] = not state.get("use_axis_inference", True)
+                    elif k == "toggle_angle": state["use_angle_snap"] = not state.get("use_angle_snap", True)
+                    elif k == "weld_btn": state["auto_weld"] = not state.get("auto_weld", True)
+                    ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
+            
+            if self.manager.active_tool:
+                 snap_pt, snap_n = self.manager.get_snap_data(ctx, mx, my)
+                 result = self.manager.active_tool.handle_click(ctx, ev, snap_pt, snap_n, button_id=clicked_ui_id)
+                 state["stage"] = self.manager.active_tool.stage
+                 if result == 'FINISHED':
+                     commit_arc_to_mesh(ctx)
+                     finish_modal(self, ctx)
+                     return {'FINISHED'}
+                 elif result == 'NEXT_STAGE':
+                     self.manager.on_move(ctx, ev)
+                     ctx.area.tag_redraw()
+                     return {'RUNNING_MODAL'}
+
+    elif ev.type == 'RIGHTMOUSE':
+        finish_modal(self, ctx)
+        return {'CANCELLED'}
+
+    return {'RUNNING_MODAL'}
