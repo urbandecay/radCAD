@@ -528,15 +528,18 @@ def draw_preview_circle_3point(ctx, shaders, prefs):
 def draw_preview_tan_tan(ctx, shaders, prefs):
     pt_size = prefs.get("PREVIEW_VERTEX_SIZE", 5)
     
+    # 1. Background Math Circle (Grey)
     v_pts = state.get("visual_pts", [])
     if v_pts:
         draw_polyline(ctx, shaders, v_pts, (0.5, 0.5, 0.5, 0.5), prefs)
         
+    # 2. Foreground Mesh Geometry (Black)
     p_pts = state.get("preview_pts", [])
     if p_pts:
-        draw_polyline(ctx, shaders, p_pts, (0, 0, 0, 1), prefs)
-        draw_points(ctx, shaders, p_pts, (0, 0, 0, 1), pt_size, prefs)
+        draw_polyline(ctx, shaders, p_pts, (0,0,0,1), prefs)
+        draw_points(ctx, shaders, p_pts, (0,0,0,1), pt_size, prefs)
         
+    # 3. Tangency Viz
     viz_tan = state.get("viz_tangent_line")
     if viz_tan and len(viz_tan) == 2:
         draw_line(ctx, shaders, viz_tan[0], viz_tan[1], (1, 0.8, 0, 1), prefs)
@@ -548,14 +551,16 @@ def draw_preview_tan_tan(ctx, shaders, prefs):
 def draw_preview_tan_tan_tan(ctx, shaders, prefs):
     pt_size = prefs.get("PREVIEW_VERTEX_SIZE", 5)
     
+    # 1. Background Math Circle (Grey)
     v_pts = state.get("visual_pts", [])
     if v_pts:
         draw_polyline(ctx, shaders, v_pts, (0.5, 0.5, 0.5, 0.5), prefs)
         
+    # 2. Foreground Mesh Geometry (Black)
     p_pts = state.get("preview_pts", [])
     if p_pts:
-        draw_polyline(ctx, shaders, p_pts, (0, 0, 0, 1), prefs)
-        draw_points(ctx, shaders, p_pts, (0, 0, 0, 1), pt_size, prefs)
+        draw_polyline(ctx, shaders, p_pts, (0,0,0,1), prefs)
+        draw_points(ctx, shaders, p_pts, (0,0,0,1), pt_size, prefs)
 
 
 def draw_cb_3d():
