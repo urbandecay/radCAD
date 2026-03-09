@@ -306,13 +306,35 @@ class ModalManager:
             state["last_surface_normal"] = norm
             return loc, norm
 
+        # --- FALLBACK: VOID DRAWING (Smart Ortho Alignment) ---
+        # Default to Up, but check for Ortho View alignment
         plane_normal = Vector((0, 0, 1))
+        
+        if rv3d.view_perspective == 'ORTHO':
+            # Calculate view direction
+            view_dir = rv3d.view_matrix.inverted().to_3x3() @ Vector((0, 0, -1))
+            
+            # Check for alignment with major axes (X, Y, Z)
+            x_align = abs(view_dir.dot(Vector((1, 0, 0))))
+            y_align = abs(view_dir.dot(Vector((0, 1, 0))))
+            z_align = abs(view_dir.dot(Vector((0, 0, 1))))
+            
+            limit = 0.99
+            if x_align > limit: plane_normal = Vector((1, 0, 0))
+            elif y_align > limit: plane_normal = Vector((0, 1, 0))
+            elif z_align > limit: plane_normal = Vector((0, 0, 1))
+            else:
+                # If tilted ortho, use view direction itself
+                plane_normal = -view_dir
+
         denom = view_vec.dot(plane_normal)
         if abs(denom) > 1e-6:
+            # Project onto plane through world origin
             t = (Vector((0,0,0)) - ray_origin).dot(plane_normal) / denom
             gpos = ray_origin + view_vec * t
         else:
             gpos = Vector((0,0,0))
+            
         state["geometry_snap"] = False
         state["last_surface_hit"] = gpos
         state["last_surface_normal"] = plane_normal
