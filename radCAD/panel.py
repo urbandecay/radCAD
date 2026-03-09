@@ -70,7 +70,6 @@ SVG_FILES = {
     "circle_tangent_to_two_curves": "circle_tangent_to_two_curves.svg",
     "curve_interpolate_points": "curve_interpolate_points.svg",
     "ellipse": "ellipse.svg",
-    "ellipse_4_points": "ellipse_4_points.svg",
     "ellipse_foci_point": "ellipse_foci_point.svg",
     "ellipse_from_corners": "ellipse_from_corners.svg",
     "ellipse_from_endpoints": "ellipse_from_endpoints.svg",
