@@ -373,7 +373,7 @@ def draw_preview_3point(ctx, shaders, prefs):
     if state["stage"] == 1 and state["current"] is not None:
         draw_points(ctx, shaders, [pv], (0,0,0,1), pt_size, prefs)
         diff = state["current"] - pv
-        col = get_axis_aligned_color(diff, prefs["COL_CHORD"])
+        col = get_axis_aligned_color(diff, (0.5, 0.5, 0.5, 0.5))
         draw_line(ctx, shaders, pv, state["current"], col, prefs)
         
     elif state["stage"] == 2:
