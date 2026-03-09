@@ -112,7 +112,7 @@ def reset_state_from_context(ctx):
     w_rad = 0.001; w_faces = True
     show_keys = True; keys_x = 20; keys_y = 20
     col_start = (0.8, 0.8, 0.2, 1.0); col_end = (0.2, 0.8, 0.2, 1.0)
-    fs_key = 12; fs_lbl = 10
+    fs_key = 12; fs_lbl = 10; pt_sz = 5
 
     if prefs:
         c_size = prefs.compass_size
@@ -134,14 +134,15 @@ def reset_state_from_context(ctx):
         col_end = tuple(getattr(prefs, "color_arc_end", (0.2, 0.8, 0.2, 1.0)))
         fs_key = getattr(prefs, "font_size_hotkey", 12)
         fs_lbl = getattr(prefs, "font_size_label", 10)
+        pt_sz = getattr(prefs, "preview_vertex_size", 5)
 
     try:
         theme = ctx.preferences.themes[0].view_3d
         sys_prefs = ctx.preferences.system
-        style["point_px"] = theme.vertex_size
+        style["point_px"] = pt_sz
         style["line_width"] = max(1.0, sys_prefs.pixel_size) 
     except Exception:
-        style["point_px"] = 3
+        style["point_px"] = pt_sz
         style["line_width"] = 1.0
         
     style["font_size_key"] = fs_key

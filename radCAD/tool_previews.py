@@ -71,6 +71,7 @@ def get_render_settings(ctx):
         "LINE_COL": (1.0, 1.0, 0.0, 0.7),
         "COL_START": (0.8, 0.8, 0.2, 1.0), "COL_END": (0.2, 0.8, 0.2, 1.0),
         "COL_CHORD": (0.2, 0.8, 0.2, 1.0), "COL_HEIGHT": (0.2, 0.8, 0.2, 1.0),
+        "PREVIEW_VERTEX_SIZE": 5,
         "UI_SCALE": 1.0,
         "VIEWPORT_SIZE": (100.0, 100.0)
     }
@@ -94,6 +95,7 @@ def get_render_settings(ctx):
         prefs["COL_END"] = addon_prefs.color_arc_end
         prefs["COL_CHORD"] = addon_prefs.color_arc_2pt_chord
         prefs["COL_HEIGHT"] = addon_prefs.color_arc_2pt_height
+        prefs["PREVIEW_VERTEX_SIZE"] = addon_prefs.preview_vertex_size
     except (KeyError, AttributeError):
         pass
         
@@ -282,8 +284,8 @@ def draw_preview_1point(ctx, shaders, prefs):
     pv = state["pivot"]
     if not pv: return
 
-    # USE UNIFORM SIZE (Original default was 4)
-    pt_size = 4
+    # USE UNIFORM SIZE FROM PREFS (Default 5)
+    pt_size = prefs.get("PREVIEW_VERTEX_SIZE", 5)
 
     if state["stage"] == 1 and state["current"] is not None:
         draw_line(ctx, shaders, pv, state["current"], prefs["COL_START"], prefs)
@@ -307,7 +309,7 @@ def draw_preview_1point(ctx, shaders, prefs):
 
 
 def draw_preview_2point(ctx, shaders, prefs):
-    pt_size = 4
+    pt_size = prefs.get("PREVIEW_VERTEX_SIZE", 5)
 
     # --- STAGE 0: Initial Cursor Dot ---
     if state["stage"] == 0:
@@ -359,7 +361,7 @@ def draw_preview_2point(ctx, shaders, prefs):
 
 
 def draw_preview_3point(ctx, shaders, prefs):
-    pt_size = 4
+    pt_size = prefs.get("PREVIEW_VERTEX_SIZE", 5)
     if state["stage"] == 0:
         target = state.get("snap_point") if state.get("snap_point") else state.get("current")
         if target:
@@ -416,7 +418,7 @@ def draw_preview_ellipse(ctx, shaders, prefs):
 
     pv = state["pivot"]
     if not pv: return
-    pt_size = 4
+    pt_size = prefs.get("PREVIEW_VERTEX_SIZE", 5)
 
     # --- ELLIPSE FOCI DRAWING ---
     if mode == "ELLIPSE_FOCI":
@@ -491,7 +493,7 @@ def draw_preview_ellipse(ctx, shaders, prefs):
 def draw_preview_polygon(ctx, shaders, prefs):
     pv = state["pivot"]
     if not pv: return
-    pt_size = 4
+    pt_size = prefs.get("PREVIEW_VERTEX_SIZE", 5)
     if state["stage"] == 1 and state["current"] is not None:
         draw_points(ctx, shaders, [pv], (0,0,0,1), pt_size, prefs)
         draw_line(ctx, shaders, pv, state["current"], prefs["COL_START"], prefs)
@@ -576,14 +578,14 @@ def draw_cb_3d():
                     draw_polyline(ctx, shaders, pts, base_color, settings)
 
                 # Dots
-                draw_points(ctx, shaders, pts, base_color, 4, settings) 
+                draw_points(ctx, shaders, pts, base_color, settings.get("PREVIEW_VERTEX_SIZE", 5), settings) 
 
             # RESTORED: Hover Dot (But now Black Size 4, not Yellow Size 8)
             if state.get("stage", 0) == 0:
                 target = state.get("snap_point") if state.get("snap_point") else state.get("current")
-                if target: draw_points(ctx, shaders, [target], (0.0, 0.0, 0.0, 1.0), 4, settings)
+                if target: draw_points(ctx, shaders, [target], (0.0, 0.0, 0.0, 1.0), settings.get("PREVIEW_VERTEX_SIZE", 5), settings)
             elif state.get("current"):
-                draw_points(ctx, shaders, [state["current"]], (0.0, 0.0, 0.0, 1.0), 4, settings)
+                draw_points(ctx, shaders, [state["current"]], (0.0, 0.0, 0.0, 1.0), settings.get("PREVIEW_VERTEX_SIZE", 5), settings)
 
         elif mode == "CIRCLE_TAN_TAN_TAN" or mode == "CIRCLE_TAN_TAN_TAN_CIRCLES":
             from .tool_previews import draw_preview_tan_tan_tan # Just in case

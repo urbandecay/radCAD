@@ -47,6 +47,14 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
         min=6,
         max=64
     )
+
+    preview_vertex_size: bpy.props.IntProperty(
+        name="Preview Vertex Size",
+        description="Customize the size of the points shown during drawing",
+        default=5,
+        min=1,
+        max=50
+    )
     
     # VISUAL COLORS (1-Point)
     color_arc_start: bpy.props.FloatVectorProperty(
@@ -429,6 +437,13 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
             row_label.separator()
             row_label.label(text="Label/Param Font Size:", icon='BLANK1')
             split.prop(self, "font_size_label", text="")
+
+            # Preview Vertex Size
+            split = col.split(factor=0.5, align=True)
+            row_label = split.row()
+            row_label.separator()
+            row_label.label(text="Preview Vertex Size:", icon='BLANK1')
+            split.prop(self, "preview_vertex_size", text="")
             
             col.separator(factor=2.0)
 

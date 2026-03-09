@@ -237,7 +237,7 @@ class ModalManager:
         # --- PREVIEW SNAPPING (SELF-SNAP) ---
         # Allow snapping to points created in the current tool session (e.g. Polyline)
         preview_pts = state.get("preview_pts", [])
-        if preview_pts and len(preview_pts) > 1:
+        if state.get("tool_mode") == "LINE_POLY" and preview_pts and len(preview_pts) > 1:
             # We ignore the last point because it is usually the "floating" point tracking the mouse.
             # We only want to snap to "committed" points.
             stable_pts = preview_pts[:-1]
