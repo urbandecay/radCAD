@@ -2,7 +2,7 @@
 import math
 import bmesh
 import bpy
-from mathutils import Vector, kdtree, geometry
+from mathutils import Vector, kdtree, geometry, Matrix
 from bpy_extras import view3d_utils
 from ..inference_utils import get_axis_snapped_location
 from ..plane_utils import world_to_plane, plane_to_world, world_radius_for_pixel_size
@@ -49,7 +49,8 @@ class Spline:
         idx = 0
         for i in range(loop_range):
             t = 0.0
-            while t < 1.0:
+            # --- FIX: Ensure we hit the final endpoint by including t=1.0 on the last segment ---
+            while t < 1.0 or (i == loop_range - 1 and abs(t - 1.0) < 1e-6):
                 u = float(i) + t
                 pos = self.evalCatmull(u)
                 deriv = self.evalDeriv(u)
@@ -60,6 +61,7 @@ class Spline:
                 self.kd.insert(to_3d(pos), idx)
                 idx += 1
                 t += CFG.SAMPLE_STEP
+                if i == loop_range - 1 and t > 1.0: break # Safety exit
         self.kd.balance()
 
     def getControlPoints(self, u):
@@ -684,8 +686,11 @@ class LineTool_PerpFromCurve(SurfaceDrawTool):
                 self.update_initial_plane(context, event, snap_point, snap_normal)
                 self.splines = []
                 self.spline_geom = []
+                mw = context.edit_object.matrix_world if context.edit_object else Matrix.Identity(4)
                 for chain in self.all_chains:
-                    pts_2d = [world_to_plane(v, self.Xp, self.Yp) for v in chain]
+                    # --- FIX: Transform local coordinates to World Space ---
+                    world_chain = [mw @ v for v in chain]
+                    pts_2d = [world_to_plane(v, self.Xp, self.Yp) for v in world_chain]
                     s = Spline(pts_2d)
                     self.splines.append(s)
                     # Convert spline samples to 3D for preview
@@ -827,8 +832,10 @@ class LineTool_TangentFromCurve(SurfaceDrawTool):
                 self.update_initial_plane(context, event, snap_point, snap_normal)
                 self.splines = []
                 self.spline_geom = []
+                mw = context.edit_object.matrix_world if context.edit_object else Matrix.Identity(4)
                 for chain in self.all_chains:
-                    pts_2d = [world_to_plane(v, self.Xp, self.Yp) for v in chain]
+                    world_chain = [mw @ v for v in chain]
+                    pts_2d = [world_to_plane(v, self.Xp, self.Yp) for v in world_chain]
                     s = Spline(pts_2d)
                     self.splines.append(s)
                     pts_3d = [plane_to_world(sample['pos'], self.Xp, self.Yp) for sample in s.samples]
@@ -932,8 +939,10 @@ class LineTool_TanTan(SurfaceDrawTool):
                 self.update_initial_plane(context, event, snap_point, snap_normal)
                 self.splines = []
                 self.spline_geom = []
+                mw = context.edit_object.matrix_world if context.edit_object else Matrix.Identity(4)
                 for chain in self.all_chains:
-                    pts_2d = [world_to_plane(v, self.Xp, self.Yp) for v in chain]
+                    world_chain = [mw @ v for v in chain]
+                    pts_2d = [world_to_plane(v, self.Xp, self.Yp) for v in world_chain]
                     s = Spline(pts_2d)
                     self.splines.append(s)
                     pts_3d = [plane_to_world(sample['pos'], self.Xp, self.Yp) for sample in s.samples]
@@ -1056,8 +1065,10 @@ class LineTool_PerpToTwoCurves(SurfaceDrawTool):
                 self.update_initial_plane(context, event, snap_point, snap_normal)
                 self.splines = []
                 self.spline_geom = []
+                mw = context.edit_object.matrix_world if context.edit_object else Matrix.Identity(4)
                 for chain in self.all_chains:
-                    pts_2d = [world_to_plane(v, self.Xp, self.Yp) for v in chain]
+                    world_chain = [mw @ v for v in chain]
+                    pts_2d = [world_to_plane(v, self.Xp, self.Yp) for v in world_chain]
                     s = Spline(pts_2d)
                     self.splines.append(s)
                     pts_3d = [plane_to_world(sample['pos'], self.Xp, self.Yp) for sample in s.samples]
