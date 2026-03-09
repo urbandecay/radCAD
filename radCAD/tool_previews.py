@@ -518,6 +518,46 @@ def draw_preview_polygon(ctx, shaders, prefs):
             draw_points(ctx, shaders, pts, (0,0,0,1), pt_size, prefs)
 
 
+def draw_preview_circle_3point(ctx, shaders, prefs):
+    pt_size = prefs.get("PREVIEW_VERTEX_SIZE", 5)
+    pts = state.get("preview_pts", [])
+    if pts:
+        draw_polyline(ctx, shaders, pts, (0,0,0,1), prefs)
+        draw_points(ctx, shaders, pts, (0,0,0,1), pt_size, prefs)
+
+def draw_preview_tan_tan(ctx, shaders, prefs):
+    pt_size = prefs.get("PREVIEW_VERTEX_SIZE", 5)
+    
+    v_pts = state.get("visual_pts", [])
+    if v_pts:
+        draw_polyline(ctx, shaders, v_pts, (0.5, 0.5, 0.5, 0.5), prefs)
+        
+    p_pts = state.get("preview_pts", [])
+    if p_pts:
+        draw_polyline(ctx, shaders, p_pts, (0, 0, 0, 1), prefs)
+        draw_points(ctx, shaders, p_pts, (0, 0, 0, 1), pt_size, prefs)
+        
+    viz_tan = state.get("viz_tangent_line")
+    if viz_tan and len(viz_tan) == 2:
+        draw_line(ctx, shaders, viz_tan[0], viz_tan[1], (1, 0.8, 0, 1), prefs)
+        
+    viz_diam = state.get("viz_diameter_line")
+    if viz_diam and len(viz_diam) == 2:
+        draw_line(ctx, shaders, viz_diam[0], viz_diam[1], (1, 0.8, 0, 1), prefs)
+
+def draw_preview_tan_tan_tan(ctx, shaders, prefs):
+    pt_size = prefs.get("PREVIEW_VERTEX_SIZE", 5)
+    
+    v_pts = state.get("visual_pts", [])
+    if v_pts:
+        draw_polyline(ctx, shaders, v_pts, (0.5, 0.5, 0.5, 0.5), prefs)
+        
+    p_pts = state.get("preview_pts", [])
+    if p_pts:
+        draw_polyline(ctx, shaders, p_pts, (0, 0, 0, 1), prefs)
+        draw_points(ctx, shaders, p_pts, (0, 0, 0, 1), pt_size, prefs)
+
+
 def draw_cb_3d():
     if not state["active"]: return
     try:

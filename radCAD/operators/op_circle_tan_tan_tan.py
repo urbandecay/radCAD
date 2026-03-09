@@ -315,7 +315,9 @@ class CircleTool_TanTanTan:
         return curr_x, curr_y, abs(curr_r), curr_t, last_max_err
 
     def update(self, context, event, snap_pt, snap_normal):
-        pass
+        # Refresh if the segment count changed from the mouse wheel
+        if len(self.preview_pts) != self.segments + 1:
+            self.refresh_preview()
 
     def refresh_preview(self):
         state["visual_pts"] = []
