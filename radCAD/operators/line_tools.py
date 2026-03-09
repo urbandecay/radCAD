@@ -430,7 +430,11 @@ class Spline:
     def getClosestU_Global(self, point):
         return self.find_nearest_u(point)
 
-def get_disjoint_chains(bm):
+def get_disjoint_chains(bm, obj_matrix=None):
+    if obj_matrix is None:
+        import mathutils
+        obj_matrix = mathutils.Matrix.Identity(4)
+
     if not bm: return []
     try: selected_edges = [e for e in bm.edges if e.select]
     except ReferenceError: return []
@@ -445,29 +449,29 @@ def get_disjoint_chains(bm):
     if not endpoints and vert_map: endpoints = [list(vert_map.keys())[0]]
     for start_node in endpoints:
         if not vert_map.get(start_node): continue
-        curr, path = start_node, [start_node.co.copy()]
+        curr, path = start_node, [(obj_matrix @ start_node.co).copy()]
         while True:
             edges = vert_map.get(curr, [])
             next_edge = next((e for e in edges if e not in processed_edges), None)
             if not next_edge: break
             processed_edges.add(next_edge)
             curr = next_edge.other_vert(curr)
-            path.append(curr.co.copy())
+            path.append((obj_matrix @ curr.co).copy())
         if len(path) > 1: chains.append(path)
     remaining = [e for e in selected_edges if e not in processed_edges]
     while remaining:
         seed = remaining[0]
-        curr, path = seed.verts[0], [seed.verts[0].co.copy()]
+        curr, path = seed.verts[0], [(obj_matrix @ seed.verts[0].co).copy()]
         processed_edges.add(seed)
         curr = seed.other_vert(curr)
-        path.append(curr.co.copy())
+        path.append((obj_matrix @ curr.co).copy())
         while True:
             edges = vert_map.get(curr, [])
             next_edge = next((e for e in edges if e not in processed_edges), None)
             if not next_edge: break
             processed_edges.add(next_edge)
             curr = next_edge.other_vert(curr)
-            path.append(curr.co.copy())
+            path.append((obj_matrix @ curr.co).copy())
         chains.append(path)
         remaining = [e for e in selected_edges if e not in processed_edges]
     return chains
@@ -673,7 +677,7 @@ class LineTool_PerpFromCurve(SurfaceDrawTool):
         obj = bpy.context.edit_object
         if obj and obj.type == 'MESH':
             bm = bmesh.from_edit_mesh(obj.data)
-            self.all_chains = get_disjoint_chains(bm)
+            self.all_chains = get_disjoint_chains(bm, obj.matrix_world)
             if not self.all_chains: core.report({'WARNING'}, "Select at least one curve")
         else:
             self.all_chains = []
@@ -816,7 +820,7 @@ class LineTool_TangentFromCurve(SurfaceDrawTool):
         obj = bpy.context.edit_object
         if obj and obj.type == 'MESH':
             bm = bmesh.from_edit_mesh(obj.data)
-            self.all_chains = get_disjoint_chains(bm)
+            self.all_chains = get_disjoint_chains(bm, obj.matrix_world)
             if not self.all_chains: core.report({'WARNING'}, "Select at least one curve")
         else:
             self.all_chains = []
@@ -918,7 +922,7 @@ class LineTool_TanTan(SurfaceDrawTool):
         obj = bpy.context.edit_object
         if obj and obj.type == 'MESH':
             bm = bmesh.from_edit_mesh(obj.data)
-            self.all_chains = get_disjoint_chains(bm)
+            self.all_chains = get_disjoint_chains(bm, obj.matrix_world)
             if len(self.all_chains) < 2:
                 core.report({'WARNING'}, "Select at least 2 disjoint curves")
                 self.all_chains = []
@@ -1042,7 +1046,7 @@ class LineTool_PerpToTwoCurves(SurfaceDrawTool):
         obj = bpy.context.edit_object
         if obj and obj.type == 'MESH':
             bm = bmesh.from_edit_mesh(obj.data)
-            self.all_chains = get_disjoint_chains(bm)
+            self.all_chains = get_disjoint_chains(bm, obj.matrix_world)
             if len(self.all_chains) < 2:
                 core.report({'WARNING'}, "Select at least 2 disjoint curves")
                 self.all_chains = []
