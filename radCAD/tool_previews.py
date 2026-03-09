@@ -326,7 +326,7 @@ def draw_preview_2point(ctx, shaders, prefs):
         draw_points(ctx, shaders, [state["current"]], (0,0,0,1), pt_size, prefs)
         
         diff = state["current"] - pv
-        col = get_axis_aligned_color(diff, prefs["COL_CHORD"])
+        col = get_axis_aligned_color(diff, (0.5, 0.5, 0.5, 0.5))
         draw_line(ctx, shaders, pv, state["current"], col, prefs)
 
         if state.get("tool_mode") == "CIRCLE_2POINT":
@@ -345,7 +345,7 @@ def draw_preview_2point(ctx, shaders, prefs):
         
         if p1 and p2:
             chord_vec = p2 - p1
-            col_c = get_axis_aligned_color(chord_vec, prefs["COL_CHORD"])
+            col_c = get_axis_aligned_color(chord_vec, (0.5, 0.5, 0.5, 0.5))
             draw_line(ctx, shaders, p1, p2, col_c, prefs)
             
         if state["start"] is not None:
