@@ -125,6 +125,7 @@ class CircleTool_TanTanTan:
             "visual_pts": [],
             "tan_solutions": [],
             "tan_solution_active": False,
+            "catmull_spline_previews": [], # Store sampled spline points
         })
         
         obj = bpy.context.edit_object
@@ -133,7 +134,17 @@ class CircleTool_TanTanTan:
         if len(chains) == 3:
             self.splines = chains 
             
-            if len(chains[0][0]) > 2:
+            # --- NEW: Sample Catmull Splines for Grey Outline ---
+            from .circle_tools import CatmullRomSpline
+            for pts_raw, is_closed in chains:
+                spline = CatmullRomSpline(pts_raw, is_closed=is_closed)
+                if spline.segments:
+                    samples = []
+                    for seg in spline.segments:
+                        for i in range(11): # 10 samples per segment
+                            t = seg.t_start + (seg.dt * (i / 10.0))
+                            samples.append(seg.eval(t))
+                    state["catmull_spline_previews"].append(samples)
                 v1 = chains[0][0][1] - chains[0][0][0]
                 v2 = chains[0][0][-1] - chains[0][0][0]
                 cross = v1.cross(v2)

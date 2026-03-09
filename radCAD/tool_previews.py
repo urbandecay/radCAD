@@ -592,6 +592,13 @@ def draw_cb_3d():
         settings = get_render_settings(ctx)
         shaders = get_shaders()
         
+        # --- NEW: DRAW GREY CATMULL OUTLINES FOR INPUT SELECTION ---
+        catmull_outlines = state.get("catmull_spline_previews", [])
+        if catmull_outlines:
+            for c_pts in catmull_outlines:
+                # Grey color (R=0.5, G=0.5, B=0.5, A=0.7)
+                draw_polyline(ctx, shaders, c_pts, (0.5, 0.5, 0.5, 0.7), settings, custom_lift=settings["LIFT_ARC"] - 5.0, custom_width=2.0)
+        
         # --- REMOVED SPLINE OVERLAYS TO PRESERVE ORANGE SELECTION ---
 
         mode = state.get("tool_mode", "1POINT")
