@@ -556,10 +556,10 @@ def draw_preview_tan_tan_tan(ctx, shaders, prefs):
     if v_pts:
         draw_polyline(ctx, shaders, v_pts, (0.5, 0.5, 0.5, 0.5), prefs)
         
-    # 2. Foreground Mesh Geometry (Black)
+    # 2. Foreground Mesh Geometry (Black) - Added +2.0 lift to pop over grey
     p_pts = state.get("preview_pts", [])
     if p_pts:
-        draw_polyline(ctx, shaders, p_pts, (0,0,0,1), prefs)
+        draw_polyline(ctx, shaders, p_pts, (0,0,0,1), prefs, custom_lift=prefs["LIFT_ARC"] + 2.0)
         draw_points(ctx, shaders, p_pts, (0,0,0,1), pt_size, prefs)
 
 
