@@ -215,3 +215,50 @@ def perform_x_weld(bm, arc_edges, target_edges, radius, mw):
                     break 
                         
     return cuts
+
+def perform_self_x_weld(bm, edges, radius, mw):
+    """Detects and cuts segments within the SAME drawing that cross each other."""
+    cuts = 0
+    r2 = radius * radius
+    mw_inv = mw.inverted()
+
+    # Use a snapshot of the list to be safe during splits
+    edges_list = [e for e in edges if e.is_valid]
+
+    for i in range(len(edges_list)):
+        e1 = edges_list[i]
+        if not e1.is_valid: continue
+        p1a = mw @ e1.verts[0].co
+        p1b = mw @ e1.verts[1].co
+
+        for j in range(i + 1, len(edges_list)):
+            e2 = edges_list[j]
+            if not e2.is_valid: continue
+
+            # Skip connected edges (neighbors)
+            if set(e1.verts) & set(e2.verts): continue
+
+            p2a = mw @ e2.verts[0].co
+            p2b = mw @ e2.verts[1].co
+
+            c1, c2, s, t = closest_points_on_segments(p1a, p1b, p2a, p2b)
+            dist_sq = (c1 - c2).length_squared
+
+            if dist_sq < r2:
+                # Intersection point in world space
+                intersect_w = (c1 + c2) * 0.5
+                intersect_l = mw_inv @ intersect_w
+
+                # Split e2 (Target)
+                if 0.001 < t < 0.999:
+                    v2 = safe_edge_split_vert_only(bm, e2, e2.verts[0], t)
+                    if v2: v2.co = intersect_l
+
+                # Split e1 (Source)
+                if 0.001 < s < 0.999:
+                    v1 = safe_edge_split_vert_only(bm, e1, e1.verts[0], s)
+                    if v1: v1.co = intersect_l
+
+                cuts += 1
+
+    return cuts

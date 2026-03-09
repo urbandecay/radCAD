@@ -63,6 +63,11 @@ def run(ctx, arc_verts, arc_edges):
     # --- PHASE 1: PRE-WELD (Snap Arc Ends to Existing Geometry) ---
     # This phase moves the ARC to the MESH. It is generally safe.
     target_verts, target_edges = weld_utils.find_nearby_geometry(bm, arc_verts, radius * 2.0, mw)
+    
+    # NEW: SELF-INTERSECTION PASS
+    # Detect if the new drawing crosses itself and create junctions.
+    weld_utils.perform_self_x_weld(bm, arc_edges, radius, mw)
+    
     weld_utils.perform_heavy_weld(bm, arc_verts, (target_verts, target_edges), radius, mw)
     weld_utils.perform_x_weld(bm, arc_edges, target_edges, radius * 1.5, mw)
     
