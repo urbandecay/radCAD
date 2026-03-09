@@ -366,8 +366,80 @@ class ModalManager:
             
             context.area.tag_redraw()
 
+def get_or_create_grey_material():
+    mat_name = "radCAD_Grey"
+    mat = bpy.data.materials.get(mat_name)
+    if not mat:
+        mat = bpy.data.materials.new(name=mat_name)
+        mat.use_nodes = True
+        nodes = mat.node_tree.nodes
+        bsdf = nodes.get("Principled BSDF")
+        if bsdf:
+            bsdf.inputs[0].default_value = (0.5, 0.5, 0.5, 1)
+            if len(bsdf.inputs) > 9: bsdf.inputs[9].default_value = 1.0
+    return mat
+
+def get_or_create_black_material():
+    mat_name = "radCAD_Black"
+    mat = bpy.data.materials.get(mat_name)
+    if not mat:
+        mat = bpy.data.materials.new(name=mat_name)
+        mat.use_nodes = True
+        nodes = mat.node_tree.nodes
+        bsdf = nodes.get("Principled BSDF")
+        if bsdf:
+            bsdf.inputs[0].default_value = (0, 0, 0, 1)
+            if len(bsdf.inputs) > 9: bsdf.inputs[9].default_value = 1.0
+    return mat
+
 def commit_arc_to_mesh(ctx):
     from . import arc_weld_manager
+
+    # Determine tool name for the new object
+    tool_mode = state.get("tool_mode", "CAD_Object")
+    obj_name = tool_mode.replace("_", " ").title()
+
+    # --- SPECIAL HANDLING: CIRCLE TAN-TAN-TAN ---
+    if tool_mode == "CIRCLE_TAN_TAN_TAN":
+        coll = ctx.collection
+        if ctx.edit_object and ctx.edit_object.users_collection:
+            coll = ctx.edit_object.users_collection[0]
+            
+        # 1. Create the Grey Circle
+        pts = state.get("preview_pts")
+        if pts:
+            bm_c = bmesh.new()
+            c_verts = [bm_c.verts.new(p) for p in pts[:-1]]
+            for i in range(len(c_verts) - 1):
+                bm_c.edges.new((c_verts[i], c_verts[i+1]))
+            bm_c.edges.new((c_verts[-1], c_verts[0]))
+            
+            mesh_c = bpy.data.meshes.new("Grey Circle")
+            bm_c.to_mesh(mesh_c)
+            bm_c.free()
+            obj_c = bpy.data.objects.new("Grey Circle", mesh_c)
+            coll.objects.link(obj_c)
+            obj_c.data.materials.append(get_or_create_grey_material())
+            mesh_c.update()
+
+        # 2. Create the Black Inscribed Polygon
+        tan_poly_pts = state.get("tan_points_poly")
+        if tan_poly_pts and len(tan_poly_pts) >= 3:
+            bm_t = bmesh.new()
+            t_verts = [bm_t.verts.new(p) for p in tan_poly_pts]
+            for i in range(len(t_verts) - 1):
+                bm_t.edges.new((t_verts[i], t_verts[i+1]))
+            bm_t.edges.new((t_verts[-1], t_verts[0]))
+            
+            mesh_t = bpy.data.meshes.new("Black Polygon")
+            bm_t.to_mesh(mesh_t)
+            bm_t.free()
+            obj_t = bpy.data.objects.new("Black Polygon", mesh_t)
+            coll.objects.link(obj_t)
+            obj_t.data.materials.append(get_or_create_black_material())
+            mesh_t.update()
+        
+        return
 
     obj = ctx.edit_object
     bm = bmesh.from_edit_mesh(obj.data)

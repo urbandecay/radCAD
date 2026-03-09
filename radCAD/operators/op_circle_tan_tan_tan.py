@@ -257,7 +257,17 @@ class CircleTool_TanTanTan:
             
         if converged:
             pt_3d = self.pivot + self.Xp*cx + self.Yp*cy
-            state["tan_solutions"].append((pt_3d, curr_r))
+            state["tan_solutions"] = [(pt_3d, curr_r)]
+            
+            # Calculate the 3 tangency points in 3D
+            tan_pts_3d = []
+            for i in range(3):
+                pts_2d = self.spline_points_2d[i]
+                (gx, gy), _, _ = eval_spline_derivatives(pts_2d, curr_t[i], self.spline_closed[i])
+                wp = self.pivot + self.Xp*gx + self.Yp*gy
+                tan_pts_3d.append(wp)
+            state["tan_points"] = tan_pts_3d
+            
             self.current = pt_3d # Update position for UI
 
         self.refresh_preview()
@@ -322,16 +332,34 @@ class CircleTool_TanTanTan:
     def refresh_preview(self):
         state["visual_pts"] = []
         state["preview_pts"] = []
+        state["tan_points_poly"] = [] # New: Store points for the adjustable polygon
         
         if not state["tan_solutions"]: 
             state["tan_solution_active"] = False
             return
             
         c, r = state["tan_solutions"][0]
+        
+        # 1. Circle Preview (Always smooth/high-res)
         state["visual_pts"] = [c + self.Xp*math.cos(a)*r + self.Yp*math.sin(a)*r for a in [i*math.pi*2/128 for i in range(129)]]
-        self.preview_pts = [c + self.Xp*math.cos(a)*r + self.Yp*math.sin(a)*r for a in [i*math.pi*2/self.segments for i in range(self.segments+1)]]
+        self.preview_pts = [c + self.Xp*math.cos(a)*r + self.Yp*math.sin(a)*r for a in [i*math.pi*2/64 for i in range(65)]]
         state["preview_pts"] = self.preview_pts
         state["tan_solution_active"] = True
+
+        # 2. Inscribed Polygon Points
+        sides = state.get("segments", 3)
+        if sides == 3:
+            # Special Tangency Triangle
+            state["tan_points_poly"] = state.get("tan_points", [])
+        else:
+            # Regular Inscribed Polygon (N-gon)
+            poly_pts = []
+            step = (2 * math.pi) / sides
+            for i in range(sides):
+                angle = i * step
+                pt = c + (self.Xp * math.cos(angle) * r) + (self.Yp * math.sin(angle) * r)
+                poly_pts.append(pt)
+            state["tan_points_poly"] = poly_pts
 
     def handle_click(self, context, event, snap_pt, snap_normal, button_id=None):
         return 'FINISHED'

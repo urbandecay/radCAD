@@ -554,13 +554,26 @@ def draw_preview_tan_tan_tan(ctx, shaders, prefs):
     # 1. Background Math Circle (Grey)
     v_pts = state.get("visual_pts", [])
     if v_pts:
-        draw_polyline(ctx, shaders, v_pts, (0.5, 0.5, 0.5, 0.5), prefs)
+        draw_polyline(ctx, shaders, v_pts, (0.5, 0.5, 0.5, 1.0), prefs)
         
-    # 2. Foreground Mesh Geometry (Black) - Added +2.0 lift to pop over grey
+    # 2. Foreground Mesh Geometry (Grey Circle)
     p_pts = state.get("preview_pts", [])
     if p_pts:
-        draw_polyline(ctx, shaders, p_pts, (0,0,0,1), prefs, custom_lift=prefs["LIFT_ARC"] + 2.0)
-        draw_points(ctx, shaders, p_pts, (0,0,0,1), pt_size, prefs)
+        draw_polyline(ctx, shaders, p_pts, (0.5, 0.5, 0.5, 1.0), prefs, custom_lift=prefs["LIFT_ARC"] + 2.0)
+        # NO DOTS ON CIRCLE FOR CLEAN PREVIEW
+
+    # 3. Inscribed Polygon (Black Triangle or N-gon)
+    tan_poly_pts = state.get("tan_points_poly", [])
+    if tan_poly_pts and len(tan_poly_pts) >= 3:
+        # Create poly segments (closed loop)
+        poly_draw_pts = []
+        for i in range(len(tan_poly_pts)):
+            poly_draw_pts.append(tan_poly_pts[i])
+            poly_draw_pts.append(tan_poly_pts[(i + 1) % len(tan_poly_pts)])
+            
+        draw_polyline(ctx, shaders, poly_draw_pts, (0, 0, 0, 1), prefs, custom_lift=prefs["LIFT_ARC"] + 5.0)
+        # Orange Dots at vertices
+        draw_points(ctx, shaders, tan_poly_pts, (1.0, 0.5, 0.0, 1.0), pt_size + 2, prefs)
 
 
 def draw_cb_3d():
@@ -579,12 +592,7 @@ def draw_cb_3d():
         settings = get_render_settings(ctx)
         shaders = get_shaders()
         
-        # --- NEW: DRAW SPLINE OVERLAYS (Cyan) ---
-        spline_list = state.get("spline_geom", [])
-        if spline_list:
-            for s_pts in spline_list:
-                # Cyan color (R=0, G=0.8, B=1.0)
-                draw_polyline(ctx, shaders, s_pts, (0.0, 0.8, 1.0, 0.5), settings, custom_lift=settings["LIFT_ARC"] - 2.0, custom_width=2.0)
+        # --- REMOVED SPLINE OVERLAYS TO PRESERVE ORANGE SELECTION ---
 
         mode = state.get("tool_mode", "1POINT")
         
