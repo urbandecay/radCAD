@@ -394,7 +394,7 @@ def commit_arc_to_mesh(ctx):
     is_closed = abs(state["accum_angle"]) >= (2 * math.pi - 0.001)
     
     # Continuous tools that always have a "floating" mouse point at the end
-    continuous_tools = ["LINE_POLY", "LINE_PERP_FROM_CURVE", "LINE_TAN_TAN", "LINE_PERP_TO_TWO_CURVES", "LINE_TANGENT_FROM_CURVE", "CURVE_INTERPOLATE"]
+    continuous_tools = ["LINE_POLY", "CURVE_INTERPOLATE"]
     
     # Shape tools that should be closed automatically
     shape_tools = ["CIRCLE_1POINT", "CIRCLE_2POINT", "CIRCLE_3POINT", "CIRCLE_TAN_TAN", "CIRCLE_TAN_TAN_TAN", "CIRCLE_TAN_TAN_TAN_CIRCLES", "ELLIPSE_RADIUS", "ELLIPSE_FOCI", "ELLIPSE_ENDPOINTS", "ELLIPSE_CORNERS", "POLYGON_CENTER_CORNER", "POLYGON_CENTER_TANGENT", "POLYGON_CORNER_CORNER", "POLYGON_EDGE", "RECTANGLE_CENTER_CORNER", "RECTANGLE_CORNER_CORNER", "RECTANGLE_3_POINTS"]
