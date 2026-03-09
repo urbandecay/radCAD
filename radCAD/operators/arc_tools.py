@@ -243,6 +243,20 @@ class ArcTool_Common(SurfaceDrawTool):
                         res = geometry.intersect_line_line(ray_origin, ray_origin + ray_vector, self.pivot, self.pivot + self.constraint_axis)
                         if res: target = res[1]
                 
+                elif not self.state.get("geometry_snap", False):
+                    # AXIS INFERENCE SNAPPING
+                    strength_deg = self.state.get("snap_strength", 6.0)
+                    strength_deg = max(0.1, min(89.0, strength_deg))
+                    axis_thresh = math.cos(math.radians(strength_deg))
+
+                    inf_loc, _, _ = get_axis_snapped_location(
+                        self.pivot, 
+                        (event.mouse_region_x, event.mouse_region_y), 
+                        context,
+                        snap_threshold=axis_thresh
+                    )
+                    if inf_loc: target = inf_loc
+                
                 self.current = target
                 self.preview_pts = [self.p1, self.current]
                 return
@@ -421,6 +435,13 @@ class ArcTool_Common(SurfaceDrawTool):
                     ray_vector = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
                     res = geometry.intersect_line_line(ray_origin, ray_origin + ray_vector, self.pivot, self.pivot + self.constraint_axis)
                     if res: target = res[1]
+            elif not self.state.get("geometry_snap", False):
+                # AXIS INFERENCE SNAPPING ON CLICK
+                strength_deg = self.state.get("snap_strength", 6.0)
+                strength_deg = max(0.1, min(89.0, strength_deg))
+                axis_thresh = math.cos(math.radians(strength_deg))
+                inf_loc, _, _ = get_axis_snapped_location(self.pivot, (event.mouse_region_x, event.mouse_region_y), context, snap_threshold=axis_thresh)
+                if inf_loc: target = inf_loc
             
             self.p2 = target
             self.midpoint = (self.p1 + self.p2) * 0.5
