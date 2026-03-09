@@ -221,6 +221,13 @@ class ArcTool_Common(SurfaceDrawTool):
         elif self.mode == "3POINT":
             if self.stage == 1:
                 target = snap_point
+                
+                # --- FIX: Project Stage 1 point onto the locked plane ---
+                if self.Zp and self.pivot:
+                    d = snap_point - self.pivot
+                    d_plane = d - self.Zp * d.dot(self.Zp)
+                    target = self.pivot + d_plane
+
                 if self.constraint_axis:
                     if self.state.get("geometry_snap", False):
                         diff = target - self.pivot
@@ -235,10 +242,10 @@ class ArcTool_Common(SurfaceDrawTool):
                         ray_vector = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
                         res = geometry.intersect_line_line(ray_origin, ray_origin + ray_vector, self.pivot, self.pivot + self.constraint_axis)
                         if res: target = res[1]
-                self.p2 = target
-                self.midpoint = (self.p1 + self.p2) * 0.5
-                self.stage = 2
-                return 'NEXT_STAGE'
+                
+                self.current = target
+                self.preview_pts = [self.p1, self.current]
+                return
 
             elif self.stage == 2:
                 self.current = snap_point
@@ -308,12 +315,12 @@ class ArcTool_Common(SurfaceDrawTool):
             self.p1 = snap_point 
             self.start = snap_point 
             
-            # Common lock logic for 1-point tools
-            if self.mode == "1POINT":
+            # Common lock logic for 1-point and 3-point tools
+            if self.mode in ["1POINT", "3POINT"]:
                 self.state["locked"] = True
                 self.state["locked_normal"] = self.Zp
             else:
-                # 2/3 Point: Just record normal, don't hard lock yet
+                # 2-Point: Just record normal, don't hard lock yet
                 self.state["locked"] = False
             
             self.stage = 1
@@ -393,8 +400,13 @@ class ArcTool_Common(SurfaceDrawTool):
             return 'NEXT_STAGE'
 
         elif self.stage == 1 and self.mode == "3POINT":
-            # (Similar logic for 3-point)
+            # --- FIX: Finalize chord point (p2) on plane ---
             target = snap_point
+            if self.Zp and self.pivot:
+                d = target - self.pivot
+                d_plane = d - self.Zp * d.dot(self.Zp)
+                target = self.pivot + d_plane
+
             if self.constraint_axis:
                 if self.state.get("geometry_snap", False):
                     diff = target - self.pivot
@@ -409,6 +421,7 @@ class ArcTool_Common(SurfaceDrawTool):
                     ray_vector = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
                     res = geometry.intersect_line_line(ray_origin, ray_origin + ray_vector, self.pivot, self.pivot + self.constraint_axis)
                     if res: target = res[1]
+            
             self.p2 = target
             self.midpoint = (self.p1 + self.p2) * 0.5
             self.constraint_axis = None
