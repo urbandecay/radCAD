@@ -371,16 +371,21 @@ def commit_arc_to_mesh(ctx):
     if not pts: return
     is_closed = abs(state["accum_angle"]) >= (2 * math.pi - 0.001)
     
-    # ADDED RECTANGLE_3_POINTS HERE
-    if state["tool_mode"] in ["CIRCLE_1POINT", "CIRCLE_2POINT", "CIRCLE_3POINT", "CIRCLE_TAN_TAN", "CIRCLE_TAN_TAN_TAN", "CIRCLE_TAN_TAN_TAN_CIRCLES", "ELLIPSE_RADIUS", "ELLIPSE_FOCI", "ELLIPSE_ENDPOINTS", "ELLIPSE_CORNERS", "POLYGON_CENTER_CORNER", "POLYGON_CENTER_TANGENT", "POLYGON_CORNER_CORNER", "POLYGON_EDGE", "RECTANGLE_CENTER_CORNER", "RECTANGLE_CORNER_CORNER", "RECTANGLE_3_POINTS"]:
+    # Continuous tools that always have a "floating" mouse point at the end
+    continuous_tools = ["LINE_POLY", "LINE_PERP_FROM_CURVE", "LINE_TAN_TAN", "LINE_PERP_TO_TWO_CURVES", "LINE_TANGENT_FROM_CURVE", "CURVE_INTERPOLATE"]
+    
+    # Shape tools that should be closed automatically
+    shape_tools = ["CIRCLE_1POINT", "CIRCLE_2POINT", "CIRCLE_3POINT", "CIRCLE_TAN_TAN", "CIRCLE_TAN_TAN_TAN", "CIRCLE_TAN_TAN_TAN_CIRCLES", "ELLIPSE_RADIUS", "ELLIPSE_FOCI", "ELLIPSE_ENDPOINTS", "ELLIPSE_CORNERS", "POLYGON_CENTER_CORNER", "POLYGON_CENTER_TANGENT", "POLYGON_CORNER_CORNER", "POLYGON_EDGE", "RECTANGLE_CENTER_CORNER", "RECTANGLE_CORNER_CORNER", "RECTANGLE_3_POINTS"]
+
+    if state["tool_mode"] in shape_tools:
         is_closed = True
     
-    if state["tool_mode"] == "LINE_POLY" or state["tool_mode"] == "LINE_PERP_FROM_CURVE" or state["tool_mode"] == "LINE_TAN_TAN" or state["tool_mode"] == "LINE_PERP_TO_TWO_CURVES" or state["tool_mode"] == "LINE_TANGENT_FROM_CURVE":
+    if state["tool_mode"] in continuous_tools:
         is_closed = False
-        if state["tool_mode"] == "LINE_POLY" and len(pts) > 1: pts = pts[:-1]
-
-    if state["tool_mode"] == "CURVE_INTERPOLATE":
-        is_closed = False
+        # Discard the last point if it is the "floating" mouse point.
+        # We know it is floating if there is no active/just-confirmed keyboard input.
+        if len(pts) > 1 and not state.get("input_string"):
+            pts = pts[:-1]
 
     bpy.ops.mesh.select_all(action='DESELECT')
     created_verts = []
@@ -522,11 +527,27 @@ def modal_arc_common(self, ctx, ev):
 
     # --- Commit / Finish ---
     if ev.type in {'SPACE', 'RET', 'NUMPAD_ENTER'} and ev.value == 'PRESS':
+        if state["tool_mode"] == "LINE_POLY" and self.manager.active_tool:
+            # If we have a keyboard value active, commit it as a click first
+            if state.get("input_string"):
+                mx, my = ev.mouse_region_x, ev.mouse_region_y
+                snap_pt, snap_n = self.manager.get_snap_data(ctx, mx, my)
+                self.manager.active_tool.handle_click(ctx, ev, snap_pt, snap_n)
+                self.manager.on_move(ctx, ev)
+
         commit_arc_to_mesh(ctx)
         finish_modal(self, ctx)
         return {'FINISHED'}
     
     if ev.type == 'RIGHTMOUSE' and ev.value == 'PRESS':
+        if state["tool_mode"] == "LINE_POLY" and self.manager.active_tool:
+            # If we have a keyboard value active, commit it as a click first
+            if state.get("input_string"):
+                mx, my = ev.mouse_region_x, ev.mouse_region_y
+                snap_pt, snap_n = self.manager.get_snap_data(ctx, mx, my)
+                self.manager.active_tool.handle_click(ctx, ev, snap_pt, snap_n)
+                self.manager.on_move(ctx, ev)
+
         commit_arc_to_mesh(ctx)
         finish_modal(self, ctx)
         return {'FINISHED'}

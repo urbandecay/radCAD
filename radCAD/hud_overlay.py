@@ -486,7 +486,7 @@ def draw_hud_2d():
             if state["input_mode"] == 'RADIUS': 
                 label = "R:"
                 if tool_mode == "2POINT": label = "D:"
-                elif tool_mode == "LINE_POLY": label = "L:" # --- NEW: Use 'L' for Line Tool
+                elif tool_mode == "LINE_POLY": label = "" # --- REMOVED 'L' for Line Tool
                 
                 r_txt = get_display_str(label, state['input_string'], True)
                 h1 = draw_ui_box_generic(px, current_y, r_txt, active=True)
@@ -515,7 +515,7 @@ def draw_hud_2d():
                     current_y -= (h1 + 4)
                 else:
                     label = "R: "
-                    if tool_mode == "LINE_POLY": label = "L: " # --- NEW: Use 'L' for Line Tool
+                    if tool_mode == "LINE_POLY": label = "" # --- REMOVED 'L' for Line Tool
                     
                     r_val = state["radius"] if state["stage"] == 2 else ((state["current"] - state["pivot"]).length if (state["current"] and state["pivot"]) else 0.0)
                     r_txt = label + format_length(r_val)
