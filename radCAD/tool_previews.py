@@ -385,9 +385,16 @@ def draw_preview_3point(ctx, shaders, prefs):
         if p2: draw_points(ctx, shaders, [p2], (0,0,0,1), pt_size, prefs)
         
         if p1 and p2:
-            draw_line(ctx, shaders, p1, p2, (0.5, 0.5, 0.5, 0.5), prefs)
+            # Color chord by axis
+            chord_vec = p2 - p1
+            col_c = get_axis_aligned_color(chord_vec, (0.5, 0.5, 0.5, 0.5))
+            draw_line(ctx, shaders, p1, p2, col_c, prefs)
+            
         if p2 and p3:
-            draw_line(ctx, shaders, p2, p3, (0.5, 0.5, 0.5, 0.5), prefs)
+            # Color curvature segment by axis
+            curv_vec = p3 - p2
+            col_v = get_axis_aligned_color(curv_vec, (0.5, 0.5, 0.5, 0.5))
+            draw_line(ctx, shaders, p2, p3, col_v, prefs)
             
         pts = state.get("preview_pts", [])
         if pts:
