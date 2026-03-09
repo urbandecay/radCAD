@@ -290,12 +290,8 @@ def draw_preview_1point(ctx, shaders, prefs):
     if state["stage"] == 1 and state["current"] is not None:
         draw_line(ctx, shaders, pv, state["current"], prefs["COL_START"], prefs)
         
-        # If in Circle Mode, draw preview IMMEDIATELY
-        if state.get("tool_mode") == "CIRCLE_1POINT":
-            pts = state.get("preview_pts", [])
-            if pts:
-                draw_polyline(ctx, shaders, pts, (0,0,0,1), prefs)
-                draw_points(ctx, shaders, pts, (0,0,0,1), pt_size, prefs)
+        if state.get("tool_mode") == "CIRCLE_1POINT": # Logic kept for regular 1POINT arcs
+            pass
     
     elif state["stage"] == 2:
         if state["start"]:
@@ -662,7 +658,7 @@ def draw_cb_3d():
             from .tool_previews import draw_preview_tan_tan
             draw_preview_tan_tan(ctx, shaders, settings)
 
-        elif mode == "1POINT" or mode == "CIRCLE_1POINT":
+        elif mode == "1POINT":
             draw_preview_1point(ctx, shaders, settings)
             
         elif mode == "2POINT" or mode == "CIRCLE_2POINT":

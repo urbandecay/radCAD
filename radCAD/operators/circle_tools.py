@@ -158,20 +158,6 @@ def get_selected_edge_chains(obj):
 # --- 4. TOOL CLASSES ---
 # =========================================================================
 
-class CircleTool_1Point(SurfaceDrawTool):
-    def __init__(self, core): super().__init__(core); self.mode="CIRCLE_1POINT"; self.segments=self.state["segments"]; self.radius=0.0; self.current=None; self.preview_pts=[]
-    def update(self, context, event, snap_point, snap_normal):
-        if self.stage==0: self.update_initial_plane(context, event, snap_point, snap_normal); return
-        if self.stage==1:
-            pv=self.pivot; d=snap_point-pv; d_plane=d-self.Zp*d.dot(self.Zp); d2=world_to_plane(d_plane, self.Xp, self.Yp); length=d2.length
-            raw=math.atan2(d2.y, d2.x); ang=snap_angle_soft(raw, 15.0, self.state.get("snap_strength", 6.0)) if (self.state.get("use_angle_snap", True) and not self.state.get("geometry_snap", False)) else raw
-            self.radius=length; snp=Vector((math.cos(ang), math.sin(ang)))*length; self.current=pv+plane_to_world(snp, self.Xp, self.Yp)
-            self.segments=self.state["segments"]; self.preview_pts=arc_points_world(self.pivot, self.radius, 0.0, 2*math.pi, self.segments, self.Xp, self.Yp)
-    def handle_click(self, context, event, snap_point, snap_normal, button_id=None):
-        if self.stage==0: self.pivot=snap_point; self.state["locked"]=True; self.state["locked_normal"]=self.Zp; self.stage=1; return 'NEXT_STAGE'
-        if self.stage==1: return 'FINISHED'
-        return None
-
 class CircleTool_2Point(SurfaceDrawTool):
     def __init__(self, core): super().__init__(core); self.mode="CIRCLE_2POINT"; self.segments=self.state["segments"]; self.radius=0.0; self.current=None; self.preview_pts=[]
     def update(self, context, event, snap_point, snap_normal):

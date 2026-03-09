@@ -29,10 +29,8 @@ IMPLEMENTED_TOOLS = {
     "arc_1_point",
     "arc_2_point",
     "arc_3_point",
-    "circle_center_radius", 
     "circle_2_points",
-    "circle_3_points", 
-    "circle_tangent_to_three_curves", 
+    "circle_3_points",    "circle_tangent_to_three_curves", 
     "circle_tangent_to_two_curves", 
     "ellipse_from_radius",  
     "ellipse_foci_point",   
@@ -68,8 +66,6 @@ SVG_FILES = {
     "circle": "circle.svg",
     "circle_2_points": "circle_2_points.svg",
     "circle_3_points": "circle_3_points.svg",
-    "circle_center_point": "circle_center_point.svg",
-    "circle_center_radius": "circle_center_radius.svg",
     "circle_tangent_to_three_curves": "circle_tangent_to_three_curves.svg",
     "circle_tangent_to_two_curves": "circle_tangent_to_two_curves.svg",
     "curve_interpolate_points": "curve_interpolate_points.svg",
@@ -145,8 +141,6 @@ class RADCAD_OT_generic(bpy.types.Operator):
         elif self.panel == "arc" and self.name == "arc_3_point":
             bpy.ops.view3d.arc_3pt('INVOKE_DEFAULT')
             
-        elif self.panel == "circle" and self.name == "circle_center_radius":
-            bpy.ops.view3d.circle_1pt('INVOKE_DEFAULT')
         elif self.panel == "circle" and self.name == "circle_2_points":
             bpy.ops.view3d.circle_2pt('INVOKE_DEFAULT')
         elif self.panel == "circle" and self.name == "circle_3_points": 
