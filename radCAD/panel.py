@@ -33,7 +33,6 @@ IMPLEMENTED_TOOLS = {
     "circle_2_points",
     "circle_3_points", 
     "circle_tangent_to_three_curves", 
-    "circle_tangent_to_three_circles",
     "circle_tangent_to_two_curves", 
     "ellipse_from_radius",  
     "ellipse_foci_point",   
@@ -72,7 +71,6 @@ SVG_FILES = {
     "circle_center_point": "circle_center_point.svg",
     "circle_center_radius": "circle_center_radius.svg",
     "circle_tangent_to_three_curves": "circle_tangent_to_three_curves.svg",
-    "circle_tangent_to_three_circles": "circle_tangent_to_three_curves.svg",
     "circle_tangent_to_two_curves": "circle_tangent_to_two_curves.svg",
     "curve_interpolate_points": "curve_interpolate_points.svg",
     "ellipse": "ellipse.svg",
@@ -155,8 +153,6 @@ class RADCAD_OT_generic(bpy.types.Operator):
             bpy.ops.view3d.circle_3pt('INVOKE_DEFAULT')
         elif self.panel == "circle" and self.name == "circle_tangent_to_three_curves":
             bpy.ops.view3d.radcad_circle_tan_tan_tan('INVOKE_DEFAULT')
-        elif self.panel == "circle" and self.name == "circle_tangent_to_three_circles":
-            bpy.ops.view3d.radcad_circle_tan_tan_tan_circles('INVOKE_DEFAULT')
         elif self.panel == "circle" and self.name == "circle_tangent_to_two_curves":
             bpy.ops.view3d.radcad_circle_tan_tan('INVOKE_DEFAULT')
 

@@ -533,10 +533,10 @@ def draw_preview_tan_tan(ctx, shaders, prefs):
     if v_pts:
         draw_polyline(ctx, shaders, v_pts, (0.5, 0.5, 0.5, 0.5), prefs)
         
-    # 2. Foreground Mesh Geometry (Black)
+    # 2. Foreground Mesh Geometry (Black) - Added +2.0 lift to pop over grey
     p_pts = state.get("preview_pts", [])
     if p_pts:
-        draw_polyline(ctx, shaders, p_pts, (0,0,0,1), prefs)
+        draw_polyline(ctx, shaders, p_pts, (0,0,0,1), prefs, custom_lift=prefs["LIFT_ARC"] + 2.0)
         draw_points(ctx, shaders, p_pts, (0,0,0,1), pt_size, prefs)
         
     # 3. Tangency Viz
@@ -636,10 +636,10 @@ def draw_cb_3d():
             if state.get("stage", 0) == 0:
                 target = state.get("snap_point") if state.get("snap_point") else state.get("current")
                 if target: draw_points(ctx, shaders, [target], (0.0, 0.0, 0.0, 1.0), settings.get("PREVIEW_VERTEX_SIZE", 5), settings)
-            elif state.get("current"):
+            if state.get("current"):
                 draw_points(ctx, shaders, [state["current"]], (0.0, 0.0, 0.0, 1.0), settings.get("PREVIEW_VERTEX_SIZE", 5), settings)
 
-        elif mode == "CIRCLE_TAN_TAN_TAN" or mode == "CIRCLE_TAN_TAN_TAN_CIRCLES":
+        elif mode == "CIRCLE_TAN_TAN_TAN":
             from .tool_previews import draw_preview_tan_tan_tan # Just in case
             draw_preview_tan_tan_tan(ctx, shaders, settings)
             

@@ -136,10 +136,6 @@ class ModalManager:
         elif t_mode == "CIRCLE_TAN_TAN_TAN":
             from .operators import op_circle_tan_tan_tan
             self.active_tool = op_circle_tan_tan_tan.CircleTool_TanTanTan(self)
-
-        elif t_mode == "CIRCLE_TAN_TAN_TAN_CIRCLES":
-            from .operators import op_circle_tan_tan_tan_circles
-            self.active_tool = op_circle_tan_tan_tan_circles.CircleTool_TanTanTan_Circles(self)
             
         elif t_mode == "ELLIPSE_RADIUS": 
             from .operators import ellipse_tools
@@ -397,7 +393,7 @@ def commit_arc_to_mesh(ctx):
     continuous_tools = ["LINE_POLY", "CURVE_INTERPOLATE"]
     
     # Shape tools that should be closed automatically
-    shape_tools = ["CIRCLE_1POINT", "CIRCLE_2POINT", "CIRCLE_3POINT", "CIRCLE_TAN_TAN", "CIRCLE_TAN_TAN_TAN", "CIRCLE_TAN_TAN_TAN_CIRCLES", "ELLIPSE_RADIUS", "ELLIPSE_FOCI", "ELLIPSE_ENDPOINTS", "ELLIPSE_CORNERS", "POLYGON_CENTER_CORNER", "POLYGON_CENTER_TANGENT", "POLYGON_CORNER_CORNER", "POLYGON_EDGE", "RECTANGLE_CENTER_CORNER", "RECTANGLE_CORNER_CORNER", "RECTANGLE_3_POINTS"]
+    shape_tools = ["CIRCLE_1POINT", "CIRCLE_2POINT", "CIRCLE_3POINT", "CIRCLE_TAN_TAN", "CIRCLE_TAN_TAN_TAN", "ELLIPSE_RADIUS", "ELLIPSE_FOCI", "ELLIPSE_ENDPOINTS", "ELLIPSE_CORNERS", "POLYGON_CENTER_CORNER", "POLYGON_CENTER_TANGENT", "POLYGON_CORNER_CORNER", "POLYGON_EDGE", "RECTANGLE_CENTER_CORNER", "RECTANGLE_CORNER_CORNER", "RECTANGLE_3_POINTS"]
 
     if state["tool_mode"] in shape_tools:
         is_closed = True
