@@ -423,20 +423,6 @@ def draw_preview_ellipse(ctx, shaders, prefs):
     if not pv: return
     pt_size = prefs.get("PREVIEW_VERTEX_SIZE", 5)
 
-    # --- ELLIPSE FOCI DRAWING ---
-    if mode == "ELLIPSE_FOCI":
-        # Draw F1
-        if "f1" in state and state["f1"]:
-            draw_points(ctx, shaders, [state["f1"]], (0,0,0,1), pt_size, prefs)
-            
-        # Draw F2 (if set or dragging)
-        if state["stage"] >= 1:
-            f2 = state.get("f2") if state.get("f2") else state.get("current")
-            if f2:
-                draw_points(ctx, shaders, [f2], (0,0,0,1), pt_size, prefs)
-                if state["f1"]:
-                    draw_line(ctx, shaders, state["f1"], f2, prefs["COL_CHORD"], prefs)
-
     # --- ELLIPSE CORNERS DRAWING ---
     if mode == "ELLIPSE_CORNERS" and state["stage"] == 1:
         # Draw Bounding Box logic
@@ -671,7 +657,7 @@ def draw_cb_3d():
             from .tool_previews import draw_preview_circle_3point
             draw_preview_circle_3point(ctx, shaders, settings)
             
-        elif mode in ["ELLIPSE_RADIUS", "ELLIPSE_FOCI", "ELLIPSE_ENDPOINTS", "ELLIPSE_CORNERS"]:
+        elif mode in ["ELLIPSE_RADIUS", "ELLIPSE_ENDPOINTS", "ELLIPSE_CORNERS"]:
             draw_preview_ellipse(ctx, shaders, settings)
             
         elif mode in ["POLYGON_CENTER_CORNER", "POLYGON_CENTER_TANGENT", "POLYGON_CORNER_CORNER", "POLYGON_EDGE", "RECTANGLE_CENTER_CORNER", "RECTANGLE_CORNER_CORNER", "RECTANGLE_3_POINTS"]: 

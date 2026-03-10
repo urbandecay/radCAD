@@ -137,9 +137,6 @@ class ModalManager:
         elif t_mode == "ELLIPSE_RADIUS": 
             from .operators import ellipse_tools
             self.active_tool = ellipse_tools.EllipseTool_FromRadius(self)
-        elif t_mode == "ELLIPSE_FOCI": 
-            from .operators import ellipse_tools
-            self.active_tool = ellipse_tools.EllipseTool_FociPoint(self)
         elif t_mode == "ELLIPSE_ENDPOINTS": 
             from .operators import ellipse_tools
             self.active_tool = ellipse_tools.EllipseTool_FromEndpoints(self)
@@ -463,7 +460,7 @@ def commit_arc_to_mesh(ctx):
     
     # Shape tools that should be closed automatically
     shape_tools = ["CIRCLE_2POINT", "CIRCLE_3POINT", "CIRCLE_TAN_TAN", "CIRCLE_TAN_TAN_TAN", 
-                   "ELLIPSE_RADIUS", "ELLIPSE_FOCI", "ELLIPSE_ENDPOINTS", "ELLIPSE_CORNERS", 
+                   "ELLIPSE_RADIUS", "ELLIPSE_ENDPOINTS", "ELLIPSE_CORNERS", 
                    "POLYGON_CENTER_CORNER", "POLYGON_CENTER_TANGENT", "POLYGON_CORNER_CORNER", "POLYGON_EDGE", 
                    "RECTANGLE_CENTER_CORNER", "RECTANGLE_CORNER_CORNER", "RECTANGLE_3_POINTS"]
 

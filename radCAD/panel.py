@@ -73,7 +73,6 @@ SVG_FILES = {
     "ellipse_foci_point": "ellipse_foci_point.svg",
     "ellipse_from_corners": "ellipse_from_corners.svg",
     "ellipse_from_endpoints": "ellipse_from_endpoints.svg",
-    "ellipse_from_foci": "ellipse_from_foci.svg",
     "ellipse_from_radius": "ellipse_from_radius.svg",
     "polygon_cen_cor": "polygon_cen_cor.svg",
     "polygon_cen_tan": "polygon_cen_tan.svg",

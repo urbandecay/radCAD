@@ -64,9 +64,12 @@ class EllipseTool_FromRadius(SurfaceDrawTool):
         if self.stage == 2:
             pv = self.pivot
             d = snap_point - pv
-            dist_y = abs(d.dot(self.Yp))
-            self.ry = dist_y
-            self.current = snap_point
+            dist_y = d.dot(self.Yp)
+            self.ry = abs(dist_y)
+            
+            # Constrain visual cursor to the perpendicular axis
+            self.current = pv + (self.Yp * dist_y)
+            
             self.segments = self.state["segments"]
             self.preview_pts = ellipse_points_world(
                 self.pivot, self.rx, self.ry, self.segments, self.Xp, self.Yp
@@ -85,85 +88,6 @@ class EllipseTool_FromRadius(SurfaceDrawTool):
             self.stage = 2
             return 'NEXT_STAGE'
 
-        if self.stage == 2:
-            return 'FINISHED'
-        return None
-
-class EllipseTool_FociPoint(SurfaceDrawTool):
-    def __init__(self, core):
-        super().__init__(core)
-        self.mode = "ELLIPSE_FOCI"
-        self.segments = self.state["segments"]
-        
-        self.f1 = None 
-        self.f2 = None
-        self.rx = 0.0 
-        self.ry = 0.0 
-        self.current = None
-        self.preview_pts = []
-
-    def update(self, context, event, snap_point, snap_normal):
-        # Stage 0: Set F1
-        if self.stage == 0:
-            self.update_initial_plane(context, event, snap_point, snap_normal)
-            return
-
-        # Stage 1: Set F2
-        if self.stage == 1:
-            self.f1 = self.pivot
-            d = snap_point - self.f1
-            
-            if self.Zp: d_plane = d - self.Zp * d.dot(self.Zp)
-            else: d_plane = d
-            
-            if d_plane.length > 1e-6:
-                self.Xp = d_plane.normalized()
-                self.Yp = self.Zp.cross(self.Xp).normalized()
-            
-            self.current = self.f1 + d_plane
-            self.preview_pts = [self.f1, self.current]
-
-        # Stage 2: Set Perimeter Point
-        if self.stage == 2:
-            self.f1 = self.pivot
-            d_raw = snap_point - self.f1
-            d_plane = d_raw - self.Zp * d_raw.dot(self.Zp)
-            P = self.f1 + d_plane
-            self.current = P
-            
-            center = (self.f1 + self.f2) * 0.5
-            c = (self.f2 - self.f1).length * 0.5
-            
-            dist_sum = (P - self.f1).length + (P - self.f2).length
-            a = dist_sum * 0.5
-            if a < c + 1e-6: a = c + 1e-6
-            
-            b = math.sqrt(a**2 - c**2)
-            
-            self.rx = a
-            self.ry = b
-            
-            self.segments = self.state["segments"]
-            self.preview_pts = ellipse_points_world(
-                center, self.rx, self.ry, self.segments, self.Xp, self.Yp
-            )
-
-    def handle_click(self, context, event, snap_point, snap_normal, button_id=None):
-        if self.stage == 0:
-            self.pivot = snap_point
-            self.state["locked"] = True
-            self.state["locked_normal"] = self.Zp
-            self.stage = 1
-            return 'NEXT_STAGE'
-            
-        if self.stage == 1:
-            if self.current: self.f2 = self.current
-            else: self.f2 = snap_point
-            
-            if (self.f2 - self.pivot).length < 1e-6: return None
-            self.stage = 2
-            return 'NEXT_STAGE'
-            
         if self.stage == 2:
             return 'FINISHED'
         return None
@@ -208,13 +132,24 @@ class EllipseTool_FromEndpoints(SurfaceDrawTool):
         # Stage 2: Drag Height (Minor Axis)
         if self.stage == 2:
             center = (self.p1 + self.p2) * 0.5
-            d = snap_point - center
+            d_raw = snap_point - center
+            d_plane = d_raw - self.Zp * d_raw.dot(self.Zp)
+            P = center + d_plane
             
-            # Project onto Y-axis
-            dist_y = abs(d.dot(self.Yp))
+            # Distance from center to P along Yp axis (Minor Radius)
+            dist_y = abs(d_plane.dot(self.Yp))
             self.ry = dist_y
             
-            self.current = snap_point
+            # Snap current point to the actual circumference at the mouse's angular position
+            if d_plane.length > 1e-6:
+                d2 = Vector((d_plane.dot(self.Xp), d_plane.dot(self.Yp)))
+                angle = math.atan2(d2.y, d2.x)
+                # Ellipse Parametric: x = rx*cos(t), y = ry*sin(t)
+                local_snap = Vector((self.rx * math.cos(angle), self.ry * math.sin(angle)))
+                self.current = center + (self.Xp * local_snap.x) + (self.Yp * local_snap.y)
+            else:
+                self.current = P
+            
             self.segments = self.state["segments"]
             
             self.preview_pts = ellipse_points_world(
