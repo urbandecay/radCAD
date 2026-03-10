@@ -356,6 +356,7 @@ class ModalManager:
             state["rx"] = getattr(self.active_tool, "rx", 0.0)
             state["ry"] = getattr(self.active_tool, "ry", 0.0)
             state["preview_pts"] = getattr(self.active_tool, "preview_pts", [])
+            state["intersection_pts"] = getattr(self.active_tool, "intersection_pts", [])
             state["spline_geom"] = getattr(self.active_tool, "spline_geom", [])
             state["Xp"] = self.active_tool.Xp
             state["Yp"] = self.active_tool.Yp
@@ -675,14 +676,16 @@ def modal_arc_common(self, ctx, ev):
             return {'RUNNING_MODAL'} 
 
     if ev.type == 'WHEELUPMOUSE':
-        state["segments"] = min(256, state["segments"] + 1)
-        if self.manager.active_tool: self.manager.active_tool.segments = state["segments"]; self.manager.on_move(ctx, ev)
+        if state.get("tool_mode") != "POINT_BY_ARCS":
+            state["segments"] = min(256, state["segments"] + 1)
+            if self.manager.active_tool: self.manager.active_tool.segments = state["segments"]; self.manager.on_move(ctx, ev)
         ctx.area.tag_redraw()
         return {'RUNNING_MODAL'}
         
     if ev.type == 'WHEELDOWNMOUSE':
-        state["segments"] = max(3, state["segments"] - 1)
-        if self.manager.active_tool: self.manager.active_tool.segments = state["segments"]; self.manager.on_move(ctx, ev)
+        if state.get("tool_mode") != "POINT_BY_ARCS":
+            state["segments"] = max(3, state["segments"] - 1)
+            if self.manager.active_tool: self.manager.active_tool.segments = state["segments"]; self.manager.on_move(ctx, ev)
         ctx.area.tag_redraw()
         return {'RUNNING_MODAL'}
 

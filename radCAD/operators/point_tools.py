@@ -46,50 +46,33 @@ def intersect_circles_3d(c1, r1, c2, r2, Xp, Yp):
         
     return pts
 
-def is_angle_in_arc(pt, center, Xp, Yp, start_ang, end_ang):
-    """Checks if a point lies within the angular sweep of an arc."""
-    # Convert point to local 2D relative to center
+def is_angle_in_arc(pt, center, Xp, Yp, a0, a1):
+    """Checks if a point lies within the directed angular sweep from a0 to a1, with very high tolerance."""
+    d = a1 - a0
+    # 1. Full Circle Check
+    if abs(d) >= 2 * math.pi - 0.05:
+        return True
+        
+    # 2. Project point to local 2D angle
     v = pt - center
-    lx = v.dot(Xp)
-    ly = v.dot(Yp)
+    lx, ly = v.dot(Xp), v.dot(Yp)
     ang = math.atan2(ly, lx)
     
-    # Normalize angles to be continuous or check range
-    # Easiest way: Normalize everything to [0, 2pi) relative to start_ang?
-    # Or just use the unwrapped logic.
+    # 3. Get positive forward distance from a0 to ang
+    diff = ang - a0
+    diff_norm = diff % (2 * math.pi)
     
-    # Let's normalize ang to be close to start_ang
-    # We assume start_ang < end_ang or vice versa based on direction
-    # Arc tools usually store a0 and a1 where a1 can be > 2pi or < -2pi
+    # 4. HIGH TOLERANCE (approx 10 degrees)
+    tol = 0.17 
     
-    if start_ang > end_ang:
-        start_ang, end_ang = end_ang, start_ang
-        
-    # Unwrap 'ang' to be near start_ang
-    diff = ang - start_ang
-    # Wrap to [-pi, pi]
-    while diff <= -math.pi: diff += 2*math.pi
-    while diff > math.pi: diff -= 2*math.pi
-    
-    # If the unwrap placed it "before" start, maybe it belongs "after" if it's a full circle?
-    # But for simple arc checks:
-    
-    # Robust check:
-    # Check if ang is between [a0, a1] modulo 2pi is tricky.
-    # Alternative: Cross product check if sweep < 180?
-    
-    # Let's try simple range check by normalizing all to [0, 2pi)
-    def n(a): return a % (2 * math.pi)
-    
-    na = n(ang)
-    n0 = n(start_ang)
-    n1 = n(end_ang)
-    
-    # Handle wrap-around case
-    if n0 < n1:
-        return n0 <= na <= n1
+    # 5. Check against sweep direction
+    if d >= 0:
+        # Forward sweep: valid if diff_norm is in [0, d] with tolerance
+        return diff_norm <= (d + tol) or diff_norm >= (2 * math.pi - tol)
     else:
-        return na >= n0 or na <= n1
+        # Backward sweep
+        back_dist = (2 * math.pi - diff_norm) % (2 * math.pi)
+        return back_dist <= (abs(d) + tol) or back_dist >= (2 * math.pi - tol)
 
 class PointTool_ByArcs(SurfaceDrawTool):
     def __init__(self, core):
@@ -114,8 +97,9 @@ class PointTool_ByArcs(SurfaceDrawTool):
         self.compass_rot = 0.0
         
         # Display
-        self.segments = 64 # High res for smooth curves
+        self.segments = 128 # Fixed High res for smooth curves
         self.preview_pts = []
+        self.intersection_pts = [] 
         self.state["arc1_pts"] = []
         self.state["intersection_pts"] = []
 
@@ -194,6 +178,19 @@ class PointTool_ByArcs(SurfaceDrawTool):
             self.compass_rot = final_angle
             snapped_vec2 = Vector((math.cos(final_angle), math.sin(final_angle))) * self.radius
             self.current = pv + plane_to_world(snapped_vec2, self.Xp, self.Yp)
+            
+            # --- CALCULATE INTERSECTION FOR PREVIEW (FULL CIRCLE FOR ARC 2) ---
+            self.intersection_pts = []
+            if self.c1 is not None and self.r1 > 1e-6 and self.radius > 1e-6:
+                candidates = intersect_circles_3d(self.c1, self.r1, pv, self.radius, self.Xp, self.Yp)
+                valid_ints = []
+                for pt in candidates:
+                    # Check if point is on Arc 1
+                    if is_angle_in_arc(pt, self.c1, self.Xp, self.Yp, self.a0_1, self.a1_1):
+                        valid_ints.append(pt)
+                self.intersection_pts = valid_ints
+                self.state["intersection_pts"] = valid_ints
+                
             return
 
         # --- STAGE 5: ANGLE 2 & SOLVE ---
@@ -218,7 +215,8 @@ class PointTool_ByArcs(SurfaceDrawTool):
             )
             
             # --- CALCULATE INTERSECTION ---
-            if self.c1 and self.r1:
+            self.intersection_pts = []
+            if self.c1 is not None and self.r1 > 1e-6:
                 # Find circle-circle intersections
                 candidates = intersect_circles_3d(self.c1, self.r1, pv, self.radius, self.Xp, self.Yp)
                 
@@ -232,6 +230,7 @@ class PointTool_ByArcs(SurfaceDrawTool):
                     if in_arc1 and in_arc2:
                         valid_ints.append(pt)
                 
+                self.intersection_pts = valid_ints
                 self.state["intersection_pts"] = valid_ints
 
     def handle_click(self, context, event, snap_point, snap_normal, button_id=None):

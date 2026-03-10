@@ -235,28 +235,61 @@ def get_round_point_shader():
     # Force fallback to avoid Blender 4.2+ crash
     return None
 
-def draw_points(ctx, shaders, points, color, size, settings):
-    """Draws perfect round dots using a custom shader."""
+def draw_crosshair(ctx, shaders, points, color, size, settings, Xp, Yp, custom_lift=None):
+    """Draws large crosshairs using the Polyline shader."""
     if not points: return
-    pts = apply_view_bias(points, ctx, lift_mult=settings["LIFT_ARC"], persp_percent=settings["LIFT_PERSP"])
-    
-    sh = get_round_point_shader()
-    
-    if sh:
-        sh.bind()
-        sh.uniform_float("color", color)
-        final_size = max(1.0, size * settings["UI_SCALE"])
-        sh.uniform_float("size", final_size)
-        batch_for_shader(sh, 'POINTS', {"pos": pts}).draw(sh)
-    else:
-        # Fallback
-        sh = shaders["UNIFORM"]
-        sh.bind()
-        sh.uniform_float("color", color)
-        final_size = max(1.0, size * settings["UI_SCALE"])
-        gpu.state.point_size_set(int(final_size))
-        batch_for_shader(sh, 'POINTS', {"pos": pts}).draw(sh)
+    lift = custom_lift if custom_lift is not None else settings.get("LIFT_ARC", 20.0)
+    pts = apply_view_bias(points, ctx, lift_mult=lift, persp_percent=settings.get("LIFT_PERSP", 0.2))
+    offset = world_radius_for_pixel_size(ctx, points[0], Xp, Yp, size)
+    if offset <= 0: offset = 0.05
+    segs = []
+    for p in pts:
+        segs.append(p - Xp * offset); segs.append(p + Xp * offset)
+        segs.append(p - Yp * offset); segs.append(p + Yp * offset)
+    sh = shaders["POLYLINE"]
+    setup_polyline_shader(sh, color, 1.0, settings)
+    batch_for_shader(sh, 'LINES', {"pos": segs}).draw(sh)
 
+def draw_points(ctx, shaders, points, color, size, settings, Xp=None, Yp=None, custom_lift=None):
+    """Draws points as small 3D cubes using the Polyline shader."""
+    if not points: return
+    
+    lift = custom_lift if custom_lift is not None else settings.get("LIFT_ARC", 20.0)
+    pts = apply_view_bias(points, ctx, lift_mult=lift, persp_percent=settings.get("LIFT_PERSP", 0.2))
+    
+    # Basis for the cube orientation (World-aligned)
+    X = Vector((1, 0, 0))
+    Y = Vector((0, 1, 0))
+    Z = Vector((0, 0, 1))
+    
+    # Calculate world-space radius for the cube
+    offset = world_radius_for_pixel_size(ctx, points[0], X, Y, size / 2.0)
+    if offset <= 0: offset = 0.05
+    
+    sh = shaders["POLYLINE"]
+    setup_polyline_shader(sh, color, 1.0, settings)
+    
+    segs = []
+    for p in pts:
+        # Define 8 corners of the cube
+        c1 = p + X*offset + Y*offset + Z*offset
+        c2 = p + X*offset - Y*offset + Z*offset
+        c3 = p - X*offset - Y*offset + Z*offset
+        c4 = p - X*offset + Y*offset + Z*offset
+        c5 = p + X*offset + Y*offset - Z*offset
+        c6 = p + X*offset - Y*offset - Z*offset
+        c7 = p - X*offset - Y*offset - Z*offset
+        c8 = p - X*offset + Y*offset - Z*offset
+        
+        # 12 Edges of the cube
+        cube_edges = [
+            c1,c2, c2,c3, c3,c4, c4,c1, # Top
+            c5,c6, c6,c7, c7,c8, c8,c5, # Bottom
+            c1,c5, c2,c6, c3,c7, c4,c8  # Pillars
+        ]
+        segs.extend(cube_edges)
+        
+    batch_for_shader(sh, 'LINES', {"pos": segs}).draw(sh)
 # =========================================================================
 #  TOOL SPECIALISTS
 # =========================================================================
@@ -641,14 +674,36 @@ def draw_cb_3d():
             Xc, Yc = state["Xp"], state["Yp"]
             if center and Xc and Yc:
                 draw_compass_geometry(ctx, shaders, center, Xc, Yc, state["compass_rot"], 125, 15.0, (0,0,0,1), settings)
+            
+            # --- GREEN SMOOTH ARCS ---
+            green_col = (0.2, 0.8, 0.2, 1.0)
             if state.get("arc1_pts"):
-                draw_polyline(ctx, shaders, state["arc1_pts"], (0.2, 0.5, 1.0, 0.8), settings)
+                draw_polyline(ctx, shaders, state["arc1_pts"], green_col, settings)
             if state.get("preview_pts"):
-                draw_polyline(ctx, shaders, state["preview_pts"], (0.2, 0.8, 0.2, 1.0), settings)
+                draw_polyline(ctx, shaders, state["preview_pts"], green_col, settings)
+            
+            # --- INTERSECTION MARKERS (Stage-Dependent) ---
             if state.get("intersection_pts"):
-                draw_points(ctx, shaders, state["intersection_pts"], (1.0, 0.0, 0.0, 1.0), 10, settings)
-            if state["stage"] in [1, 4] and state["pivot"] and state["current"]:
-                draw_line(ctx, shaders, state["pivot"], state["current"], settings["COL_START"], settings)
+                # Size 25 (CROSS) while setting up radius, 10px (DOT) while drawing arc
+                if state["stage"] == 4:
+                    draw_crosshair(ctx, shaders, state.get("intersection_pts"), (0, 0, 0, 1), 25, settings, Xc, Yc, custom_lift=settings.get("LIFT_ARC", 20.0) + 50.0)
+                else:
+                    draw_points(ctx, shaders, state.get("intersection_pts"), (0, 0, 0, 1), 7, settings, custom_lift=settings.get("LIFT_ARC", 20.0) + 50.0)
+            
+            # Standard radius/angle guide lines (Yellow/Gold)
+            pv = state.get("pivot")
+            if pv:
+                # Stage 1 & 4: Radius line follows mouse (snapped to circle)
+                if state["stage"] in [1, 4] and state["current"]:
+                    draw_line(ctx, shaders, pv, state["current"], settings["COL_START"], settings)
+                
+                # Stage 2 & 5: Angle lines tethered to Arc Endpoints
+                elif state["stage"] in [2, 5]:
+                    if state.get("start"):
+                        draw_line(ctx, shaders, pv, state["start"], settings["COL_START"], settings)
+                    pts = state.get("preview_pts")
+                    if pts:
+                        draw_line(ctx, shaders, pv, pts[-1], settings["COL_END"], settings)
                 
         # UPDATED: Added all Line Curve Tools
         elif mode in ["LINE_POLY", "CURVE_INTERPOLATE", "LINE_PERP_FROM_CURVE", "LINE_PERP_TO_TWO_CURVES", "LINE_TANGENT_FROM_CURVE", "LINE_TAN_TAN"]:
@@ -681,11 +736,13 @@ def draw_cb_3d():
                 draw_points(ctx, shaders, pts, base_color, settings.get("PREVIEW_VERTEX_SIZE", 5), settings) 
 
             # RESTORED: Hover Dot (But now Black Size 4, not Yellow Size 8)
-            if state.get("stage", 0) == 0:
-                target = state.get("snap_point") if state.get("snap_point") else state.get("current")
-                if target: draw_points(ctx, shaders, [target], (0.0, 0.0, 0.0, 1.0), settings.get("PREVIEW_VERTEX_SIZE", 5), settings)
-            if state.get("current"):
-                draw_points(ctx, shaders, [state["current"]], (0.0, 0.0, 0.0, 1.0), settings.get("PREVIEW_VERTEX_SIZE", 5), settings)
+            # EXCLUDE POINT_BY_ARCS from generic dot logic
+            if mode != "POINT_BY_ARCS":
+                if state.get("stage", 0) == 0:
+                    target = state.get("snap_point") if state.get("snap_point") else state.get("current")
+                    if target: draw_points(ctx, shaders, [target], (0.0, 0.0, 0.0, 1.0), settings.get("PREVIEW_VERTEX_SIZE", 5), settings)
+                if state.get("current"):
+                    draw_points(ctx, shaders, [state["current"]], (0.0, 0.0, 0.0, 1.0), settings.get("PREVIEW_VERTEX_SIZE", 5), settings)
 
         elif mode == "CIRCLE_TAN_TAN_TAN":
             from .tool_previews import draw_preview_tan_tan_tan # Just in case
