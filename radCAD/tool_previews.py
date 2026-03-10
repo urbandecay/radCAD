@@ -502,10 +502,55 @@ def draw_preview_polygon(ctx, shaders, prefs):
 
 def draw_preview_circle_3point(ctx, shaders, prefs):
     pt_size = prefs.get("PREVIEW_VERTEX_SIZE", 5)
-    pts = state.get("preview_pts", [])
-    if pts:
-        draw_polyline(ctx, shaders, pts, (0,0,0,1), prefs)
-        draw_points(ctx, shaders, pts, (0,0,0,1), pt_size, prefs)
+    
+    # --- STAGE 0: Initial Cursor Dot ---
+    if state["stage"] == 0:
+        target = state.get("snap_point") if state.get("snap_point") else state.get("current")
+        if target:
+            draw_points(ctx, shaders, [target], (0,0,0,1), pt_size, prefs)
+
+    pv = state.get("pivot")
+    if not pv: return
+
+    # --- STAGE 1: Dragging p2 ---
+    if state["stage"] == 1 and state["current"] is not None:
+        draw_points(ctx, shaders, [pv], (0,0,0,1), pt_size, prefs)
+        draw_points(ctx, shaders, [state["current"]], (0,0,0,1), pt_size, prefs)
+        
+        diff = state["current"] - pv
+        col = get_axis_aligned_color(diff, (0.5, 0.5, 0.5, 0.5))
+        draw_line(ctx, shaders, pv, state["current"], col, prefs)
+        
+        pts = state.get("preview_pts", [])
+        if pts:
+            draw_polyline(ctx, shaders, pts, (0,0,0,1), prefs)
+
+    # --- STAGE 2: Dragging p3 ---
+    elif state["stage"] == 2:
+        p1 = state.get("p1")
+        p2 = state.get("p2")
+        p3 = state.get("current")
+        
+        if p1: draw_points(ctx, shaders, [p1], (0,0,0,1), pt_size, prefs)
+        if p2: draw_points(ctx, shaders, [p2], (0,0,0,1), pt_size, prefs)
+        if p3: draw_points(ctx, shaders, [p3], (0,0,0,1), pt_size, prefs)
+        
+        if p1 and p2:
+            # Color chord by axis
+            chord_vec = p2 - p1
+            col_c = get_axis_aligned_color(chord_vec, (0.5, 0.5, 0.5, 0.5))
+            draw_line(ctx, shaders, p1, p2, col_c, prefs)
+            
+        if p2 and p3:
+            # Color curvature segment by axis
+            curv_vec = p3 - p2
+            col_v = get_axis_aligned_color(curv_vec, (0.5, 0.5, 0.5, 0.5))
+            draw_line(ctx, shaders, p2, p3, col_v, prefs)
+            
+        pts = state.get("preview_pts", [])
+        if pts:
+            draw_polyline(ctx, shaders, pts, (0,0,0,1), prefs)
+            draw_points(ctx, shaders, pts, (0,0,0,1), pt_size, prefs)
 
 def draw_preview_tan_tan(ctx, shaders, prefs):
     pt_size = prefs.get("PREVIEW_VERTEX_SIZE", 5)
