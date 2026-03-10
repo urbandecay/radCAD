@@ -140,6 +140,9 @@ class ModalManager:
         elif t_mode == "ELLIPSE_ENDPOINTS": 
             from .operators import ellipse_tools
             self.active_tool = ellipse_tools.EllipseTool_FromEndpoints(self)
+        elif t_mode == "ELLIPSE_FOCI":
+            from .operators import ellipse_tools
+            self.active_tool = ellipse_tools.EllipseTool_FociPoint(self)
         elif t_mode == "ELLIPSE_CORNERS": 
             from .operators import ellipse_tools
             self.active_tool = ellipse_tools.EllipseTool_FromCorners(self)

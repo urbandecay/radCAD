@@ -447,13 +447,22 @@ def draw_preview_ellipse(ctx, shaders, prefs):
                  draw_points(ctx, shaders, pts, (0,0,0,1), pt_size, prefs)
         return
 
-    # --- STANDARD ELLIPSE DRAWING (Radius/Endpoints) ---
+    # --- STANDARD ELLIPSE DRAWING (Radius/Endpoints/Foci) ---
     if state["stage"] == 1 and state["current"] is not None:
         draw_points(ctx, shaders, [pv], (0,0,0,1), pt_size, prefs)
+        if mode == "ELLIPSE_FOCI":
+             draw_points(ctx, shaders, [state["current"]], (0,0,0,1), pt_size, prefs)
         draw_line(ctx, shaders, pv, state["current"], prefs["COL_START"], prefs)
         
     elif state["stage"] == 2:
         draw_points(ctx, shaders, [pv], (0,0,0,1), pt_size, prefs)
+        
+        # Draw Foci specifically
+        if mode == "ELLIPSE_FOCI" and "f2" in state:
+             draw_points(ctx, shaders, [state["f2"]], (0,0,0,1), pt_size, prefs)
+             if state["current"] is not None:
+                  draw_line(ctx, shaders, pv, state["current"], (0.5, 0.5, 0.5, 0.3), prefs)
+                  draw_line(ctx, shaders, state["f2"], state["current"], (0.5, 0.5, 0.5, 0.3), prefs)
         
         # Draw Major Axis (Ghosted/Reference)
         if mode == "ELLIPSE_RADIUS" and "Xp" in state and "rx" in state:
@@ -699,7 +708,7 @@ def draw_cb_3d():
             from .tool_previews import draw_preview_circle_3point
             draw_preview_circle_3point(ctx, shaders, settings)
             
-        elif mode in ["ELLIPSE_RADIUS", "ELLIPSE_ENDPOINTS", "ELLIPSE_CORNERS"]:
+        elif mode in ["ELLIPSE_RADIUS", "ELLIPSE_ENDPOINTS", "ELLIPSE_FOCI", "ELLIPSE_CORNERS"]:
             draw_preview_ellipse(ctx, shaders, settings)
             
         elif mode in ["POLYGON_CENTER_CORNER", "POLYGON_CENTER_TANGENT", "POLYGON_CORNER_CORNER", "POLYGON_EDGE", "RECTANGLE_CENTER_CORNER", "RECTANGLE_CORNER_CORNER", "RECTANGLE_3_POINTS"]: 
