@@ -416,9 +416,6 @@ def draw_preview_ellipse(ctx, shaders, prefs):
         # If in Stage 0, draw compass at surface hit
         center = state.get("last_surface_hit")
         
-    if center and state["Xp"] and state["Yp"]:
-         draw_compass_geometry(ctx, shaders, center, state["Xp"], state["Yp"], 0.0, 125, 15.0, (0,0,0,1), prefs)
-
     pv = state["pivot"]
     if not pv: return
     pt_size = prefs.get("PREVIEW_VERTEX_SIZE", 5)
