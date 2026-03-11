@@ -51,17 +51,21 @@ class SurfaceDrawTool(CAD_BaseTool):
         """
         Run this during Stage 0 to snap the compass to walls/floors.
         """
-        # If locked, respect the lock and do nothing
+        # If locked, only update the coordinate basis if the normal hasn't been set yet
         if self.state.get("locked") and self.state.get("locked_normal"):
-            return
+            self.Zp = self.state["locked_normal"]
+            self.Xp, self.Yp, _ = orthonormal_basis_from_normal(self.Zp)
+            # We don't return early here anymore; we let it fall through 
+            # to keep self.pivot/position updated for the preview.
 
         # Default to Up if we are floating in void
         if snap_normal is None: 
             snap_normal = Vector((0, 0, 1))
             
-        # Set the basis
-        self.Zp = snap_normal
-        self.Xp, self.Yp, _ = orthonormal_basis_from_normal(self.Zp)
+        if not self.state.get("locked"):
+            # Set the basis from surface if not locked
+            self.Zp = snap_normal
+            self.Xp, self.Yp, _ = orthonormal_basis_from_normal(self.Zp)
 
     def handle_plane_lock_input(self, context, event):
         """

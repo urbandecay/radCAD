@@ -295,7 +295,11 @@ def draw_points(ctx, shaders, points, color, size, settings, Xp=None, Yp=None, c
 # =========================================================================
 
 def draw_preview_1point(ctx, shaders, prefs):
-    center = state["pivot"] if state["pivot"] is not None else state["last_surface_hit"]
+    # --- FIX: Ensure compass follows mouse even if plane is locked before pivot ---
+    center = state["pivot"]
+    if center is None:
+        center = state.get("snap_point") or state.get("current") or state.get("last_surface_hit")
+    
     Xc, Yc, Zc = state["Xp"], state["Yp"], state["Zp"]
     orient_normal = Zc if Zc else (state["locked_normal"] if (state["locked"] and state["locked_normal"]) else state["last_surface_normal"])
     
