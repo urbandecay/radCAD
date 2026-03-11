@@ -228,20 +228,22 @@ class ModalManager:
         )
 
         # --- PREVIEW SNAPPING (SELF-SNAP) ---
-        # Allow snapping to points created in the current tool session (e.g. Polyline)
-        preview_pts = state.get("preview_pts", [])
-        if state.get("tool_mode") == "LINE_POLY" and preview_pts and len(preview_pts) > 1:
-            # We ignore the last point because it is usually the "floating" point tracking the mouse.
-            # We only want to snap to "committed" points.
-            stable_pts = preview_pts[:-1]
-            
+        # Allow snapping to points created in the current tool session
+        # Check both generic preview_pts and specialized tool attributes like endpoints_1
+        self_snap_targets = []
+        if state.get("tool_mode") == "LINE_POLY":
+            preview_pts = state.get("preview_pts", [])
+            if len(preview_pts) > 1: self_snap_targets = preview_pts[:-1]
+        elif state.get("tool_mode") == "POINT_BY_ARCS":
+            self_snap_targets = getattr(self.active_tool, "endpoints_1", [])
+
+        if self_snap_targets:
             best_self_pt = None
             best_self_dist = float('inf')
             limit_sq = snap_radius * snap_radius
             mvec = Vector((x, y))
 
-            for pt in stable_pts:
-                # Ensure pt is a Vector and project to 2D
+            for pt in self_snap_targets:
                 p2d = location_3d_to_region_2d(reg, rv3d, pt)
                 if p2d:
                     d2 = (mvec - p2d).length_squared
@@ -249,18 +251,14 @@ class ModalManager:
                         best_self_dist = d2
                         best_self_pt = pt
             
-            # If we found a valid self-snap candidate
             if best_self_pt:
                 use_self = True
                 if snapped_pos:
-                    # If we also have a mesh snap, compare distances in 2D to see who wins
                     p2d_mesh = location_3d_to_region_2d(reg, rv3d, snapped_pos)
                     if p2d_mesh:
                         dist_mesh = (mvec - p2d_mesh).length_squared
-                        # If mesh snap is closer, prefer mesh. Otherwise self.
                         if dist_mesh <= best_self_dist:
                             use_self = False
-                
                 if use_self:
                     snapped_pos = best_self_pt
         # ------------------------------------

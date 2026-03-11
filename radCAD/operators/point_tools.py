@@ -85,6 +85,7 @@ class PointTool_ByArcs(SurfaceDrawTool):
         self.r1 = 0.0
         self.a0_1 = 0.0
         self.a1_1 = 0.0
+        self.endpoints_1 = [] # To store Arc 1 Start/End for snapping
         
         # Current Arc (Shared)
         self.start = None
@@ -276,6 +277,11 @@ class PointTool_ByArcs(SurfaceDrawTool):
             self.a0_1 = self.a0
             self.a1_1 = self.a1
             self.state["arc1_pts"] = self.preview_pts # Persist for display
+            
+            # Store endpoints for snapping
+            if self.preview_pts and len(self.preview_pts) >= 2:
+                self.endpoints_1 = [self.preview_pts[0], self.preview_pts[-1]]
+            
             self.preview_pts = [] # Clear for next
             
             self.stage = 3 # Ready for Pivot 2
