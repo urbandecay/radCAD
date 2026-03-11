@@ -2,6 +2,7 @@ import math
 from mathutils import Vector
 from ..geometry_utils import snap_angle_soft, unwrap, arc_points_world
 from ..plane_utils import world_to_plane, plane_to_world
+from ..orientation_utils import orthonormal_basis_from_normal
 from .base_tool import SurfaceDrawTool 
 
 def intersect_circles_3d(c1, r1, c2, r2, Xp, Yp):
@@ -103,9 +104,78 @@ class PointTool_ByArcs(SurfaceDrawTool):
         self.intersection_pts = [] 
         self.state["arc1_pts"] = []
         self.state["intersection_pts"] = []
+        self.constraint_axis = None
+
+    def handle_input(self, context, event):
+        # 1. Check Parent Input first (L Key)
+        if self.handle_plane_lock_input(context, event):
+            return True
+
+        # 2. Perpendicular Lock (P Key)
+        if event.type == 'P' and event.value == 'PRESS':
+            if self.stage == 0: return False
+            
+            bridge = None
+            if self.stage in [1, 2] and self.pivot:
+                if self.stage == 1 and self.current: bridge = self.current - self.pivot
+                elif self.stage == 2 and self.start: bridge = self.start - self.pivot
+            elif self.stage in [4, 5] and self.pivot:
+                if self.stage == 4 and self.current: bridge = self.current - self.pivot
+                elif self.stage == 5 and self.start: bridge = self.start - self.pivot
+            
+            if bridge and bridge.length_squared > 1e-6:
+                self.state["is_perpendicular"] = not self.state.get("is_perpendicular", False)
+                
+                if self.state["is_perpendicular"]:
+                    b_vec = bridge.normalized()
+                    floor_n = self.state.get("locked_normal") or Vector((0,0,1))
+                    new_Zp = b_vec.cross(floor_n).normalized()
+                    new_Yp = floor_n 
+                    new_Xp = new_Yp.cross(new_Zp).normalized() 
+                    
+                    self.Xp, self.Yp, self.Zp = new_Xp, new_Yp, new_Zp
+                    self.state["locked"] = True
+                    self.state["locked_normal"] = new_Zp
+                else:
+                    self.state["locked"] = False
+                    self.state["locked_normal"] = None
+                return True
+
+        # 3. Axis Locking (X/Y/Z) - Locks Plane Normal (like Arc 1-Point)
+        if event.type in {'X', 'Y', 'Z'} and event.value == 'PRESS':
+            axes = {'X': Vector((1, 0, 0)), 'Y': Vector((0, 1, 0)), 'Z': Vector((0, 0, 1))}
+            new_n = axes[event.type]
+            
+            current_locked = self.state.get("locked")
+            current_normal = self.state.get("locked_normal")
+            
+            is_same_axis = False
+            if current_locked and current_normal:
+                if abs(current_normal.dot(new_n)) > 0.99:
+                    is_same_axis = True
+
+            if is_same_axis:
+                self.state["locked"] = False
+                self.state["locked_normal"] = None
+                self.core.report({'INFO'}, f"Unlocked {event.type}-Plane")
+            else:
+                self.Zp = new_n
+                self.Xp, self.Yp, _ = orthonormal_basis_from_normal(self.Zp)
+                self.state["locked"] = True
+                self.state["locked_normal"] = self.Zp
+                self.core.report({'INFO'}, f"Locked to {event.type}-Plane")
+            return True
+
+        return False
 
     def update(self, context, event, snap_point, snap_normal):
         self.current = snap_point
+        
+        # --- PROJECT ONTO LOCKED PLANE IF APPLICABLE ---
+        if self.state.get("locked") and self.Zp and self.pivot:
+            d = snap_point - self.pivot
+            d_plane = d - self.Zp * d.dot(self.Zp)
+            self.current = self.pivot + d_plane
         
         # --- STAGE 0: PIVOT 1 (First Arc) ---
         if self.stage == 0:
@@ -115,9 +185,8 @@ class PointTool_ByArcs(SurfaceDrawTool):
         # --- STAGE 1: RADIUS 1 ---
         if self.stage == 1:
             pv = self.pivot
-            d = snap_point - pv
-            d_plane = d - self.Zp * d.dot(self.Zp)
-            d2 = world_to_plane(d_plane, self.Xp, self.Yp)
+            d_vec = self.current - pv
+            d2 = world_to_plane(d_vec, self.Xp, self.Yp)
             self.radius = d2.length
             
             raw_angle = math.atan2(d2.y, d2.x)
@@ -137,7 +206,7 @@ class PointTool_ByArcs(SurfaceDrawTool):
         # --- STAGE 2: ANGLE 1 ---
         if self.stage == 2:
             pv = self.pivot
-            d_vec = snap_point - pv
+            d_vec = self.current - pv
             d2 = world_to_plane(d_vec, self.Xp, self.Yp)
             raw_angle = math.atan2(d2.y, d2.x)
 
@@ -157,15 +226,14 @@ class PointTool_ByArcs(SurfaceDrawTool):
 
         # --- STAGE 3: PIVOT 2 (Wait for click) ---
         if self.stage == 3:
-            # Just showing cursor
+            # self.current is already projected onto locked plane at top of update
             return
 
         # --- STAGE 4: RADIUS 2 ---
         if self.stage == 4:
             pv = self.pivot # Now pivot is C2
-            d = snap_point - pv
-            d_plane = d - self.Zp * d.dot(self.Zp)
-            d2 = world_to_plane(d_plane, self.Xp, self.Yp)
+            d_vec = self.current - pv
+            d2 = world_to_plane(d_vec, self.Xp, self.Yp)
             self.radius = d2.length
             
             raw_angle = math.atan2(d2.y, d2.x)
@@ -197,7 +265,7 @@ class PointTool_ByArcs(SurfaceDrawTool):
         # --- STAGE 5: ANGLE 2 & SOLVE ---
         if self.stage == 5:
             pv = self.pivot # C2
-            d_vec = snap_point - pv
+            d_vec = self.current - pv
             d2 = world_to_plane(d_vec, self.Xp, self.Yp)
             raw_angle = math.atan2(d2.y, d2.x)
 
@@ -245,12 +313,12 @@ class PointTool_ByArcs(SurfaceDrawTool):
 
         # Stage 1: Commit Radius 1 / Start 1
         if self.stage == 1:
-            src = snap_point
+            target = snap_point
             if self.Xp is not None and self.Zp is not None:
-                d = src - self.pivot
+                d = target - self.pivot
                 d_plane = d - self.Zp * d.dot(self.Zp)
-                self.start = self.pivot + d_plane
-            else: self.start = src
+                target = self.pivot + d_plane
+            self.start = target
             
             # Init Angle
             rvec2 = world_to_plane(self.start - self.pivot, self.Xp, self.Yp)
@@ -289,17 +357,25 @@ class PointTool_ByArcs(SurfaceDrawTool):
 
         # Stage 3: Commit Pivot 2
         if self.stage == 3:
-            self.pivot = snap_point
+            target = snap_point
+            if self.state.get("locked") and self.Zp and self.c1:
+                d = target - self.c1
+                d_plane = d - self.Zp * d.dot(self.Zp)
+                target = self.c1 + d_plane
+            
+            self.pivot = target
             # Keep plane locked from Arc 1
             self.stage = 4
             return 'NEXT_STAGE'
 
         # Stage 4: Commit Radius 2 / Start 2
         if self.stage == 4:
-            src = snap_point
-            d = src - self.pivot
-            d_plane = d - self.Zp * d.dot(self.Zp)
-            self.start = self.pivot + d_plane
+            target = snap_point
+            if self.Xp is not None and self.Zp is not None:
+                d = target - self.pivot
+                d_plane = d - self.Zp * d.dot(self.Zp)
+                target = self.pivot + d_plane
+            self.start = target
             
             rvec2 = world_to_plane(self.start - self.pivot, self.Xp, self.Yp)
             self.radius = rvec2.length
