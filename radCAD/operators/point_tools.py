@@ -157,12 +157,18 @@ class PointTool_ByArcs(SurfaceDrawTool):
             if is_same_axis:
                 self.state["locked"] = False
                 self.state["locked_normal"] = None
+                self.state["locked_plane_point"] = None
                 self.core.report({'INFO'}, f"Unlocked {event.type}-Plane")
             else:
                 self.Zp = new_n
                 self.Xp, self.Yp, _ = orthonormal_basis_from_normal(self.Zp)
                 self.state["locked"] = True
                 self.state["locked_normal"] = self.Zp
+                
+                # --- FIX: Set plane point to where the compass is RIGHT NOW ---
+                target_point = self.current if self.current else Vector((0,0,0))
+                self.state["locked_plane_point"] = target_point
+                
                 self.core.report({'INFO'}, f"Locked to {event.type}-Plane")
             return True
 
