@@ -243,16 +243,19 @@ def draw_hotkeys_panel():
     if state["stage"] >= 1:
         lines.append((None, None))
         if state.get("tool_mode") == "2POINT":
-            lines.append(("D: Set Distance", None))
+            lines.append(("D: Set Diameter", None))
         elif state.get("tool_mode") == "LINE_POLY":
             lines.append(("L: Set Length", None)) # --- NEW: Line Length Hint ---
         else:
             lines.append(("R: Set Radius", None))
     
     if state["stage"] == 2:
-        if state.get("tool_mode") != "2POINT":
+        if state.get("tool_mode") == "2POINT":
+            lines.append(("H: Set Sagitta", None))
+        elif tool_mode != "CIRCLE_TAN_TAN_TAN" and tool_mode != "LINE_POLY":
             lines.append(("A: Set Angle", None))
-        else:
+        
+        if state.get("tool_mode") == "2POINT":
             # === NEW: Show Alt Hint for 2-Point ===
             lines.append(("Alt: Bypass 180\u00B0", None))
             
@@ -492,7 +495,9 @@ def draw_hud_2d():
             # --- D/R/L LABEL LOGIC ---
             if state["input_mode"] == 'RADIUS': 
                 label = "R:"
-                if tool_mode == "2POINT": label = "D:"
+                if tool_mode == "2POINT":
+                    if state["stage"] == 1: label = "D:"
+                    else: label = "S:"
                 elif tool_mode == "LINE_POLY": label = "" # --- REMOVED 'L' for Line Tool
                 
                 r_txt = get_display_str(label, state['input_string'], True)
@@ -507,12 +512,13 @@ def draw_hud_2d():
                     h1 = draw_ui_box_generic(px, current_y, r_txt)
                     current_y -= (h1 + 4)
                 elif tool_mode == "2POINT":
-                    label = "D: "
                     if state["stage"] == 1:
+                         label = "D: "
                          # Chord Length
                          d_val = (state["current"] - state["pivot"]).length if (state["current"] and state["pivot"]) else 0.0
                          r_txt = label + format_length(d_val)
                     elif state["stage"] == 2:
+                         label = "S: "
                          # Height
                          h_val = (state["start"] - state["pivot"]).length if (state["start"] and state["pivot"]) else 0.0
                          r_txt = label + format_length(h_val)

@@ -153,14 +153,8 @@ def apply_input_value(ctx):
             pass
 
     # Update Preview Points immediately (Common)
-    # Get tool instance via Modal Manager if possible
-    try:
-        from .modal_core import VIEW3D_OT_radcad_modal as modal_op
-        # This is a bit circular, but we need to trigger the refresh_preview method
-        # Alternatively, we rely on the next frame redraw which modal_core.py now handles.
-        pass
-    except ImportError:
-        pass
+    if tool_mode in ["1POINT", "2POINT", "POINT_BY_ARCS"]:
+        state["skip_mouse_update"] = True # Use the stamp logic we added
         
     # Reset Input Mode
     state["input_mode"] = None

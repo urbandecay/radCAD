@@ -329,8 +329,48 @@ class ArcTool_Common(SurfaceDrawTool):
                     self.pivot, self.radius, self.a0, self.a1, self.segments, self.Xp, self.Yp
                 )
         elif self.mode == "2POINT":
-            # 2-Point typically updates via update() logic
-            pass
+            if self.stage == 2 and self.midpoint and self.start:
+                # Re-calculate radius from current start (peak) position
+                mid = self.midpoint
+                chord_vec = self.p2 - self.p1
+                chord_len = chord_vec.length
+                
+                if chord_len > 1e-6:
+                    chord_dir = chord_vec.normalized()
+                    plane_n = self.Zp if self.Zp else Vector((0,0,1))
+                    perp_dir = plane_n.cross(chord_dir).normalized()
+                    
+                    mouse_vec = self.start - mid
+                    height = mouse_vec.dot(perp_dir)
+                    
+                    if abs(height) < 0.0001:
+                        self.preview_pts = [self.p1, self.p2]
+                    else:
+                        radius = (abs(height) / 2.0) + ((chord_len**2) / (8.0 * abs(height)))
+                        self.radius = radius
+                        to_center_dir = -perp_dir if height > 0 else perp_dir
+                        center = self.start + to_center_dir * radius
+                        
+                        X_arc = chord_dir
+                        Y_arc = perp_dir 
+                        
+                        def to_local(v): return Vector((v.dot(X_arc), v.dot(Y_arc)))
+                        v1_2d = to_local(self.p1 - center)
+                        v2_2d = to_local(self.p2 - center)
+                        vp_2d = to_local(self.start - center)
+                        
+                        ang1 = math.atan2(v1_2d.y, v1_2d.x)
+                        ang2 = math.atan2(v2_2d.y, v2_2d.x)
+                        ang_mid = math.atan2(vp_2d.y, vp_2d.x)
+                        
+                        ang_mid_u, _ = unwrap(ang1, ang_mid, ang1)
+                        ang2_u, _ = unwrap(ang_mid, ang2, ang_mid_u)
+                        
+                        self.a0 = ang1
+                        self.a1 = ang2_u
+                        self.accum_angle = ang2_u - ang1
+                        self.segments = self.state["segments"]
+                        self.preview_pts = arc_points_world(center, radius, ang1, ang2_u, self.segments, X_arc, Y_arc)
 
         # Sync to shared state
         self.state["preview_pts"] = self.preview_pts
