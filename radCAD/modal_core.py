@@ -333,34 +333,63 @@ class ModalManager:
 
     def on_move(self, context, event):
         if self.active_tool:
+            # --- FIX: One-frame bypass for numerical input ---
+            if state.get("skip_mouse_update"):
+                state["skip_mouse_update"] = False
+                self.sync_tool_to_state()
+                # Force the tool to recalculate its points from the new state
+                if hasattr(self.active_tool, "refresh_preview"):
+                    self.active_tool.refresh_preview()
+                context.area.tag_redraw()
+                return
+
             snap_pt, snap_n = self.get_snap_data(context, event.mouse_region_x, event.mouse_region_y)
             self.active_tool.update(context, event, snap_pt, snap_n)
-            
-            state["stage"] = self.active_tool.stage
-            state["pivot"] = self.active_tool.pivot
-            state["current"] = self.active_tool.current
-            
-            state["start"] = getattr(self.active_tool, "start", None)
-            state["p1"] = getattr(self.active_tool, "p1", None)
-            state["p2"] = getattr(self.active_tool, "p2", None)
-            state["f1"] = getattr(self.active_tool, "f1", None)
-            state["f2"] = getattr(self.active_tool, "f2", None)
-            state["radius"] = getattr(self.active_tool, "radius", 0.0)
-            state["compass_rot"] = getattr(self.active_tool, "compass_rot", 0.0)
-            state["a0"] = getattr(self.active_tool, "a0", 0.0)
-            state["a1"] = getattr(self.active_tool, "a1", 0.0)
-            state["accum_angle"] = getattr(self.active_tool, "accum_angle", 0.0)
-            state["segments"] = getattr(self.active_tool, "segments", 32)
-            state["rx"] = getattr(self.active_tool, "rx", 0.0)
-            state["ry"] = getattr(self.active_tool, "ry", 0.0)
-            state["preview_pts"] = getattr(self.active_tool, "preview_pts", [])
-            state["intersection_pts"] = getattr(self.active_tool, "intersection_pts", [])
-            state["spline_geom"] = getattr(self.active_tool, "spline_geom", [])
-            state["Xp"] = self.active_tool.Xp
-            state["Yp"] = self.active_tool.Yp
-            state["Zp"] = self.active_tool.Zp
-            
+            self.sync_tool_from_state()
             context.area.tag_redraw()
+
+    def sync_tool_from_state(self):
+        """Copies tool properties into the shared 'state'."""
+        t = self.active_tool
+        state["stage"] = t.stage
+        state["pivot"] = t.pivot
+        state["current"] = t.current
+        state["start"] = getattr(t, "start", None)
+        state["p1"] = getattr(t, "p1", None)
+        state["p2"] = getattr(t, "p2", None)
+        state["f1"] = getattr(t, "f1", None)
+        state["f2"] = getattr(t, "f2", None)
+        state["radius"] = getattr(t, "radius", 0.0)
+        state["compass_rot"] = getattr(t, "compass_rot", 0.0)
+        state["a0"] = getattr(t, "a0", 0.0)
+        state["a1"] = getattr(t, "a1", 0.0)
+        state["accum_angle"] = getattr(t, "accum_angle", 0.0)
+        state["a_prev_raw"] = getattr(t, "a_prev_raw", 0.0)
+        state["segments"] = getattr(t, "segments", 32)
+        state["rx"] = getattr(t, "rx", 0.0)
+        state["ry"] = getattr(t, "ry", 0.0)
+        state["preview_pts"] = getattr(t, "preview_pts", [])
+        state["intersection_pts"] = getattr(t, "intersection_pts", [])
+        state["spline_geom"] = getattr(t, "spline_geom", [])
+        state["Xp"] = t.Xp
+        state["Yp"] = t.Yp
+        state["Zp"] = t.Zp
+
+    def sync_tool_to_state(self):
+        """Copies shared 'state' values back into the tool instance."""
+        t = self.active_tool
+        if "radius" in state: t.radius = state["radius"]
+        if "stage" in state: t.stage = state["stage"]
+        if "start" in state: t.start = state["start"]
+        if "p1" in state: t.p1 = state["p1"]
+        if "p2" in state: t.p2 = state["p2"]
+        if "midpoint" in state: t.midpoint = state["midpoint"]
+        if "current" in state: t.current = state["current"]
+        if "segments" in state: t.segments = state["segments"]
+        if "a0" in state: t.a0 = state["a0"]
+        if "a1" in state: t.a1 = state["a1"]
+        if "accum_angle" in state: t.accum_angle = state["accum_angle"]
+        if "a_prev_raw" in state: t.a_prev_raw = state["a_prev_raw"]
 
 def get_or_create_grey_material():
     mat_name = "radCAD_Grey"
@@ -579,37 +608,9 @@ def modal_arc_common(self, ctx, ev):
              # If input finished (e.g. HIT ENTER), sync state back to tool
              if state["input_mode"] is None:
                  if self.manager.active_tool:
-                     t = self.manager.active_tool
-                     
-                     # Sync values that text_entry_utils might have changed
-                     if "radius" in state: t.radius = state["radius"]
-                     if "stage" in state: t.stage = state["stage"]
-                     if "start" in state: t.start = state["start"]
-                     if "p1" in state: t.p1 = state["p1"]
-                     if "p2" in state: t.p2 = state["p2"]
-                     if "midpoint" in state: t.midpoint = state["midpoint"]
-                     if "current" in state: t.current = state["current"]
-                     if "segments" in state: t.segments = state["segments"]
-                     if "a0" in state: t.a0 = state["a0"]
-                     if "a1" in state: t.a1 = state["a1"]
-                     if "accum_angle" in state: t.accum_angle = state["accum_angle"]
-
-                     # IMPORTANT: Sync a_prev_raw. If lost, safeguard against "0.0" reset bug.
-                     if "a_prev_raw" in state: 
-                         t.a_prev_raw = state["a_prev_raw"]
-                     
-                     # SAFEGUARD: If a_prev_raw is effectively zero but we have an arc, 
-                     # it means we lost the mouse tracking memory. Restore it from the arc itself.
-                     # This prevents the 180-degree "repelling magnet" flip.
-                     if abs(t.a_prev_raw) < 1e-6 and abs(t.accum_angle) > 1e-4:
-                         # Reconstruct roughly where the mouse should be (End Angle)
-                         # a1 = a0 + accum. Normalized to -PI..PI
-                         rec_angle = t.a0 + t.accum_angle
-                         t.a_prev_raw = math.atan2(math.sin(rec_angle), math.cos(rec_angle))
-
-                     # Force immediate update with fresh mouse coordinates
-                     # REPLACE OLD MANUAL UPDATE WITH FULL SYNC
-                     # This ensures preview_pts from tool are copied back to state
+                     # --- FIX: Trigger one-frame bypass ---
+                     state["skip_mouse_update"] = True
+                     # Force immediate update with fresh coordinates
                      self.manager.on_move(ctx, ev)
                      
              return {'RUNNING_MODAL'}
@@ -727,8 +728,21 @@ def modal_arc_common(self, ctx, ev):
         if ev.type == 'S': target_mode = 'SEGMENTS'
         elif ev.type == 'R': target_mode = 'RADIUS'
         elif ev.type == 'D' and tool_mode in ["2POINT", "CIRCLE_2POINT"]: target_mode = 'RADIUS'
+        elif ev.type == 'A' and state["stage"] == 2 and tool_mode not in ["2POINT", "CIRCLE_TAN_TAN_TAN", "LINE_POLY"]: 
+            target_mode = 'ANGLE'
         
-        if is_number_input(ev): target_mode = 'RADIUS'
+        if is_number_input(ev): 
+            # --- FIX: Context-aware number typing ---
+            is_angle_stage = False
+            if tool_mode == "1POINT" and state["stage"] == 2:
+                is_angle_stage = True
+            elif tool_mode == "POINT_BY_ARCS" and state["stage"] in [2, 5]:
+                is_angle_stage = True
+                
+            if is_angle_stage:
+                target_mode = 'ANGLE'
+            else:
+                target_mode = 'RADIUS'
             
         if target_mode:
             if self.manager.region and self.manager.rv3d and state["pivot"]:

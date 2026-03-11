@@ -321,6 +321,20 @@ class ArcTool_Common(SurfaceDrawTool):
                     self.pivot = center
                     self.start = p1
 
+    def refresh_preview(self):
+        """Recalculates preview points based on current internal variables."""
+        if self.mode == "1POINT":
+            if self.stage == 2:
+                self.preview_pts = arc_points_world(
+                    self.pivot, self.radius, self.a0, self.a1, self.segments, self.Xp, self.Yp
+                )
+        elif self.mode == "2POINT":
+            # 2-Point typically updates via update() logic
+            pass
+
+        # Sync to shared state
+        self.state["preview_pts"] = self.preview_pts
+
     def handle_click(self, context, event, snap_point, snap_normal, button_id=None):
         # --- STAGE 0 CLICK (Common for all modes) ---
         if self.stage == 0:

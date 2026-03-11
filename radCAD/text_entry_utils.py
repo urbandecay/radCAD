@@ -51,6 +51,27 @@ def apply_input_value(ctx):
                     d.normalize()
                     state["start"] = state["pivot"] + d * state["radius"]
 
+        # === POINTS BY ARCS LOGIC ===
+        elif tool_mode == "POINT_BY_ARCS":
+            if state["stage"] in [1, 4]:
+                # Setting Radius for Arc 1 or Arc 2
+                pv = state["pivot"]
+                d = state["current"] - pv
+                if d.length > 1e-9: d.normalize()
+                else: d = Vector((1,0,0))
+                
+                state["start"] = pv + (d * state["radius"])
+                state["current"] = state["start"]
+                
+                # Init Angle
+                rvec2 = world_to_plane(state["start"] - pv, state["Xp"], state["Yp"])
+                a0 = math.atan2(rvec2.y, rvec2.x)
+                state["a0"] = a0; state["a1"] = a0; state["a_prev_raw"] = a0
+                state["accum_angle"] = 0.0
+                
+                # Advance stage (1->2, 4->5)
+                state["stage"] += 1
+
         # === 2-POINT LOGIC ===
         elif tool_mode == "2POINT":
             # Stage 1: Setting Chord Length (P2 distance from P1)
@@ -98,11 +119,28 @@ def apply_input_value(ctx):
     elif state["input_mode"] == 'ANGLE':
         try:
             val = float(val_str)
-            if state.get("use_radians"): rad = -val 
-            else: rad = -math.radians(val)
+            
+            # --- FIX: Respect Current Drawing Direction ---
+            # If current sweep is zero (just started drag), we use mouse position vs start angle.
+            # Otherwise use current sweep sign.
+            accum = state.get("accum_angle", 0.0)
+            if abs(accum) < 1e-6:
+                direction = 1.0 # Default to CCW if unsure
+                # Potentially use a_prev_raw vs a0 here...
+            else:
+                direction = -1.0 if accum < 0 else 1.0
+                
+            rad = math.radians(val) * direction
                 
             state["accum_angle"] = rad
             state["a1"] = state["a0"] + rad
+            
+            # Update mouse memory so next move is relative to this new angle
+            state["a_prev_raw"] = math.atan2(math.sin(state["a1"]), math.cos(state["a1"]))
+            
+            # --- COMMIT LOGIC REMOVED ---
+            # Hitting enter now just updates the angle but keeps the tool active
+                
         except ValueError:
             pass
             
@@ -115,13 +153,14 @@ def apply_input_value(ctx):
             pass
 
     # Update Preview Points immediately (Common)
-    # Note: 2-Point needs the complex update logic from the Tool class to regenerate geometry correctly.
-    # But since text input triggers a redraw and the tool update loop runs, it should catch up.
-    if state["stage"] == 2 and tool_mode == "1POINT":
-        state["preview_pts"] = arc_points_world(
-            state["pivot"], state["radius"], state["a0"], state["a1"], state["segments"],
-            state["Xp"], state["Yp"]
-        )
+    # Get tool instance via Modal Manager if possible
+    try:
+        from .modal_core import VIEW3D_OT_radcad_modal as modal_op
+        # This is a bit circular, but we need to trigger the refresh_preview method
+        # Alternatively, we rely on the next frame redraw which modal_core.py now handles.
+        pass
+    except ImportError:
+        pass
         
     # Reset Input Mode
     state["input_mode"] = None

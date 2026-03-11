@@ -348,6 +348,37 @@ class PointTool_ByArcs(SurfaceDrawTool):
                 self.intersection_pts = valid_ints
                 self.state["intersection_pts"] = valid_ints
 
+    def refresh_preview(self):
+        """Recalculates previews and intersections based on current internal variables."""
+        if self.stage in [1, 2]:
+            # Refresh Arc 1
+            self.preview_pts = arc_points_world(
+                self.pivot, self.radius, self.a0, self.a1, self.segments, self.Xp, self.Yp
+            )
+        elif self.stage in [4, 5]:
+            # Refresh Arc 2
+            self.preview_pts = arc_points_world(
+                self.pivot, self.radius, self.a0, self.a1, self.segments, self.Xp, self.Yp
+            )
+            
+            # Recalculate Intersections
+            self.intersection_pts = []
+            if self.c1 is not None and self.r1 > 1e-6 and self.radius > 1e-6:
+                candidates = intersect_circles_3d(self.c1, self.r1, self.pivot, self.radius, self.Xp, self.Yp)
+                valid_ints = []
+                for pt in candidates:
+                    in_arc1 = is_angle_in_arc(pt, self.c1, self.Xp, self.Yp, self.a0_1, self.a1_1)
+                    if self.stage == 4: # Radius 2 (Arc 2 is a full circle for preview)
+                        if in_arc1: valid_ints.append(pt)
+                    else: # Angle 2
+                        in_arc2 = is_angle_in_arc(pt, self.pivot, self.Xp, self.Yp, self.a0, self.a1)
+                        if in_arc1 and in_arc2: valid_ints.append(pt)
+                self.intersection_pts = valid_ints
+                self.state["intersection_pts"] = valid_ints
+
+        # Sync back to shared state
+        self.state["preview_pts"] = self.preview_pts
+
     def handle_click(self, context, event, snap_point, snap_normal, button_id=None):
         # Stage 0: Commit Pivot 1
         if self.stage == 0:
