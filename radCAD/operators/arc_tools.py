@@ -108,8 +108,8 @@ class ArcTool_Common(SurfaceDrawTool):
             if self.stage == 1:
                 target = snap_point
                 
-                # Axis Constraints & Inference
-                if self.constraint_axis:
+                # --- FIX: Alt bypasses Axis Snapping in Stage 1 ---
+                if self.constraint_axis and not event.alt:
                     if self.state.get("geometry_snap", False):
                         diff = target - self.pivot
                         proj = self.constraint_axis * diff.dot(self.constraint_axis)
@@ -127,7 +127,7 @@ class ArcTool_Common(SurfaceDrawTool):
                         )
                         if res: target = res[1]
                 
-                elif not self.state.get("geometry_snap", False):
+                elif not self.state.get("geometry_snap", False) and not event.alt:
                     strength_deg = self.state.get("snap_strength", 6.0)
                     strength_deg = max(0.1, min(89.0, strength_deg))
                     axis_thresh = math.cos(math.radians(strength_deg))

@@ -384,7 +384,8 @@ def draw_preview_2point(ctx, shaders, prefs):
         if state["start"] is not None:
             peak = state["start"]
             height_vec = peak - pv
-            col_h = get_axis_aligned_color(height_vec, prefs["COL_HEIGHT"])
+            # --- FIX: Default to GREY (0.5, 0.5, 0.5, 1.0) if not axis-aligned ---
+            col_h = get_axis_aligned_color(height_vec, (0.5, 0.5, 0.5, 1.0))
             draw_line(ctx, shaders, pv, peak, col_h, prefs)
             
         pts = state.get("preview_pts", [])

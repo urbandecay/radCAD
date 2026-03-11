@@ -175,75 +175,28 @@ def draw_ui_button(x, y, text, is_active, hitbox_id):
     gpu.state.blend_set("NONE")
     return box_w
 
-# --- TOP RIGHT HOTKEYS ---
+    # --- TOP RIGHT HOTKEYS ---
 def draw_hotkeys_panel():
     if not state.get("show_hotkeys", True): return
 
     perp_state = "ON" if state.get("is_perpendicular") else "OFF"
     perp_col = None 
 
-    # Axis Constraint Logic
-    axis_text = "X/Y/Z: Axis Constraint"
-    axis_col = None
-    c_axis = state.get("constraint_axis")
-    
-    if c_axis:
-        if abs(c_axis.x) > 0.9:
-            axis_text = "X-Axis Locked"
-            axis_col = (0.85, 0.2, 0.2, 1.0)
-        elif abs(c_axis.y) > 0.9:
-            axis_text = "Y-Axis Locked"
-            axis_col = (0.2, 0.8, 0.2, 1.0)
-        elif abs(c_axis.z) > 0.9:
-            axis_text = "Z-Axis Locked"
-            axis_col = (0.2, 0.4, 1.0, 1.0)
-
-    # --- LOCK LABEL LOGIC ---
     tool_mode = state.get("tool_mode", "1POINT")
-    is_locked = state.get("locked")
+    lines = []
     
-    lock_text = "L: Lock Plane" # Default Not Locked
-    lock_col = None
-    
-    if tool_mode == "2POINT":
-         lock_text = "L: Lock Axis"
-    
-    if is_locked:
-        if tool_mode == "2POINT":
-             lock_text = "L: Axis Locked"
-        else:
-             lock_text = "L: Plane Locked"
-        
-        # --- NEW: Check if locked to X, Y, or Z Plane ---
-        n = state.get("locked_normal")
-        if n:
-            if abs(n.x) > 0.99:
-                lock_text = "X-Plane Locked"
-                lock_col = (0.85, 0.2, 0.2, 1.0)
-            elif abs(n.y) > 0.99:
-                lock_text = "Y-Plane Locked"
-                lock_col = (0.2, 0.8, 0.2, 1.0)
-            elif abs(n.z) > 0.99:
-                lock_text = "Z-Plane Locked"
-                lock_col = (0.2, 0.4, 1.0, 1.0)
-
-    lines = [
-        (f"P: Perpendicular ({perp_state})", perp_col),
-    ]
-    
-    # --- ONLY SHOW AXIS/PLANE LOCKS IN STAGE 0 ---
-    if state["stage"] == 0:
-        lines.append((lock_text, lock_col))
-        lines.append((axis_text, axis_col))
-    elif is_locked:
-        # If already locked, keep showing the lock status but remove X/Y/Z hint
-        lines.append((lock_text, lock_col))
+    # --- ONLY SHOW PERPENDICULAR ONCE ARC DRAWING STARTS (STAGE 2) ---
+    if state["stage"] == 2:
+        lines.append((f"P: Perpendicular ({perp_state})", perp_col))
     
     # --- INSERT SPACER IF RADIUS/DISTANCE IS ABOUT TO BE SHOWN ---
     if state["stage"] >= 1:
         lines.append((None, None))
         if state.get("tool_mode") == "2POINT":
             lines.append(("D: Set Diameter", None))
+            # --- NEW: Stage 1 Alt Hint ---
+            if state["stage"] == 1:
+                lines.append(("Alt: Bypass Axis Snap", None))
         elif state.get("tool_mode") == "LINE_POLY":
             lines.append(("L: Set Length", None)) # --- NEW: Line Length Hint ---
         else:
@@ -252,12 +205,10 @@ def draw_hotkeys_panel():
     if state["stage"] == 2:
         if state.get("tool_mode") == "2POINT":
             lines.append(("H: Set Sagitta", None))
+            # === NEW: Stage 2 Alt Hint (Bypass 180 Snap) ===
+            lines.append(("Alt: Bypass 180\u00B0 Snap", None))
         elif tool_mode != "CIRCLE_TAN_TAN_TAN" and tool_mode != "LINE_POLY":
             lines.append(("A: Set Angle", None))
-        
-        if state.get("tool_mode") == "2POINT":
-            # === NEW: Show Alt Hint for 2-Point ===
-            lines.append(("Alt: Bypass 180\u00B0", None))
             
         lines.append(("S: Set Segments", None))
         lines.append(("Scroll: +/- Segs", None))
@@ -512,20 +463,32 @@ def draw_hud_2d():
                     h1 = draw_ui_box_generic(px, current_y, r_txt)
                     current_y -= (h1 + 4)
                 elif tool_mode == "2POINT":
+                    # --- ALWAYS SHOW DIAMETER IN STAGE 1 AND 2 ---
+                    label_d = "D: "
+                    p1, p2 = state.get("p1"), state.get("p2")
                     if state["stage"] == 1:
-                         label = "D: "
-                         # Chord Length
+                         # Chord Length during drag
                          d_val = (state["current"] - state["pivot"]).length if (state["current"] and state["pivot"]) else 0.0
-                         r_txt = label + format_length(d_val)
+                         r_txt = label_d + format_length(d_val)
+                         h1 = draw_ui_box_generic(px, current_y, r_txt)
+                         current_y -= (h1 + 4)
                     elif state["stage"] == 2:
-                         label = "S: "
-                         # Height
+                         # Final Diameter
+                         d_val = (p2 - p1).length if (p1 and p2) else 0.0
+                         r_txt = label_d + format_length(d_val)
+                         h1 = draw_ui_box_generic(px, current_y, r_txt)
+                         current_y -= (h1 + 4)
+                         
+                         # Height (Sagitta)
+                         label_s = "S: "
                          h_val = (state["start"] - state["pivot"]).length if (state["start"] and state["pivot"]) else 0.0
-                         r_txt = label + format_length(h_val)
+                         s_txt = label_s + format_length(h_val)
+                         h2 = draw_ui_box_generic(px, current_y, s_txt)
+                         current_y -= (h2 + 4)
                     else:
                          r_txt = "D: 0"
-                    h1 = draw_ui_box_generic(px, current_y, r_txt)
-                    current_y -= (h1 + 4)
+                         h1 = draw_ui_box_generic(px, current_y, r_txt)
+                         current_y -= (h1 + 4)
                 else:
                     label = "R: "
                     if tool_mode == "LINE_POLY": label = "" # --- REMOVED 'L' for Line Tool
