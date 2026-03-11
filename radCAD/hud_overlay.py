@@ -193,9 +193,9 @@ def draw_hotkeys_panel():
     if state["stage"] >= 1:
         lines.append((None, None))
         if state.get("tool_mode") == "2POINT":
-            lines.append(("D: Set Diameter", None))
-            # --- NEW: Stage 1 Alt Hint ---
+            # --- FIX: Only show Diameter hint in Stage 1 ---
             if state["stage"] == 1:
+                lines.append(("D: Set Diameter", None))
                 lines.append(("Alt: Bypass Axis Snap", None))
         elif state.get("tool_mode") == "LINE_POLY":
             lines.append(("L: Set Length", None)) # --- NEW: Line Length Hint ---
@@ -204,7 +204,7 @@ def draw_hotkeys_panel():
     
     if state["stage"] == 2:
         if state.get("tool_mode") == "2POINT":
-            lines.append(("H: Set Sagitta", None))
+            lines.append(("H: Set Sagitta Height", None))
             # === NEW: Stage 2 Alt Hint (Bypass 180 Snap) ===
             lines.append(("Alt: Bypass 180\u00B0 Snap", None))
         elif tool_mode != "CIRCLE_TAN_TAN_TAN" and tool_mode != "LINE_POLY":
@@ -463,28 +463,20 @@ def draw_hud_2d():
                     h1 = draw_ui_box_generic(px, current_y, r_txt)
                     current_y -= (h1 + 4)
                 elif tool_mode == "2POINT":
-                    # --- ALWAYS SHOW DIAMETER IN STAGE 1 AND 2 ---
-                    label_d = "D: "
-                    p1, p2 = state.get("p1"), state.get("p2")
                     if state["stage"] == 1:
-                         # Chord Length during drag
+                         label = "D: "
+                         # Chord Length
                          d_val = (state["current"] - state["pivot"]).length if (state["current"] and state["pivot"]) else 0.0
-                         r_txt = label_d + format_length(d_val)
+                         r_txt = label + format_length(d_val)
                          h1 = draw_ui_box_generic(px, current_y, r_txt)
                          current_y -= (h1 + 4)
                     elif state["stage"] == 2:
-                         # Final Diameter
-                         d_val = (p2 - p1).length if (p1 and p2) else 0.0
-                         r_txt = label_d + format_length(d_val)
+                         label = "H: "
+                         # Height
+                         h_val = (state["start"] - state["pivot"]).length if (state["start"] and state["pivot"]) else 0.0
+                         r_txt = label + format_length(h_val)
                          h1 = draw_ui_box_generic(px, current_y, r_txt)
                          current_y -= (h1 + 4)
-                         
-                         # Height (Sagitta)
-                         label_s = "S: "
-                         h_val = (state["start"] - state["pivot"]).length if (state["start"] and state["pivot"]) else 0.0
-                         s_txt = label_s + format_length(h_val)
-                         h2 = draw_ui_box_generic(px, current_y, s_txt)
-                         current_y -= (h2 + 4)
                     else:
                          r_txt = "D: 0"
                          h1 = draw_ui_box_generic(px, current_y, r_txt)
