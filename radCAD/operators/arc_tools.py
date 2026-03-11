@@ -498,14 +498,36 @@ class ArcTool_Common(SurfaceDrawTool):
                     self.state["locked_normal"] = new_Zp
                 else:
                     # Reset to generic
-                    # Use stored normal if possible, else default
                     floor_n = Vector((0,0,1)) 
                     self.Xp, self.Yp, self.Zp = orthonormal_basis_from_normal(floor_n)
                     self.state["locked_normal"] = floor_n
+
+                # --- FIX: Re-map existing geometry ONLY for P key during drawing ---
+                if self.mode == "1POINT" and self.stage > 0:
+                    if self.start:
+                        # Project start point onto new plane
+                        d_start = self.start - self.pivot
+                        d_plane = d_start - self.Zp * d_start.dot(self.Zp)
+                        self.start = self.pivot + d_plane
+                        
+                        # Recalculate local basis angles
+                        rvec2 = world_to_plane(self.start - self.pivot, self.Xp, self.Yp)
+                        self.radius = rvec2.length
+                        self.a0 = math.atan2(rvec2.y, rvec2.x)
+                        self.a1 = self.a0 + self.accum_angle
+                        self.a_prev_raw = self.a0
+                        
+                        # Refresh Preview
+                        self.preview_pts = arc_points_world(
+                            self.pivot, self.radius, self.a0, self.a1, self.segments, self.Xp, self.Yp
+                        )
                 return True
 
         # 3. Axis Locking (X/Y/Z)
         if event.type in {'X', 'Y', 'Z'} and event.value == 'PRESS':
+            # --- FIX: Only allow X/Y/Z plane locking BEFORE drawing starts (Stage 0) ---
+            if self.stage > 0: return False
+
             axes = {'X': Vector((1, 0, 0)), 'Y': Vector((0, 1, 0)), 'Z': Vector((0, 0, 1))}
             
             # FOR 1-POINT: Switch to Locking the PLANE Normal (X/Y/Z)
@@ -537,6 +559,21 @@ class ArcTool_Common(SurfaceDrawTool):
                     # --- FIX: Set plane point to where the compass is RIGHT NOW ---
                     target_point = self.current if self.current else Vector((0,0,0))
                     self.state["locked_plane_point"] = target_point
+                    
+                    # --- FIX: Re-map existing geometry to the new plane ---
+                    if self.pivot:
+                        if self.start:
+                            # Project start point onto new plane
+                            d_start = self.start - self.pivot
+                            d_plane = d_start - self.Zp * d_start.dot(self.Zp)
+                            self.start = self.pivot + d_plane
+                            
+                            # Recalculate local basis angles
+                            rvec2 = world_to_plane(self.start - self.pivot, self.Xp, self.Yp)
+                            self.radius = rvec2.length
+                            self.a0 = math.atan2(rvec2.y, rvec2.x)
+                            self.a1 = self.a0 + self.accum_angle
+                            self.a_prev_raw = self.a0
                     
                     # Clear linear constraint if any, to avoid confusion
                     self.constraint_axis = None

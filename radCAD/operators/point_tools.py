@@ -139,10 +139,50 @@ class PointTool_ByArcs(SurfaceDrawTool):
                 else:
                     self.state["locked"] = False
                     self.state["locked_normal"] = None
+
+                # --- FIX: Re-map existing arcs to the new plane ---
+                if self.stage > 0:
+                    # 1. Re-map Arc 1 (if started/done)
+                    if self.start: # Arc 1 or Arc 2 is active
+                        if self.stage <= 2: # Arc 1 is active
+                            pv = self.pivot
+                            d_start = self.start - pv
+                            d_plane = d_start - self.Zp * d_start.dot(self.Zp)
+                            self.start = pv + d_plane
+                            
+                            rvec2 = world_to_plane(self.start - pv, self.Xp, self.Yp)
+                            self.radius = rvec2.length
+                            self.a0 = math.atan2(rvec2.y, rvec2.x)
+                            self.a1 = self.a0 + self.accum_angle
+                            self.a_prev_raw = self.a0
+                        
+                        else: # Arc 2 is active
+                            # Arc 1 is already 'done' and stored in self.c1, self.r1, etc.
+                            # We must re-project its center and endpoints
+                            if self.c1:
+                                # (For PointsByArcs, usually Arc 1 and 2 share the same plane)
+                                d_c1 = self.c1 - self.pivot # Pivot here is C2
+                                d_plane = d_c1 - self.Zp * d_c1.dot(self.Zp)
+                                self.c1 = self.pivot + d_plane
+                                
+                                # Re-map Arc 2 (active)
+                                pv = self.pivot
+                                d_start = self.start - pv
+                                d_plane = d_start - self.Zp * d_start.dot(self.Zp)
+                                self.start = pv + d_plane
+                                
+                                rvec2 = world_to_plane(self.start - pv, self.Xp, self.Yp)
+                                self.radius = rvec2.length
+                                self.a0 = math.atan2(rvec2.y, rvec2.x)
+                                self.a1 = self.a0 + self.accum_angle
+                                self.a_prev_raw = self.a0
                 return True
 
         # 3. Axis Locking (X/Y/Z) - Locks Plane Normal (like Arc 1-Point)
         if event.type in {'X', 'Y', 'Z'} and event.value == 'PRESS':
+            # --- FIX: Only allow X/Y/Z plane locking BEFORE drawing starts (Stage 0) ---
+            if self.stage > 0: return False
+
             axes = {'X': Vector((1, 0, 0)), 'Y': Vector((0, 1, 0)), 'Z': Vector((0, 0, 1))}
             new_n = axes[event.type]
             

@@ -229,9 +229,15 @@ def draw_hotkeys_panel():
 
     lines = [
         (f"P: Perpendicular ({perp_state})", perp_col),
-        (lock_text, lock_col),
-        (axis_text, axis_col),
     ]
+    
+    # --- ONLY SHOW AXIS/PLANE LOCKS IN STAGE 0 ---
+    if state["stage"] == 0:
+        lines.append((lock_text, lock_col))
+        lines.append((axis_text, axis_col))
+    elif is_locked:
+        # If already locked, keep showing the lock status but remove X/Y/Z hint
+        lines.append((lock_text, lock_col))
     
     # --- INSERT SPACER IF RADIUS/DISTANCE IS ABOUT TO BE SHOWN ---
     if state["stage"] >= 1:
