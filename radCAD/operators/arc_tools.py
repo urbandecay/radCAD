@@ -228,7 +228,7 @@ class ArcTool_Common(SurfaceDrawTool):
                     d_plane = d - self.Zp * d.dot(self.Zp)
                     target = self.pivot + d_plane
 
-                if self.constraint_axis:
+                if self.constraint_axis and not event.alt:
                     if self.state.get("geometry_snap", False):
                         diff = target - self.pivot
                         proj = self.constraint_axis * diff.dot(self.constraint_axis)
@@ -243,7 +243,7 @@ class ArcTool_Common(SurfaceDrawTool):
                         res = geometry.intersect_line_line(ray_origin, ray_origin + ray_vector, self.pivot, self.pivot + self.constraint_axis)
                         if res: target = res[1]
                 
-                elif not self.state.get("geometry_snap", False):
+                elif not self.state.get("geometry_snap", False) and not event.alt:
                     # AXIS INFERENCE SNAPPING
                     strength_deg = self.state.get("snap_strength", 6.0)
                     strength_deg = max(0.1, min(89.0, strength_deg))
