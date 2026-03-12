@@ -548,15 +548,20 @@ def draw_hud_2d():
                         h2 = draw_ui_box_generic(px, current_y, r_txt_r)
                         current_y -= (h2 + 4)
                 elif tool_mode == "ELLIPSE_RADIUS":
-                    if state["stage"] == 1:
-                        dist_d = state.get("rx", 0.0) * 2.0
-                        r_txt_d = "D: " + format_length(dist_d)
-                        h1 = draw_ui_box_generic(px, current_y, r_txt_d)
-                        current_y -= (h1 + 4)
-                    elif state["stage"] == 2:
-                        label_r = "R: "
+                    # Center-anchored Recap (Pivot is center)
+                    r_val_x = state.get("rx", 0.0)
+                    r_txt_x = "R: " + format_length(r_val_x)
+                    h_x = draw_ui_box_generic(px, current_y, r_txt_x)
+                    current_y -= (h_x + 4)
+
+                    dist_d = r_val_x * 2.0
+                    r_txt_d = "D: " + format_length(dist_d)
+                    h_d = draw_ui_box_generic(px, current_y, r_txt_d)
+                    current_y -= (h_d + 4)
+
+                    if state["stage"] == 2 and not state.get("input_mode"):
                         r_val_y = state.get("ry", 0.0)
-                        r_txt_r = label_r + format_length(r_val_y)
+                        r_txt_r = "r: " + format_length(r_val_y)
                         h2 = draw_ui_box_generic(px, current_y, r_txt_r)
                         current_y -= (h2 + 4)
                 elif tool_mode == "ELLIPSE_CORNERS":

@@ -66,6 +66,7 @@ class EllipseTool_FromRadius(SurfaceDrawTool):
             bridge = target - self.pivot
             if bridge.length_squared > 1e-8:
                 b_vec = bridge.normalized()
+                self.Xp = b_vec # Update Xp immediately for preview
                 up = self.ref_normal
                 is_perp = self.state.get("is_perpendicular", False)
                 is_vertical = abs(b_vec.dot(up)) > (0.98 if getattr(self, "_is_vert_last", False) else 0.995)
@@ -101,12 +102,13 @@ class EllipseTool_FromRadius(SurfaceDrawTool):
                 
                 self.major_axis = self.Xp.copy()
 
-            self.rx = (target - self.pivot).length * 0.5
+            self.rx = (target - self.pivot).length
             self.current = target
-            self.preview_pts = [self.pivot, self.pivot + (self.Xp * (self.rx * 2.0))]
+            # Display full diameter symmetrically from the center (pivot)
+            self.preview_pts = [self.pivot - (self.Xp * self.rx), self.pivot + (self.Xp * self.rx)]
 
         if self.stage == 2:
-            center = self.pivot + (self.Xp * self.rx)
+            center = self.pivot
             target_pt = snap_point
             if not self.state.get("geometry_snap", False):
                 ray_origin = view3d_utils.region_2d_to_origin_3d(context.region, context.region_data, coord)
@@ -187,11 +189,12 @@ class EllipseTool_FromRadius(SurfaceDrawTool):
     def refresh_preview(self):
         if self.stage == 1:
             self.stage = 2 
-            self.current = self.pivot + (self.Xp * (self.rx * 2.0))
-            self.preview_pts = [self.pivot, self.current]
+            self.current = self.pivot + (self.Xp * self.rx)
+            # Symmetric diameter preview
+            self.preview_pts = [self.pivot - (self.Xp * self.rx), self.pivot + (self.Xp * self.rx)]
         elif self.stage >= 2:
-            center = self.pivot + (self.Xp * self.rx)
-            # For Stage 2, current is on the minor axis
+            center = self.pivot
+            # Update current to reflect the minor radius point
             self.current = center + (self.Yp * self.ry)
             self.preview_pts = ellipse_points_world(center, self.rx, self.ry, self.segments, self.Xp, self.Yp)
 

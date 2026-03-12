@@ -491,9 +491,15 @@ def draw_preview_ellipse(ctx, shaders, prefs):
         if mode == "ELLIPSE_FOCI":
              draw_points(ctx, shaders, [state["current"]], (0,0,0,1), pt_size, prefs)
         
-        diff = state["current"] - pv
-        col = get_axis_aligned_color(diff, prefs["COL_START"])
-        draw_line(ctx, shaders, pv, state["current"], col, prefs)
+        pts = state.get("preview_pts", [])
+        if mode == "ELLIPSE_RADIUS" and len(pts) >= 2:
+            # Draw both halves of the symmetric diameter
+            col = get_axis_aligned_color(state["Xp"], prefs["COL_START"])
+            draw_line(ctx, shaders, pts[0], pts[1], col, prefs)
+        else:
+            diff = state["current"] - pv
+            col = get_axis_aligned_color(diff, prefs["COL_START"])
+            draw_line(ctx, shaders, pv, state["current"], col, prefs)
         
     elif state["stage"] == 2:
         draw_points(ctx, shaders, [pv], (0,0,0,1), pt_size, prefs)
@@ -509,7 +515,7 @@ def draw_preview_ellipse(ctx, shaders, prefs):
         
         # Draw Major Axis (Ghosted/Reference)
         if mode == "ELLIPSE_RADIUS" and "Xp" in state and "rx" in state:
-            center = pv + (state["Xp"] * state["rx"])
+            center = pv
             end_major = center + (state["Xp"] * state["rx"])
             start_major = center - (state["Xp"] * state["rx"])
             col_m = get_axis_aligned_color(state["Xp"], prefs["COL_START"])
@@ -526,8 +532,8 @@ def draw_preview_ellipse(ctx, shaders, prefs):
         if state["current"] is not None:
              # Only draw the center-to-cursor line for radius/endpoint modes
              if mode in ["ELLIPSE_RADIUS", "ELLIPSE_ENDPOINTS"]:
-                  # Use offset center for Radius mode, or calculated center for Endpoints
-                  center = (pv + (state["Xp"] * state["rx"])) if mode == "ELLIPSE_RADIUS" else ((state["p1"] + state["p2"]) * 0.5)
+                  # Use pivot for center in Radius mode, or calculated center for Endpoints
+                  center = pv if mode == "ELLIPSE_RADIUS" else ((state["p1"] + state["p2"]) * 0.5)
                   diff_h = state["current"] - center
                   col_h = get_axis_aligned_color(diff_h, prefs["COL_HEIGHT"])
                   draw_line(ctx, shaders, center, state["current"], col_h, prefs)
@@ -542,12 +548,22 @@ def draw_preview_polygon(ctx, shaders, prefs):
     pv = state["pivot"]
     if not pv: return
     pt_size = prefs.get("PREVIEW_VERTEX_SIZE", 5)
+    tool_mode = state.get("tool_mode", "")
+    
     if state["stage"] == 1 and state["current"] is not None:
         draw_points(ctx, shaders, [pv], (0,0,0,1), pt_size, prefs)
-        draw_line(ctx, shaders, pv, state["current"], prefs["COL_START"], prefs)
-        draw_points(ctx, shaders, [state["current"]], (0,0,0,1), pt_size, prefs)
+        
         pts = state.get("preview_pts", [])
-        if pts:
+        if tool_mode == "ELLIPSE_RADIUS" and len(pts) >= 2:
+            # Draw both halves of the symmetric diameter
+            draw_line(ctx, shaders, pv, pts[0], prefs["COL_START"], prefs)
+            draw_line(ctx, shaders, pv, pts[1], prefs["COL_START"], prefs)
+        else:
+            draw_line(ctx, shaders, pv, state["current"], prefs["COL_START"], prefs)
+            
+        draw_points(ctx, shaders, [state["current"]], (0,0,0,1), pt_size, prefs)
+        
+        if pts and tool_mode != "ELLIPSE_RADIUS":
             draw_polyline(ctx, shaders, pts, (0,0,0,1), prefs)
             draw_points(ctx, shaders, pts, (0,0,0,1), pt_size, prefs)
     

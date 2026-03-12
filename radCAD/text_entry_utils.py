@@ -81,18 +81,15 @@ def apply_input_value(ctx):
             if target == 'DIAMETER':
                 diam = abs(val_meters)
                 state["rx"] = diam * 0.5
-                p1 = state["pivot"]
+                center = state["pivot"]
                 Xp = state.get("Xp") or Vector((1,0,0))
-                state["current"] = p1 + Xp * diam
+                state["current"] = center + Xp * (diam * 0.5)
                 if state["stage"] == 1: state["stage"] = 2
             else: # RADIUS
                 ry = abs(val_meters)
                 state["ry"] = ry
-                p1 = state["pivot"]
-                Xp = state.get("Xp") or Vector((1,0,0))
+                center = state["pivot"]
                 Yp = state.get("Yp") or Vector((0,1,0))
-                rx = state.get("rx", 0.0)
-                center = p1 + (Xp * rx)
                 state["current"] = center + (Yp * ry)
                 if state["stage"] == 1: state["stage"] = 2
 
