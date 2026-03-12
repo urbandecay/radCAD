@@ -477,14 +477,9 @@ class EllipseTool_FromEndpoints(SurfaceDrawTool):
 
             d_raw = target_pt - center
             d_plane = d_raw - self.Zp * d_raw.dot(self.Zp)
-            dist_y = abs(d_plane.dot(self.Yp))
-            self.ry = dist_y
-            if d_plane.length > 1e-6:
-                d2 = Vector((d_plane.dot(self.Xp), d_plane.dot(self.Yp)))
-                angle = math.atan2(d2.y, d2.x)
-                local_snap = Vector((self.rx * math.cos(angle), self.ry * math.sin(angle)))
-                self.current = center + (self.Xp * local_snap.x) + (self.Yp * local_snap.y)
-            else: self.current = center + d_plane
+            dist_y = d_plane.dot(self.Yp)
+            self.ry = abs(dist_y)
+            self.current = center + (self.Yp * dist_y)
             self.segments = self.state["segments"]
             self.preview_pts = ellipse_points_world(center, self.rx, self.ry, self.segments, self.Xp, self.Yp)
 

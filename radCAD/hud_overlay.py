@@ -548,20 +548,17 @@ def draw_hud_2d():
                         h2 = draw_ui_box_generic(px, current_y, r_txt_r)
                         current_y -= (h2 + 4)
                 elif tool_mode == "ELLIPSE_RADIUS":
-                    # Center-anchored Recap (Pivot is center)
-                    r_val_x = state.get("rx", 0.0)
-                    r_txt_x = "R: " + format_length(r_val_x)
-                    h_x = draw_ui_box_generic(px, current_y, r_txt_x)
-                    current_y -= (h_x + 4)
-
-                    dist_d = r_val_x * 2.0
-                    r_txt_d = "D: " + format_length(dist_d)
-                    h_d = draw_ui_box_generic(px, current_y, r_txt_d)
-                    current_y -= (h_d + 4)
-
-                    if state["stage"] == 2 and not state.get("input_mode"):
+                    if state["stage"] == 1:
+                        # Stage 1: Only show Diameter (R hasn't happened yet)
+                        dist_d = state.get("rx", 0.0) * 2.0
+                        r_txt_d = "D: " + format_length(dist_d)
+                        h_d = draw_ui_box_generic(px, current_y, r_txt_d)
+                        current_y -= (h_d + 4)
+                    elif state["stage"] == 2 and not state.get("input_mode"):
+                        # Stage 2: Active Minor Radius (R)
+                        # (D is shown in the recap section above)
                         r_val_y = state.get("ry", 0.0)
-                        r_txt_r = "r: " + format_length(r_val_y)
+                        r_txt_r = "R: " + format_length(r_val_y)
                         h2 = draw_ui_box_generic(px, current_y, r_txt_r)
                         current_y -= (h2 + 4)
                 elif tool_mode == "ELLIPSE_CORNERS":
@@ -600,7 +597,7 @@ def draw_hud_2d():
             
             if state["stage"] == 2:
                 # --- HIDE ANGLE IF 2POINT, 3POINT, LINE_POLY, ELLIPSE_FOCI OR ELLIPSE_RADIUS ---
-                if tool_mode not in ["2POINT", "3POINT", "CIRCLE_3POINT", "CIRCLE_TAN_TAN_TAN", "LINE_POLY", "ELLIPSE_FOCI", "ELLIPSE_RADIUS"]:
+                if tool_mode not in ["2POINT", "3POINT", "CIRCLE_3POINT", "CIRCLE_TAN_TAN_TAN", "LINE_POLY", "ELLIPSE_FOCI", "ELLIPSE_RADIUS", "ELLIPSE_ENDPOINTS"]:
                     is_input_a = (state["input_mode"] == 'ANGLE')
                     if is_input_a: a_txt = get_display_str("\u2220", state['input_string'], True)
                     else:

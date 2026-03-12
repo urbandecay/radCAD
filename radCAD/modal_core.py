@@ -735,7 +735,7 @@ def modal_arc_common(self, ctx, ev):
         elif ev.type == 'R' and tool_mode != "ELLIPSE_CORNERS": target_mode = 'RADIUS'; state["input_target"] = 'RADIUS'
         elif ev.type == 'D' and tool_mode in ["2POINT", "CIRCLE_2POINT", "ELLIPSE_ENDPOINTS", "ELLIPSE_RADIUS"]: target_mode = 'RADIUS'; state["input_target"] = 'DIAMETER'
         elif ev.type == 'H' and tool_mode == "2POINT" and state["stage"] == 2: target_mode = 'RADIUS'; state["input_target"] = 'SAGITTA'
-        elif ev.type == 'A' and state["stage"] == 2 and tool_mode not in ["2POINT", "CIRCLE_TAN_TAN_TAN", "LINE_POLY", "ELLIPSE_CORNERS"]: 
+        elif ev.type == 'A' and state["stage"] == 2 and tool_mode not in ["2POINT", "CIRCLE_TAN_TAN_TAN", "LINE_POLY", "ELLIPSE_CORNERS", "ELLIPSE_ENDPOINTS"]: 
             target_mode = 'ANGLE'
         
         if is_number_input(ev): 
