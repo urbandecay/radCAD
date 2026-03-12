@@ -2,6 +2,7 @@ import math
 from mathutils import Vector
 from .base_tool import SurfaceDrawTool
 from ..plane_utils import world_to_plane, plane_to_world
+from ..inference_utils import get_axis_snapped_location
 
 def polygon_points_world(center, radius, start_angle, sides, Xp, Yp):
     """
@@ -43,10 +44,19 @@ class PolygonTool_CenterCorner(SurfaceDrawTool):
         # Stage 1: Dragging to Corner
         if self.stage == 1:
             pv = self.pivot
-            self.current = snap_point
+            coord = (event.mouse_region_x, event.mouse_region_y)
+            target = snap_point
+
+            # Snapping
+            strength_deg = self.state.get("snap_strength", 6.0)
+            axis_thresh = math.cos(math.radians(strength_deg))
+            inf_loc, _, _ = get_axis_snapped_location(pv, coord, context, snap_threshold=axis_thresh)
+            if inf_loc and not event.alt: target = inf_loc
+
+            self.current = target
             
             # Calculate Vector on Plane
-            d_vec = snap_point - pv
+            d_vec = target - pv
             if self.Zp:
                 d_plane = d_vec - self.Zp * d_vec.dot(self.Zp)
             else:
@@ -99,9 +109,18 @@ class PolygonTool_CenterTangent(SurfaceDrawTool):
 
         if self.stage == 1:
             pv = self.pivot
-            self.current = snap_point
+            coord = (event.mouse_region_x, event.mouse_region_y)
+            target = snap_point
+
+            # Snapping
+            strength_deg = self.state.get("snap_strength", 6.0)
+            axis_thresh = math.cos(math.radians(strength_deg))
+            inf_loc, _, _ = get_axis_snapped_location(pv, coord, context, snap_threshold=axis_thresh)
+            if inf_loc and not event.alt: target = inf_loc
+
+            self.current = target
             
-            d_vec = snap_point - pv
+            d_vec = target - pv
             if self.Zp: d_plane = d_vec - self.Zp * d_vec.dot(self.Zp)
             else: d_plane = d_vec
             
@@ -156,10 +175,19 @@ class PolygonTool_CornerCorner(SurfaceDrawTool):
         # Stage 1: Dragging to Second Corner (Edge Definition)
         if self.stage == 1:
             corner1 = self.pivot
-            self.current = snap_point
+            coord = (event.mouse_region_x, event.mouse_region_y)
+            target = snap_point
+
+            # Snapping
+            strength_deg = self.state.get("snap_strength", 6.0)
+            axis_thresh = math.cos(math.radians(strength_deg))
+            inf_loc, _, _ = get_axis_snapped_location(corner1, coord, context, snap_threshold=axis_thresh)
+            if inf_loc and not event.alt: target = inf_loc
+
+            self.current = target
             
             # 1. Calculate Edge Vector on Plane
-            d_vec = snap_point - corner1
+            d_vec = target - corner1
             if self.Zp:
                 d_plane = d_vec - self.Zp * d_vec.dot(self.Zp)
             else:
@@ -246,10 +274,19 @@ class PolygonTool_Edge(SurfaceDrawTool):
         # Stage 1: Dragging to Second Point of Edge
         if self.stage == 1:
             p1 = self.pivot
-            self.current = snap_point
+            coord = (event.mouse_region_x, event.mouse_region_y)
+            target = snap_point
+
+            # Snapping
+            strength_deg = self.state.get("snap_strength", 6.0)
+            axis_thresh = math.cos(math.radians(strength_deg))
+            inf_loc, _, _ = get_axis_snapped_location(p1, coord, context, snap_threshold=axis_thresh)
+            if inf_loc and not event.alt: target = inf_loc
+
+            self.current = target
             
             # 1. Calculate Edge Vector on Plane
-            d_vec = snap_point - p1
+            d_vec = target - p1
             if self.Zp:
                 d_plane = d_vec - self.Zp * d_vec.dot(self.Zp)
             else:
