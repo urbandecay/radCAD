@@ -262,19 +262,20 @@ class ArcTool_Common(SurfaceDrawTool):
                 return
 
             elif self.stage == 2:
-                self.current = snap_point
-                p1, p2, p3 = self.p1, self.p2, snap_point
+                # --- FIX: Stay on established drawing plane (self.Zp) ---
+                plane_n = self.Zp if self.Zp else Vector((0,0,1))
+                
+                # Project mouse point onto the plane defined by p1 and plane_n
+                d_p3 = snap_point - self.p1
+                d_plane = d_p3 - plane_n * d_p3.dot(plane_n)
+                p3_proj = self.p1 + d_plane
+                
+                # Update current to the projected point for consistent HUD feedback
+                self.current = p3_proj
+                p1, p2 = self.p1, self.p2
                 
                 v1 = p2 - p1
-                v2 = p3 - p1
-                if v1.length < 1e-6 or v2.length < 1e-6 or abs(v1.normalized().dot(v2.normalized())) > 0.999:
-                     plane_n = self.Zp if self.Zp else Vector((0,0,1))
-                else:
-                     plane_n = v1.cross(v2).normalized()
-                
-                d_p3 = p3 - p1
-                d_plane = d_p3 - plane_n * d_p3.dot(plane_n)
-                p3_proj = p1 + d_plane
+                v2 = p3_proj - p1
                 
                 m1 = (p1 + p3_proj) / 2
                 m2 = (p2 + p3_proj) / 2
