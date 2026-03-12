@@ -167,7 +167,8 @@ class CircleTool_2Point(SurfaceDrawTool):
         self.current=None
         self.preview_pts=[]
         self.constraint_axis=None
-        self.ref_normal = Vector((0,0,1)) # Track the 'floor' normal for dynamic pivoting
+        self.ref_normal = Vector((0,0,1)) 
+        self.vertical_override_axis = None 
 
     def update(self, context, event, snap_point, snap_normal):
         if self.stage==0: 
@@ -179,7 +180,6 @@ class CircleTool_2Point(SurfaceDrawTool):
             target = snap_point
             
             # 1. APPLY SNAPPING FIRST
-            # --- FIX: Alt bypasses Axis Snapping in Stage 1 ---
             if self.constraint_axis and not event.alt:
                 if self.state.get("geometry_snap", False):
                     diff = target - self.pivot
@@ -212,17 +212,41 @@ class CircleTool_2Point(SurfaceDrawTool):
                 )
                 if inf_loc: target = inf_loc
 
-            # 2. DYNAMIC PERPENDICULAR PIVOTING BASED ON FINAL TARGET
-            if self.state.get("is_perpendicular") and self.pivot:
-                bridge = target - self.pivot
-                if bridge.length_squared > 1e-8:
-                    b_vec = bridge.normalized()
-                    # Calculate vertical plane normal by crossing diameter with floor normal
-                    new_Zp = b_vec.cross(self.ref_normal).normalized()
+            # 2. COORDINATE BASIS CALCULATION
+            bridge = target - self.pivot
+            if bridge.length_squared > 1e-8:
+                b_vec = bridge.normalized()
+                is_perp_mode = self.state.get("is_perpendicular", False)
+                is_vertical = abs(b_vec.dot(self.ref_normal)) > 0.99
+
+                if is_perp_mode or is_vertical:
+                    # --- VERTICAL / PERPENDICULAR PLANE ---
+                    if is_vertical:
+                        # Case A: Snap is vertical. Use View-Aligned or Manual Override.
+                        if self.vertical_override_axis is None:
+                            # AUTO MODE: Face the Camera
+                            rv3d = context.region_data
+                            view_dir = rv3d.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
+                            ax_x, ax_y, _ = orthonormal_basis_from_normal(self.ref_normal)
+                            new_Zp = ax_x if abs(view_dir.dot(ax_x)) > abs(view_dir.dot(ax_y)) else ax_y
+                        else:
+                            # MANUAL MODE: X or Y key pressed
+                            ax_x, ax_y, _ = orthonormal_basis_from_normal(self.ref_normal)
+                            new_Zp = ax_x if self.vertical_override_axis == 'X' else ax_y
+                    else:
+                        # Case B: Standard Perpendicular 'Swing'
+                        new_Zp = b_vec.cross(self.ref_normal).normalized()
+                    
                     if new_Zp.length > 1e-4:
-                        new_Yp = self.ref_normal
-                        new_Xp = new_Yp.cross(new_Zp).normalized()
-                        self.Xp, self.Yp, self.Zp = new_Xp, new_Yp, new_Zp
+                        self.Xp = b_vec
+                        self.Zp = new_Zp.normalized()
+                        self.Yp = self.Zp.cross(self.Xp).normalized()
+                else:
+                    # --- STANDARD FLAT PLANE ---
+                    self.Zp = self.ref_normal.copy()
+                    # Reset basis but keep Xp aligned with diameter for consistency
+                    self.Xp = b_vec
+                    self.Yp = self.Zp.cross(self.Xp).normalized()
 
             self.current = target
             c = (self.pivot + target) * 0.5
@@ -244,58 +268,30 @@ class CircleTool_2Point(SurfaceDrawTool):
     def handle_input(self, context, event):
         # 1. Check Parent Input (L Key)
         if super().handle_plane_lock_input(context, event):
-            # If we just locked/unlocked via L, sync ref_normal
             if self.Zp: self.ref_normal = self.Zp.copy()
             return True
 
         # 2. Tool Specifics (P Key)
         if event.type == 'P' and event.value == 'PRESS':
             if self.stage == 0: return False
-            bridge = None
-            
-            if self.stage == 1 and self.current: bridge = self.current - self.pivot
-            
-            if bridge and bridge.length_squared > 1e-6:
-                self.state["is_perpendicular"] = not self.state.get("is_perpendicular", False)
-                
-                if self.state["is_perpendicular"]:
-                    # Ensure we have a valid reference 'floor' normal
-                    if self.state.get("locked") and self.state.get("locked_normal"):
-                        self.ref_normal = self.state["locked_normal"].copy()
-                    elif self.Zp:
-                        self.ref_normal = self.Zp.copy()
-                    else:
-                        self.ref_normal = Vector((0,0,1))
-
-                    # Perform initial dynamic calc
-                    b_vec = bridge.normalized()
-                    new_Zp = b_vec.cross(self.ref_normal).normalized()
-                    new_Yp = self.ref_normal
-                    new_Xp = new_Yp.cross(new_Zp).normalized() 
-                    self.Xp, self.Yp, self.Zp = new_Xp, new_Yp, new_Zp
-                    # We keep the 'floor' locked for the mouse, but use Zp for geometry
-                    self.state["locked"] = True
-                    self.state["locked_normal"] = self.ref_normal
-                else:
-                    # Reset to the floor plane
-                    self.Zp = self.ref_normal.copy()
-                    self.Xp, self.Yp, _ = orthonormal_basis_from_normal(self.Zp)
-                    self.state["locked_normal"] = self.Zp
-                    self.state["is_perpendicular"] = False
-                return True
-
-        # 3. Axis Locking (X/Y/Z)
-        if event.type in {'X', 'Y', 'Z'} and event.value == 'PRESS':
-            if self.stage == 0: return False
-            axes = {'X': Vector((1, 0, 0)), 'Y': Vector((0, 1, 0)), 'Z': Vector((0, 0, 1))}
-            new_axis = axes[event.type]
-            if getattr(self, "constraint_axis", None) == new_axis:
-                self.constraint_axis = None
-                self.state["constraint_axis"] = None
-            else:
-                self.constraint_axis = new_axis
-                self.state["constraint_axis"] = new_axis
+            self.state["is_perpendicular"] = not self.state.get("is_perpendicular", False)
+            self.vertical_override_axis = None # Reset auto-behavior
+            # Reset locking to the floor normal to allow easy rotation
+            self.state["locked"] = True
+            self.state["locked_normal"] = self.ref_normal
             return True
+
+        # 3. Vertical Orientation Override (X/Y)
+        if event.type in {'X', 'Y'} and event.value == 'PRESS':
+            if self.pivot and self.current:
+                bridge = self.current - self.pivot
+                if bridge.length_squared > 1e-8:
+                    # Check if we are currently vertical (either auto or via P mode)
+                    is_vertical = abs(bridge.normalized().dot(self.ref_normal)) > 0.99
+                    if is_vertical or self.state.get("is_perpendicular"):
+                        self.vertical_override_axis = event.type
+                        self.core.report({'INFO'}, f"Orientation Locked to {event.type}-Facing")
+                        return True
         return False
 
 class CircleTool_3Point(SurfaceDrawTool):

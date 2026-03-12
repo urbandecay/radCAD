@@ -29,13 +29,17 @@ class ArcTool_Common(SurfaceDrawTool):
         self.segments = self.state["segments"]
         self.constraint_axis = None
 
+        # --- VERTICAL HANDLING ---
+        self.ref_normal = Vector((0,0,1))
+        self.vertical_override_axis = None # None means 'Auto'
+
     def update(self, context, event, snap_point, snap_normal):
         self.current = snap_point
         
         # --- STAGE 0: THE PREP CHEF ---
-        # Let the parent handle finding the wall/floor
         if self.stage == 0:
             self.update_initial_plane(context, event, snap_point, snap_normal)
+            if self.Zp: self.ref_normal = self.Zp.copy()
             return
 
         # --- STAGE 1 & 2: THE SPECIALIST ---
@@ -44,7 +48,7 @@ class ArcTool_Common(SurfaceDrawTool):
         # 1-POINT ARC LOGIC
         # =========================================================
         if self.mode == "1POINT":
-            pv = self.pivot # Parent manages self.pivot
+            pv = self.pivot 
             
             if self.stage == 1:
                 # Dragging Radius
@@ -65,7 +69,7 @@ class ArcTool_Common(SurfaceDrawTool):
                     else: 
                         final_angle = raw_angle
                     
-                self.compass_rot = final_angle # Used by tool_previews to rotate the compass
+                self.compass_rot = final_angle 
                 snapped_vec2 = Vector((math.cos(final_angle), math.sin(final_angle))) * length
                 self.current = pv + plane_to_world(snapped_vec2, self.Xp, self.Yp)
                 self.radius = length
@@ -156,7 +160,22 @@ class ArcTool_Common(SurfaceDrawTool):
                 plane_n = self.Zp if self.Zp else Vector((0,0,1))
                 chord_dir = chord_vec.normalized()
                 
-                if abs(chord_dir.dot(plane_n)) > 0.99:
+                # --- INTELLIGENT VERTICAL FALLBACK ---
+                if abs(chord_dir.dot(self.ref_normal)) > 0.99:
+                    # Chord is vertical.
+                    if self.vertical_override_axis is None:
+                        # AUTO MODE: Face the Camera
+                        rv3d = context.region_data
+                        view_dir = rv3d.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
+                        ax_x, ax_y, _ = orthonormal_basis_from_normal(self.ref_normal)
+                        plane_n = ax_x if abs(view_dir.dot(ax_x)) > abs(view_dir.dot(ax_y)) else ax_y
+                    else:
+                        # MANUAL MODE
+                        ax_x, ax_y, _ = orthonormal_basis_from_normal(self.ref_normal)
+                        plane_n = ax_x if self.vertical_override_axis == 'X' else ax_y
+                    self.Zp = plane_n
+                elif abs(chord_dir.dot(plane_n)) > 0.99:
+                    # Generic fallback if chord aligns with plane normal but isn't vertical
                     plane_n = Vector((1, 0, 0))
                     if abs(chord_dir.dot(plane_n)) > 0.99: plane_n = Vector((0, 1, 0))
                     self.Zp = plane_n
@@ -265,6 +284,24 @@ class ArcTool_Common(SurfaceDrawTool):
                 # --- FIX: Stay on established drawing plane (self.Zp) ---
                 plane_n = self.Zp if self.Zp else Vector((0,0,1))
                 
+                # --- INTELLIGENT VERTICAL FALLBACK FOR 3-POINT ---
+                chord_vec = self.p2 - self.p1
+                if chord_vec.length > 1e-6:
+                    chord_dir = chord_vec.normalized()
+                    if abs(chord_dir.dot(self.ref_normal)) > 0.99:
+                        # Chord is vertical.
+                        if self.vertical_override_axis is None:
+                            # AUTO MODE: Face the Camera
+                            rv3d = context.region_data
+                            view_dir = rv3d.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
+                            ax_x, ax_y, _ = orthonormal_basis_from_normal(self.ref_normal)
+                            plane_n = ax_x if abs(view_dir.dot(ax_x)) > abs(view_dir.dot(ax_y)) else ax_y
+                        else:
+                            # MANUAL MODE
+                            ax_x, ax_y, _ = orthonormal_basis_from_normal(self.ref_normal)
+                            plane_n = ax_x if self.vertical_override_axis == 'X' else ax_y
+                        self.Zp = plane_n
+
                 # Project mouse point onto the plane defined by p1 and plane_n
                 d_p3 = snap_point - self.p1
                 d_plane = d_p3 - plane_n * d_p3.dot(plane_n)
@@ -392,6 +429,7 @@ class ArcTool_Common(SurfaceDrawTool):
                 # 2-Point: Just record normal, don't hard lock yet
                 self.state["locked"] = False
             
+            if self.Zp: self.ref_normal = self.Zp.copy()
             self.stage = 1
             return 'NEXT_STAGE'
 
@@ -459,12 +497,15 @@ class ArcTool_Common(SurfaceDrawTool):
             chord_vec = self.p2 - self.p1
             if chord_vec.length > 1e-6:
                 chord_dir = chord_vec.normalized()
-                if abs(chord_dir.dot(self.Zp)) > 0.99:
-                    # Reset to X-axis if we are vertical
-                    self.Zp = Vector((1, 0, 0))
-                    from ..orientation_utils import orthonormal_basis_from_normal
+                if abs(chord_dir.dot(self.ref_normal)) > 0.99:
+                    # Intelligent Vertical Flip
+                    rv3d = context.region_data
+                    view_dir = rv3d.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
+                    ax_x, ax_y, _ = orthonormal_basis_from_normal(self.ref_normal)
+                    self.Zp = ax_x if abs(view_dir.dot(ax_x)) > abs(view_dir.dot(ax_y)) else ax_y
                     self.Xp, self.Yp, _ = orthonormal_basis_from_normal(self.Zp)
                     self.state["locked_normal"] = self.Zp
+                    self.state["locked"] = True
             self.stage = 2
             return 'NEXT_STAGE'
 
@@ -513,6 +554,7 @@ class ArcTool_Common(SurfaceDrawTool):
     def handle_input(self, context, event):
         # 1. Check Parent Input first (L Key)
         if super().handle_plane_lock_input(context, event):
+            if self.Zp: self.ref_normal = self.Zp.copy()
             return True
 
         # 2. Tool Specifics (P Key)
@@ -530,22 +572,30 @@ class ArcTool_Common(SurfaceDrawTool):
             if bridge and bridge.length_squared > 1e-6:
                 # Vertical check logic...
                 b_vec = bridge.normalized()
-                floor_n = self.state.get("locked_normal") or Vector((0,0,1))
+                floor_n = self.ref_normal
                 is_vertical = abs(b_vec.dot(floor_n)) > 0.99
                 
                 if is_vertical and self.mode in ["2POINT", "3POINT"] and self.stage == 2:
-                    curr_n = self.Zp if self.Zp else Vector((1,0,0))
-                    new_Zp = Vector((0,1,0)) if abs(curr_n.dot(Vector((1,0,0)))) > 0.9 else Vector((1,0,0))
-                    self.Zp = new_Zp
+                    # Switch to manual toggle for vertical state
+                    if self.vertical_override_axis == 'X':
+                        self.vertical_override_axis = 'Y'
+                    else:
+                        self.vertical_override_axis = 'X'
+                    
+                    rv3d = context.region_data
+                    ax_x, ax_y, _ = orthonormal_basis_from_normal(self.ref_normal)
+                    self.Zp = ax_x if self.vertical_override_axis == 'X' else ax_y
                     self.Xp, self.Yp, _ = orthonormal_basis_from_normal(self.Zp)
                     self.state["locked_normal"] = self.Zp
+                    self.state["locked"] = True
+                    self.core.report({'INFO'}, f"Vertical Orientation: {self.vertical_override_axis}")
                     return True
 
                 self.state["is_perpendicular"] = not self.state.get("is_perpendicular", False)
                 
                 if self.state["is_perpendicular"]:
                     b_vec = bridge.normalized()
-                    floor_n = self.state.get("locked_normal") or Vector((0,0,1))
+                    floor_n = self.ref_normal
                     new_Zp = b_vec.cross(floor_n).normalized()
                     new_Yp = floor_n 
                     new_Xp = new_Yp.cross(new_Zp).normalized() 
@@ -553,7 +603,7 @@ class ArcTool_Common(SurfaceDrawTool):
                     self.state["locked_normal"] = new_Zp
                 else:
                     # Reset to generic
-                    floor_n = Vector((0,0,1)) 
+                    floor_n = self.ref_normal
                     self.Xp, self.Yp, self.Zp = orthonormal_basis_from_normal(floor_n)
                     self.state["locked_normal"] = floor_n
 
@@ -581,7 +631,23 @@ class ArcTool_Common(SurfaceDrawTool):
         # 3. Axis Locking (X/Y/Z)
         if event.type in {'X', 'Y', 'Z'} and event.value == 'PRESS':
             # --- FIX: Only allow X/Y/Z plane locking BEFORE drawing starts (Stage 0) ---
-            if self.stage > 0: return False
+            if self.stage > 0: 
+                # --- NEW: Allow X/Y toggle for vertical chords during drawing ---
+                if event.type in {'X', 'Y'}:
+                    if self.p1 and self.p2:
+                        chord_vec = self.p2 - self.p1
+                        if chord_vec.length > 1e-6:
+                            if abs(chord_vec.normalized().dot(self.ref_normal)) > 0.99:
+                                self.vertical_override_axis = event.type
+                                rv3d = context.region_data
+                                ax_x, ax_y, _ = orthonormal_basis_from_normal(self.ref_normal)
+                                self.Zp = ax_x if self.vertical_override_axis == 'X' else ax_y
+                                self.Xp, self.Yp, _ = orthonormal_basis_from_normal(self.Zp)
+                                self.state["locked_normal"] = self.Zp
+                                self.state["locked"] = True
+                                self.core.report({'INFO'}, f"Locked to {event.type}-Facing Orientation")
+                                return True
+                return False
 
             axes = {'X': Vector((1, 0, 0)), 'Y': Vector((0, 1, 0)), 'Z': Vector((0, 0, 1))}
             
