@@ -213,7 +213,12 @@ def draw_hotkeys_panel():
             lines.append(("D: Set Diameter", None))
         elif state.get("tool_mode") == "LINE_POLY":            lines.append(("L: Set Length", None)) # --- NEW: Line Length Hint ---
         elif state.get("tool_mode") == "ELLIPSE_FOCI":
-            lines.append(("F: Set Foci", None))
+            if state["stage"] == 1:
+                lines.append(("F: Set Foci", None))
+            
+            # --- KEEP FOCI TOGGLE ---
+            keep_state = "ON" if state.get("keep_foci") else "OFF"
+            lines.append((f"K: Keep Foci ({keep_state})", None))
         elif state.get("tool_mode") != "ELLIPSE_CORNERS":
             lines.append(("R: Set Radius", None))
     
@@ -468,7 +473,8 @@ def draw_hud_2d():
                     elif tool_mode == "ELLIPSE_ENDPOINTS" and state["stage"] == 1:
                         label = "D:"
                     elif tool_mode == "LINE_POLY": label = "" # --- REMOVED 'L' for Line Tool
-                    elif tool_mode == "ELLIPSE_FOCI": label = "F:"
+                    elif tool_mode == "ELLIPSE_FOCI": 
+                        label = "F:" if state["stage"] == 1 else "R:"
                     
                     r_txt = get_display_str(label, state['input_string'], True)
                     h1 = draw_ui_box_generic(px, current_y, r_txt, active=True)
@@ -482,18 +488,39 @@ def draw_hud_2d():
                     h1 = draw_ui_box_generic(px, current_y, r_txt)
                     current_y -= (h1 + 4)
                 elif tool_mode == "ELLIPSE_FOCI":
-                    label = "F: "
-                    # Use radius for Stage 2 (minor radius), or dist between foci for Stage 1
-                    r_val = state.get("radius", 0.0) if state["stage"] == 2 else ((state["current"] - state["pivot"]).length if (state["current"] and state["pivot"]) else 0.0)
-                    r_txt = label + format_length(r_val)
-                    h1 = draw_ui_box_generic(px, current_y, r_txt)
+                    # Stage 1: Foci Distance
+                    label_f = "F: "
+                    f1, f2 = state.get("f1") or state["pivot"], state.get("f2") or state["current"]
+                    dist_f = (f2 - f1).length if (f1 and f2) else 0.0
+                    
+                    r_txt_f = label_f + format_length(dist_f)
+                    h1 = draw_ui_box_generic(px, current_y, r_txt_f)
                     current_y -= (h1 + 4)
-                elif tool_mode == "ELLIPSE_ENDPOINTS" and state["stage"] == 1:
-                    label = "D: "
-                    d_val = (state["current"] - state["pivot"]).length if (state["current"] and state["pivot"]) else 0.0
-                    r_txt = label + format_length(d_val)
-                    h1 = draw_ui_box_generic(px, current_y, r_txt)
+
+                    # Stage 2: Also show Minor Radius (R)
+                    if state["stage"] == 2:
+                        label_r = "R: "
+                        r_val = state.get("ry", 0.0)
+                        r_txt_r = label_r + format_length(r_val)
+                        h2 = draw_ui_box_generic(px, current_y, r_txt_r)
+                        current_y -= (h2 + 4)
+                elif tool_mode == "ELLIPSE_ENDPOINTS":
+                    # Stage 1: Diameter
+                    label_d = "D: "
+                    p1, p2 = state.get("p1") or state["pivot"], state.get("p2") or state["current"]
+                    dist_d = (p2 - p1).length if (p1 and p2) else 0.0
+                    
+                    r_txt_d = label_d + format_length(dist_d)
+                    h1 = draw_ui_box_generic(px, current_y, r_txt_d)
                     current_y -= (h1 + 4)
+
+                    # Stage 2: Also show Minor Radius (R)
+                    if state["stage"] == 2:
+                        label_r = "R: "
+                        r_val = state.get("ry", 0.0)
+                        r_txt_r = label_r + format_length(r_val)
+                        h2 = draw_ui_box_generic(px, current_y, r_txt_r)
+                        current_y -= (h2 + 4)
                 elif tool_mode == "ELLIPSE_CORNERS":
                     pass
                 elif tool_mode in ["2POINT", "3POINT", "CIRCLE_2POINT", "CIRCLE_3POINT"]:
