@@ -523,7 +523,7 @@ class ArcTool_Common(SurfaceDrawTool):
             if self.mode == "1POINT":
                 if self.stage == 1 and self.current: bridge = self.current - self.pivot
                 elif self.stage == 2 and self.start: bridge = self.start - self.pivot
-            elif self.mode == "2POINT":
+            elif self.mode in ["2POINT", "3POINT"]:
                 if self.stage == 1 and self.current: bridge = self.current - self.p1
                 elif self.stage == 2 and self.p2: bridge = self.p2 - self.p1
             
@@ -533,7 +533,7 @@ class ArcTool_Common(SurfaceDrawTool):
                 floor_n = self.state.get("locked_normal") or Vector((0,0,1))
                 is_vertical = abs(b_vec.dot(floor_n)) > 0.99
                 
-                if is_vertical and self.mode == "2POINT" and self.stage == 2:
+                if is_vertical and self.mode in ["2POINT", "3POINT"] and self.stage == 2:
                     curr_n = self.Zp if self.Zp else Vector((1,0,0))
                     new_Zp = Vector((0,1,0)) if abs(curr_n.dot(Vector((1,0,0)))) > 0.9 else Vector((1,0,0))
                     self.Zp = new_Zp
