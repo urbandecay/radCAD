@@ -220,6 +220,9 @@ def draw_hotkeys_panel():
             keep_state = "ON" if state.get("keep_foci") else "OFF"
             lines.append((f"K: Keep Foci ({keep_state})", None))
         elif state.get("tool_mode") == "ELLIPSE_RADIUS":
+            dist_d = state.get("rx", 0.0) * 2.0
+            lines.append((f"D: Diameter: {format_length(dist_d)}", None))
+            lines.append((None, None))
             if state["stage"] == 1:
                 lines.append(("D: Set Diameter", None))
             lines.append(("R: Set Radius", None))
@@ -231,7 +234,7 @@ def draw_hotkeys_panel():
             lines.append(("H: Set Sagitta Height", None))
             # === NEW: Stage 2 Alt Hint (Bypass 180 Snap) ===
             lines.append(("Alt: Bypass 180\u00B0 Snap", None))
-        elif tool_mode not in ["3POINT", "CIRCLE_3POINT", "CIRCLE_TAN_TAN_TAN", "LINE_POLY", "ELLIPSE_FOCI"]:
+        elif tool_mode not in ["3POINT", "CIRCLE_3POINT", "CIRCLE_TAN_TAN_TAN", "LINE_POLY", "ELLIPSE_FOCI", "ELLIPSE_RADIUS", "ELLIPSE_ENDPOINTS"]:
             lines.append(("A: Set Angle", None))
             
         lines.append(("S: Set Segments", None))
@@ -464,6 +467,26 @@ def draw_hud_2d():
             current_y = py
             tool_mode = state.get("tool_mode", "1POINT")
 
+            # --- STAGE 1 RECAP (Always show above input in Stage 2) ---
+            if state["stage"] == 2:
+                if tool_mode == "ELLIPSE_FOCI":
+                    f1, f2 = state.get("f1") or state["pivot"], state.get("f2") or state["current"]
+                    dist_f = (f2 - f1).length if (f1 and f2) else 0.0
+                    r_txt_f = "F: " + format_length(dist_f)
+                    h_f = draw_ui_box_generic(px, current_y, r_txt_f)
+                    current_y -= (h_f + 4)
+                elif tool_mode == "ELLIPSE_ENDPOINTS":
+                    p1, p2 = state.get("p1") or state["pivot"], state.get("p2") or state["current"]
+                    dist_d = (p2 - p1).length if (p1 and p2) else 0.0
+                    r_txt_d = "D: " + format_length(dist_d)
+                    h_d = draw_ui_box_generic(px, current_y, r_txt_d)
+                    current_y -= (h_d + 4)
+                elif tool_mode == "ELLIPSE_RADIUS":
+                    dist_d = state.get("rx", 0.0) * 2.0
+                    r_txt_d = "D: " + format_length(dist_d)
+                    h_d = draw_ui_box_generic(px, current_y, r_txt_d)
+                    current_y -= (h_d + 4)
+
             # --- D/R/L/F LABEL LOGIC ---
             if state["input_mode"] == 'RADIUS': 
                 if tool_mode == "ELLIPSE_CORNERS":
@@ -494,51 +517,41 @@ def draw_hud_2d():
                     h1 = draw_ui_box_generic(px, current_y, r_txt)
                     current_y -= (h1 + 4)
                 elif tool_mode == "ELLIPSE_FOCI":
-                    # Stage 1: Foci Distance
-                    label_f = "F: "
-                    f1, f2 = state.get("f1") or state["pivot"], state.get("f2") or state["current"]
-                    dist_f = (f2 - f1).length if (f1 and f2) else 0.0
-                    
-                    r_txt_f = label_f + format_length(dist_f)
-                    h1 = draw_ui_box_generic(px, current_y, r_txt_f)
-                    current_y -= (h1 + 4)
-
-                    # Stage 2: Also show Minor Radius (R)
-                    if state["stage"] == 2:
+                    # Only show Minor Radius here in Stage 2 (F is shown in recap)
+                    if state["stage"] == 1:
+                        # For Stage 1 we still need the Foci label
+                        f1, f2 = state.get("f1") or state["pivot"], state.get("f2") or state["current"]
+                        dist_f = (f2 - f1).length if (f1 and f2) else 0.0
+                        r_txt_f = "F: " + format_length(dist_f)
+                        h1 = draw_ui_box_generic(px, current_y, r_txt_f)
+                        current_y -= (h1 + 4)
+                    elif state["stage"] == 2:
                         label_r = "R: "
                         r_val = state.get("ry", 0.0)
                         r_txt_r = label_r + format_length(r_val)
                         h2 = draw_ui_box_generic(px, current_y, r_txt_r)
                         current_y -= (h2 + 4)
                 elif tool_mode == "ELLIPSE_ENDPOINTS":
-                    # Stage 1: Diameter
-                    label_d = "D: "
-                    p1, p2 = state.get("p1") or state["pivot"], state.get("p2") or state["current"]
-                    dist_d = (p2 - p1).length if (p1 and p2) else 0.0
-                    
-                    r_txt_d = label_d + format_length(dist_d)
-                    h1 = draw_ui_box_generic(px, current_y, r_txt_d)
-                    current_y -= (h1 + 4)
-
-                    # Stage 2: Also show Minor Radius (R)
-                    if state["stage"] == 2:
+                    if state["stage"] == 1:
+                        # For Stage 1 we still need the Diameter label
+                        p1, p2 = state.get("p1") or state["pivot"], state.get("p2") or state["current"]
+                        dist_d = (p2 - p1).length if (p1 and p2) else 0.0
+                        r_txt_d = "D: " + format_length(dist_d)
+                        h1 = draw_ui_box_generic(px, current_y, r_txt_d)
+                        current_y -= (h1 + 4)
+                    elif state["stage"] == 2:
                         label_r = "R: "
                         r_val = state.get("ry", 0.0)
                         r_txt_r = label_r + format_length(r_val)
                         h2 = draw_ui_box_generic(px, current_y, r_txt_r)
                         current_y -= (h2 + 4)
                 elif tool_mode == "ELLIPSE_RADIUS":
-                    # Stage 1: Diameter
-                    label_d = "D: "
-                    r_val_x = state.get("rx", 0.0)
-                    dist_d = r_val_x * 2.0
-                    
-                    r_txt_d = label_d + format_length(dist_d)
-                    h1 = draw_ui_box_generic(px, current_y, r_txt_d)
-                    current_y -= (h1 + 4)
-
-                    # Stage 2: Also show Minor Radius (R)
-                    if state["stage"] == 2:
+                    if state["stage"] == 1:
+                        dist_d = state.get("rx", 0.0) * 2.0
+                        r_txt_d = "D: " + format_length(dist_d)
+                        h1 = draw_ui_box_generic(px, current_y, r_txt_d)
+                        current_y -= (h1 + 4)
+                    elif state["stage"] == 2:
                         label_r = "R: "
                         r_val_y = state.get("ry", 0.0)
                         r_txt_r = label_r + format_length(r_val_y)
