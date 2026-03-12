@@ -2,6 +2,7 @@ import math
 import bpy
 import bmesh
 from mathutils import Vector, geometry
+from bpy_extras import view3d_utils
 from ..geometry_utils import arc_points_world, snap_angle_soft
 from ..plane_utils import world_to_plane, plane_to_world
 from ..inference_utils import get_axis_snapped_location
@@ -178,7 +179,6 @@ class CircleTool_2Point(SurfaceDrawTool):
             
         if self.stage==1:
             # 1. DIRECT PROJECT TO FLOOR PLANE FIRST
-            from bpy_extras import view3d_utils
             coord = (event.mouse_region_x, event.mouse_region_y)
             ray_origin = view3d_utils.region_2d_to_origin_3d(context.region, context.region_data, coord)
             ray_vector = view3d_utils.region_2d_to_vector_3d(context.region, context.region_data, coord)
@@ -193,7 +193,6 @@ class CircleTool_2Point(SurfaceDrawTool):
                 target = self.pivot + proj
             
             elif not self.state.get("geometry_snap", False) and not event.alt:
-                from ..inference_utils import get_axis_snapped_location
                 strength_deg = self.state.get("snap_strength", 6.0)
                 strength_deg = max(0.1, min(89.0, strength_deg))
                 axis_thresh = math.cos(math.radians(strength_deg))
@@ -221,11 +220,8 @@ class CircleTool_2Point(SurfaceDrawTool):
                 self._is_vert_last = is_vertical
 
                 # B. STABILIZED BASIS VIA SCREEN ANGLE
-                # We use the 2D screen angle to drive the 3D orientation.
-                # This bypasses the 3D ray-intersection grid jumps.
-                from bpy_extras.view3d_utils import location_3d_to_region_2d
                 reg, rv3d = context.region, context.region_data
-                p2d = location_3d_to_region_2d(reg, rv3d, self.pivot)
+                p2d = view3d_utils.location_3d_to_region_2d(reg, rv3d, self.pivot)
                 
                 if p2d:
                     # Get 2D Screen Angle
@@ -234,8 +230,7 @@ class CircleTool_2Point(SurfaceDrawTool):
                     if screen_dir.length_squared > 1:
                         # Find the 3D vector that aligns with this screen direction
                         # on the floor plane.
-                        from bpy_extras.view3d_utils import region_2d_to_vector_3d
-                        view_vec = region_2d_to_vector_3d(reg, rv3d, m2d)
+                        view_vec = view3d_utils.region_2d_to_vector_3d(reg, rv3d, m2d)
                         
                         if is_perp_mode or is_vertical:
                             if is_vertical:
@@ -329,7 +324,6 @@ class CircleTool_3Point(SurfaceDrawTool):
             
         if self.stage==1:
             # 1. DIRECT PROJECT TO FLOOR PLANE FIRST
-            from bpy_extras import view3d_utils
             coord = (event.mouse_region_x, event.mouse_region_y)
             ray_origin = view3d_utils.region_2d_to_origin_3d(context.region, context.region_data, coord)
             ray_vector = view3d_utils.region_2d_to_vector_3d(context.region, context.region_data, coord)
@@ -344,7 +338,6 @@ class CircleTool_3Point(SurfaceDrawTool):
                 target = self.pivot + proj
             
             elif not self.state.get("geometry_snap", False) and not event.alt:
-                from ..inference_utils import get_axis_snapped_location
                 strength_deg = self.state.get("snap_strength", 6.0)
                 strength_deg = max(0.1, min(89.0, strength_deg))
                 axis_thresh = math.cos(math.radians(strength_deg))
@@ -372,9 +365,8 @@ class CircleTool_3Point(SurfaceDrawTool):
                 self._is_vert_last_3pt = is_vertical
 
                 # B. STABILIZED BASIS VIA SCREEN ANGLE
-                from bpy_extras.view3d_utils import location_3d_to_region_2d
                 reg, rv3d = context.region, context.region_data
-                p2d = location_3d_to_region_2d(reg, rv3d, self.pivot)
+                p2d = view3d_utils.location_3d_to_region_2d(reg, rv3d, self.pivot)
                 
                 if p2d:
                     m2d = Vector((event.mouse_region_x, event.mouse_region_y))

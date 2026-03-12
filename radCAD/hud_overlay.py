@@ -308,7 +308,6 @@ def draw_hud_2d():
     try:
         # --- NEW 2D SNAP MARKER (CUSTOMIZABLE) ---
         if state.get("snap_point"):
-            import bpy
             ctx = bpy.context
             reg, rv3d = ctx.region, ctx.region_data
             
@@ -376,7 +375,6 @@ def draw_hud_2d():
 
         # 1. Preview Points (Arc Fill or Phantom Circles)
         if state.get("preview_pts"):
-            import bpy
             ctx = bpy.context
             reg, rv3d = ctx.region, ctx.region_data
             sh = get_2d_shader()
@@ -434,7 +432,6 @@ def draw_hud_2d():
         
         # 3. Measurements
         if state["show_measure"]:
-            import bpy
             ctx = bpy.context
             reg, rv3d = ctx.region, ctx.region_data
             

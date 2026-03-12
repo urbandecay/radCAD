@@ -3,6 +3,7 @@ from mathutils import Vector, geometry
 from .base_tool import SurfaceDrawTool
 from ..plane_utils import plane_to_world
 from ..orientation_utils import orthonormal_basis_from_normal
+from ..inference_utils import get_axis_snapped_location
 
 def ellipse_points_world(center, rx, ry, segments, Xp, Yp):
     """
@@ -54,7 +55,6 @@ class EllipseTool_FromRadius(SurfaceDrawTool):
             if target is None: target = snap_point 
 
             # 2. APPLY SNAPPING
-            from ..inference_utils import get_axis_snapped_location
             strength_deg = self.state.get("snap_strength", 6.0)
             axis_thresh = math.cos(math.radians(strength_deg))
             inf_loc, _, _ = get_axis_snapped_location(self.pivot, (event.mouse_region_x, event.mouse_region_y), context, snap_threshold=axis_thresh)
@@ -173,7 +173,6 @@ class EllipseTool_FociPoint(SurfaceDrawTool):
             if target is None: target = snap_point 
 
             # SNAPPING
-            from ..inference_utils import get_axis_snapped_location
             strength_deg = self.state.get("snap_strength", 6.0)
             axis_thresh = math.cos(math.radians(strength_deg))
             inf_loc, _, _ = get_axis_snapped_location(self.f1, (event.mouse_region_x, event.mouse_region_y), context, snap_threshold=axis_thresh)
@@ -293,7 +292,6 @@ class EllipseTool_FromEndpoints(SurfaceDrawTool):
             if target is None: target = snap_point 
 
             # SNAPPING
-            from ..inference_utils import get_axis_snapped_location
             strength_deg = self.state.get("snap_strength", 6.0)
             axis_thresh = math.cos(math.radians(strength_deg))
             inf_loc, _, _ = get_axis_snapped_location(self.p1, (event.mouse_region_x, event.mouse_region_y), context, snap_threshold=axis_thresh)

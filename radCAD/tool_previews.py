@@ -762,11 +762,9 @@ def draw_cb_3d():
                     draw_points(ctx, shaders, [state["current"]], (0.0, 0.0, 0.0, 1.0), settings.get("PREVIEW_VERTEX_SIZE", 5), settings)
 
         elif mode == "CIRCLE_TAN_TAN_TAN":
-            from .tool_previews import draw_preview_tan_tan_tan # Just in case
             draw_preview_tan_tan_tan(ctx, shaders, settings)
             
         elif mode == "CIRCLE_TAN_TAN":
-            from .tool_previews import draw_preview_tan_tan
             draw_preview_tan_tan(ctx, shaders, settings)
 
         elif mode == "1POINT":
@@ -779,7 +777,6 @@ def draw_cb_3d():
             draw_preview_3point(ctx, shaders, settings)
             
         elif mode == "CIRCLE_3POINT": 
-            from .tool_previews import draw_preview_circle_3point
             draw_preview_circle_3point(ctx, shaders, settings)
             
         elif mode in ["ELLIPSE_RADIUS", "ELLIPSE_ENDPOINTS", "ELLIPSE_FOCI", "ELLIPSE_CORNERS"]:

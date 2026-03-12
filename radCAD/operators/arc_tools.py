@@ -1,5 +1,6 @@
 import math
 from mathutils import Vector, geometry
+from bpy_extras import view3d_utils
 from ..geometry_utils import snap_angle_soft, unwrap, arc_points_world
 from ..plane_utils import world_to_plane, plane_to_world
 from ..inference_utils import get_axis_snapped_location
@@ -119,7 +120,6 @@ class ArcTool_Common(SurfaceDrawTool):
                         proj = self.constraint_axis * diff.dot(self.constraint_axis)
                         target = self.pivot + proj
                     else:
-                        from bpy_extras import view3d_utils
                         region = context.region
                         rv3d = context.region_data
                         coord = (event.mouse_region_x, event.mouse_region_y)
@@ -160,12 +160,13 @@ class ArcTool_Common(SurfaceDrawTool):
                 plane_n = self.Zp if self.Zp else Vector((0,0,1))
                 chord_dir = chord_vec.normalized()
                 
-                # --- SCREEN-SPACE ANCHOR STABILIZATION ---
-                # Use view direction to stabilize verticality and flips
+                # --- 2-POINT ARC PLANE LOGIC (Proven Stability Port) ---
                 rv3d = context.region_data
                 view_fwd = rv3d.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
-
-                # Detect Verticality with Hysteresis
+                
+                is_perp_mode = self.state.get("is_perpendicular", False)
+                
+                # A. Detect Verticality with Hysteresis
                 dot_v = abs(chord_dir.dot(self.ref_normal))
                 was_vertical = getattr(self, "_is_vert_last", False)
                 threshold = 0.98 if was_vertical else 0.995 
@@ -179,11 +180,14 @@ class ArcTool_Common(SurfaceDrawTool):
                         plane_n = ax_x if abs(view_fwd.dot(ax_x)) > abs(view_fwd.dot(ax_y)) else ax_y
                     else:
                         plane_n = ax_x if self.vertical_override_axis == 'X' else ax_y
-                else:
-                    # Case B: Dynamic swinging. 
-                    # Ensure normal always faces camera to prevent jittery flips
-                    plane_n = chord_dir.cross(self.ref_normal).normalized()
+                elif is_perp_mode:
+                    # Case B: Perpendicular mode is ON. Use the plane already stored in self.Zp.
+                    plane_n = self.Zp if self.Zp else self.ref_normal
+                    # Stabilize normal to face camera
                     if plane_n.dot(view_fwd) > 0: plane_n = -plane_n
+                else:
+                    # Case C: DEFAULT. Stay FLAT on the floor.
+                    plane_n = self.ref_normal
                 
                 self.Zp = plane_n
                         
@@ -191,7 +195,6 @@ class ArcTool_Common(SurfaceDrawTool):
                 target_pt = snap_point
                 
                 if not self.state.get("geometry_snap", False) and context.region and context.region_data:
-                    from bpy_extras import view3d_utils
                     coord = (event.mouse_region_x, event.mouse_region_y)
                     ray_origin = view3d_utils.region_2d_to_origin_3d(context.region, context.region_data, coord)
                     ray_vector = view3d_utils.region_2d_to_vector_3d(context.region, context.region_data, coord)
@@ -260,7 +263,6 @@ class ArcTool_Common(SurfaceDrawTool):
                         proj = self.constraint_axis * diff.dot(self.constraint_axis)
                         target = self.pivot + proj
                     else:
-                        from bpy_extras import view3d_utils
                         region = context.region
                         rv3d = context.region_data
                         coord = (event.mouse_region_x, event.mouse_region_y)
@@ -489,7 +491,6 @@ class ArcTool_Common(SurfaceDrawTool):
                     target = self.pivot + proj
                 else:
                     # Ray intersect
-                    from bpy_extras import view3d_utils
                     region = context.region
                     rv3d = context.region_data
                     coord = (event.mouse_region_x, event.mouse_region_y)
@@ -539,7 +540,6 @@ class ArcTool_Common(SurfaceDrawTool):
                     proj = self.constraint_axis * diff.dot(self.constraint_axis)
                     target = self.pivot + proj
                 else:
-                    from bpy_extras import view3d_utils
                     region = context.region
                     rv3d = context.region_data
                     coord = (event.mouse_region_x, event.mouse_region_y)
@@ -625,7 +625,6 @@ class ArcTool_Common(SurfaceDrawTool):
 
                 # --- FIX: Re-tether 1-Point Arc after Plane Toggle ---
                 if self.mode == "1POINT" and self.stage > 0:
-                    from bpy_extras import view3d_utils
                     region = context.region
                     rv3d = context.region_data
                     coord = (event.mouse_region_x, event.mouse_region_y)
