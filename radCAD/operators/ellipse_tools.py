@@ -106,20 +106,20 @@ class EllipseTool_FromRadius(SurfaceDrawTool):
             self.preview_pts = [self.pivot, self.pivot + (self.Xp * (self.rx * 2.0))]
 
         if self.stage == 2:
-            pv = self.pivot
+            center = self.pivot + (self.Xp * self.rx)
             target_pt = snap_point
             if not self.state.get("geometry_snap", False):
                 ray_origin = view3d_utils.region_2d_to_origin_3d(context.region, context.region_data, coord)
                 ray_vector = view3d_utils.region_2d_to_vector_3d(context.region, context.region_data, coord)
-                hit = geometry.intersect_line_plane(ray_origin, ray_origin + ray_vector, pv, self.Zp)
+                hit = geometry.intersect_line_plane(ray_origin, ray_origin + ray_vector, center, self.Zp)
                 if hit: target_pt = hit
 
-            d = target_pt - pv
+            d = target_pt - center
             dist_y = d.dot(self.Yp)
             self.ry = abs(dist_y)
-            self.current = pv + (self.Yp * dist_y)
+            self.current = center + (self.Yp * dist_y)
             self.segments = self.state["segments"]
-            self.preview_pts = ellipse_points_world(self.pivot, self.rx, self.ry, self.segments, self.Xp, self.Yp)
+            self.preview_pts = ellipse_points_world(center, self.rx, self.ry, self.segments, self.Xp, self.Yp)
 
     def handle_input(self, context, event):
         if super().handle_plane_lock_input(context, event):
@@ -189,7 +189,8 @@ class EllipseTool_FromRadius(SurfaceDrawTool):
             self.stage = 2 
             self.preview_pts = [self.pivot, self.pivot + (self.Xp * (self.rx * 2.0))]
         elif self.stage >= 2:
-            self.preview_pts = ellipse_points_world(self.pivot, self.rx, self.ry, self.segments, self.Xp, self.Yp)
+            center = self.pivot + (self.Xp * self.rx)
+            self.preview_pts = ellipse_points_world(center, self.rx, self.ry, self.segments, self.Xp, self.Yp)
 
 class EllipseTool_FociPoint(SurfaceDrawTool):
     def __init__(self, core):

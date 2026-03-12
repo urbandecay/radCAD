@@ -509,9 +509,11 @@ def draw_preview_ellipse(ctx, shaders, prefs):
         
         # Draw Major Axis (Ghosted/Reference)
         if mode == "ELLIPSE_RADIUS" and "Xp" in state and "rx" in state:
-            end_major = pv + (state["Xp"] * state["rx"])
+            center = pv + (state["Xp"] * state["rx"])
+            end_major = center + (state["Xp"] * state["rx"])
+            start_major = center - (state["Xp"] * state["rx"])
             col_m = get_axis_aligned_color(state["Xp"], prefs["COL_START"])
-            draw_line(ctx, shaders, pv, end_major, col_m, prefs)
+            draw_line(ctx, shaders, start_major, end_major, col_m, prefs)
             
         # Draw Full Diameter for Endpoint Mode
         if mode == "ELLIPSE_ENDPOINTS" and "p1" in state and "p2" in state:
@@ -524,8 +526,8 @@ def draw_preview_ellipse(ctx, shaders, prefs):
         if state["current"] is not None:
              # Only draw the center-to-cursor line for radius/endpoint modes
              if mode in ["ELLIPSE_RADIUS", "ELLIPSE_ENDPOINTS"]:
-                  # Use pivot for center in Radius mode, or calculated center for Endpoints
-                  center = pv if mode == "ELLIPSE_RADIUS" else (state["p1"] + state["p2"]) * 0.5
+                  # Use offset center for Radius mode, or calculated center for Endpoints
+                  center = (pv + (state["Xp"] * state["rx"])) if mode == "ELLIPSE_RADIUS" else ((state["p1"] + state["p2"]) * 0.5)
                   diff_h = state["current"] - center
                   col_h = get_axis_aligned_color(diff_h, prefs["COL_HEIGHT"])
                   draw_line(ctx, shaders, center, state["current"], col_h, prefs)
