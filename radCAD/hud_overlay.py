@@ -192,7 +192,7 @@ def draw_hotkeys_panel():
     # --- INSERT SPACER IF RADIUS/DISTANCE IS ABOUT TO BE SHOWN ---
     if state["stage"] >= 1:
         lines.append((None, None))
-        if state.get("tool_mode") in ["2POINT", "3POINT"]:
+        if state.get("tool_mode") in ["2POINT", "3POINT", "CIRCLE_2POINT"]:
             # --- FIX: Only show Diameter hint in Stage 1 ---
             if state["stage"] == 1:
                 lines.append(("D: Set Diameter", None))
@@ -446,10 +446,10 @@ def draw_hud_2d():
             # --- D/R/L LABEL LOGIC ---
             if state["input_mode"] == 'RADIUS': 
                 label = "R:"
-                if tool_mode in ["2POINT", "3POINT"]:
+                if tool_mode in ["2POINT", "3POINT", "CIRCLE_2POINT"]:
                     if state["stage"] == 1: label = "D:"
                     elif tool_mode == "2POINT": label = "S:" # Sagitta for 2pt Stage 2
-                    else: label = "R:" # Default for 3pt Stage 2 is Radius
+                    else: label = "R:" # Default for 3pt Stage 2 or CIRCLE_2POINT Stage 2 is Radius
                 elif tool_mode == "LINE_POLY": label = "" # --- REMOVED 'L' for Line Tool
                 
                 r_txt = get_display_str(label, state['input_string'], True)
@@ -463,7 +463,7 @@ def draw_hud_2d():
                     r_txt = "R: " + format_length(r_val)
                     h1 = draw_ui_box_generic(px, current_y, r_txt)
                     current_y -= (h1 + 4)
-                elif tool_mode in ["2POINT", "3POINT"]:
+                elif tool_mode in ["2POINT", "3POINT", "CIRCLE_2POINT"]:
                     if state["stage"] == 1:
                          label = "D: "
                          # Chord Length / Diameter
@@ -478,8 +478,8 @@ def draw_hud_2d():
                          r_txt = label + format_length(h_val)
                          h1 = draw_ui_box_generic(px, current_y, r_txt)
                          current_y -= (h1 + 4)
-                    elif state["stage"] == 2 and tool_mode == "3POINT":
-                         # USER REQUEST: Don't show Diameter in Stage 2 for 3-point
+                    elif state["stage"] == 2 and tool_mode in ["3POINT", "CIRCLE_2POINT"]:
+                         # USER REQUEST: Don't show Diameter in Stage 2
                          # Radius is shown below in the general 'else' if stage == 2
                          pass
                     else:

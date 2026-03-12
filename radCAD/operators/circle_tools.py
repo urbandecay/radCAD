@@ -159,17 +159,76 @@ def get_selected_edge_chains(obj):
 # =========================================================================
 
 class CircleTool_2Point(SurfaceDrawTool):
-    def __init__(self, core): super().__init__(core); self.mode="CIRCLE_2POINT"; self.segments=self.state["segments"]; self.radius=0.0; self.current=None; self.preview_pts=[]
+    def __init__(self, core): 
+        super().__init__(core)
+        self.mode="CIRCLE_2POINT"
+        self.segments=self.state["segments"]
+        self.radius=0.0
+        self.current=None
+        self.preview_pts=[]
+        self.constraint_axis=None
     def update(self, context, event, snap_point, snap_normal):
         if self.stage==0: self.update_initial_plane(context, event, snap_point, snap_normal); return
         if self.stage==1:
-            t=snap_point; d=t-self.pivot; dp=d-self.Zp*d.dot(self.Zp); ft=self.pivot+dp; self.current=ft
-            c=(self.pivot+ft)*0.5; r=(ft-self.pivot).length*0.5; self.radius=r; self.segments=self.state["segments"]
-            self.preview_pts=arc_points_world(c, r, 0.0, 2*math.pi, self.segments, self.Xp, self.Yp) if r>1e-6 else []
+            target = snap_point
+            
+            # --- FIX: Alt bypasses Axis Snapping in Stage 1 ---
+            if self.constraint_axis and not event.alt:
+                if self.state.get("geometry_snap", False):
+                    diff = target - self.pivot
+                    proj = self.constraint_axis * diff.dot(self.constraint_axis)
+                    target = self.pivot + proj
+                else:
+                    from bpy_extras import view3d_utils
+                    region = context.region
+                    rv3d = context.region_data
+                    coord = (event.mouse_region_x, event.mouse_region_y)
+                    ray_origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, coord)
+                    ray_vector = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
+                    res = geometry.intersect_line_line(
+                        ray_origin, ray_origin + ray_vector, 
+                        self.pivot, self.pivot + self.constraint_axis
+                    )
+                    if res: target = res[1]
+            
+            elif not self.state.get("geometry_snap", False) and not event.alt:
+                from ..inference_utils import get_axis_snapped_location
+                strength_deg = self.state.get("snap_strength", 6.0)
+                strength_deg = max(0.1, min(89.0, strength_deg))
+                axis_thresh = math.cos(math.radians(strength_deg))
+
+                inf_loc, _, _ = get_axis_snapped_location(
+                    self.pivot, 
+                    (event.mouse_region_x, event.mouse_region_y), 
+                    context,
+                    snap_threshold=axis_thresh
+                )
+                if inf_loc: target = inf_loc
+
+            self.current = target
+            c = (self.pivot + target) * 0.5
+            r = (target - self.pivot).length * 0.5
+            self.radius = r
+            self.segments = self.state["segments"]
+            self.preview_pts = arc_points_world(c, r, 0.0, 2*math.pi, self.segments, self.Xp, self.Yp) if r > 1e-6 else []
     def handle_click(self, context, event, snap_point, snap_normal, button_id=None):
         if self.stage==0: self.pivot=snap_point; self.state["locked"]=False; self.stage=1; return 'NEXT_STAGE'
         if self.stage==1: return 'FINISHED'
         return None
+
+    def handle_input(self, context, event):
+        if event.type in {'X', 'Y', 'Z'} and event.value == 'PRESS':
+            if self.stage == 0: return False
+            axes = {'X': Vector((1, 0, 0)), 'Y': Vector((0, 1, 0)), 'Z': Vector((0, 0, 1))}
+            new_axis = axes[event.type]
+            if getattr(self, "constraint_axis", None) == new_axis:
+                self.constraint_axis = None
+                self.state["constraint_axis"] = None
+            else:
+                self.constraint_axis = new_axis
+                self.state["constraint_axis"] = new_axis
+            return True
+        return False
 
 class CircleTool_3Point(SurfaceDrawTool):
     def __init__(self, core): super().__init__(core); self.mode="CIRCLE_3POINT"; self.segments=self.state["segments"]; self.p1=None; self.p2=None; self.current=None; self.preview_pts=[]
