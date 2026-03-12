@@ -193,6 +193,10 @@ def draw_hotkeys_panel():
         show_perp = True
     elif tool_mode == "1POINT" and state["stage"] >= 1:
         show_perp = True
+    elif tool_mode in ["ELLIPSE_RADIUS", "ELLIPSE_ENDPOINTS", "ELLIPSE_FOCI"] and state["stage"] >= 1:
+        show_perp = True
+    elif tool_mode == "ELLIPSE_CORNERS" and state["stage"] == 1:
+        show_perp = True
 
     if show_perp:
         lines.append((f"P: Perpendicular ({perp_state})", perp_col))
@@ -205,10 +209,12 @@ def draw_hotkeys_panel():
             if state["stage"] == 1:
                 lines.append(("D: Set Diameter", None))
                 lines.append(("Alt: Bypass Axis Snap", None))
+        elif state.get("tool_mode") == "ELLIPSE_ENDPOINTS" and state["stage"] == 1:
+            lines.append(("D: Set Diameter", None))
         elif state.get("tool_mode") == "LINE_POLY":            lines.append(("L: Set Length", None)) # --- NEW: Line Length Hint ---
         elif state.get("tool_mode") == "ELLIPSE_FOCI":
             lines.append(("F: Set Foci", None))
-        else:
+        elif state.get("tool_mode") != "ELLIPSE_CORNERS":
             lines.append(("R: Set Radius", None))
     
     if state["stage"] == 2:
@@ -451,17 +457,22 @@ def draw_hud_2d():
 
             # --- D/R/L/F LABEL LOGIC ---
             if state["input_mode"] == 'RADIUS': 
-                label = "R:"
-                if tool_mode in ["2POINT", "3POINT", "CIRCLE_2POINT", "CIRCLE_3POINT"]:
-                    if state["stage"] == 1: label = "D:"
-                    elif tool_mode == "2POINT": label = "S:" # Sagitta for 2pt Stage 2
-                    else: label = "R:" # Default for 3pt Stage 2 or CIRCLE_2POINT Stage 2 is Radius
-                elif tool_mode == "LINE_POLY": label = "" # --- REMOVED 'L' for Line Tool
-                elif tool_mode == "ELLIPSE_FOCI": label = "F:"
-                
-                r_txt = get_display_str(label, state['input_string'], True)
-                h1 = draw_ui_box_generic(px, current_y, r_txt, active=True)
-                current_y -= (h1 + 4)
+                if tool_mode == "ELLIPSE_CORNERS":
+                    pass
+                else:
+                    label = "R:"
+                    if tool_mode in ["2POINT", "3POINT", "CIRCLE_2POINT", "CIRCLE_3POINT"]:
+                        if state["stage"] == 1: label = "D:"
+                        elif tool_mode == "2POINT": label = "S:" # Sagitta for 2pt Stage 2
+                        else: label = "R:" # Default for 3pt Stage 2 or CIRCLE_2POINT Stage 2 is Radius
+                    elif tool_mode == "ELLIPSE_ENDPOINTS" and state["stage"] == 1:
+                        label = "D:"
+                    elif tool_mode == "LINE_POLY": label = "" # --- REMOVED 'L' for Line Tool
+                    elif tool_mode == "ELLIPSE_FOCI": label = "F:"
+                    
+                    r_txt = get_display_str(label, state['input_string'], True)
+                    h1 = draw_ui_box_generic(px, current_y, r_txt, active=True)
+                    current_y -= (h1 + 4)
             else:
                 # Tan-Tan-Tan Radius Display
                 if state.get("choosing_solution") and state.get("tan_solutions"):
@@ -477,6 +488,14 @@ def draw_hud_2d():
                     r_txt = label + format_length(r_val)
                     h1 = draw_ui_box_generic(px, current_y, r_txt)
                     current_y -= (h1 + 4)
+                elif tool_mode == "ELLIPSE_ENDPOINTS" and state["stage"] == 1:
+                    label = "D: "
+                    d_val = (state["current"] - state["pivot"]).length if (state["current"] and state["pivot"]) else 0.0
+                    r_txt = label + format_length(d_val)
+                    h1 = draw_ui_box_generic(px, current_y, r_txt)
+                    current_y -= (h1 + 4)
+                elif tool_mode == "ELLIPSE_CORNERS":
+                    pass
                 elif tool_mode in ["2POINT", "3POINT", "CIRCLE_2POINT", "CIRCLE_3POINT"]:
                     if state["stage"] == 1:
                          label = "D: "

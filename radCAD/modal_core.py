@@ -357,6 +357,8 @@ class ModalManager:
         state["start"] = getattr(t, "start", None)
         state["p1"] = getattr(t, "p1", None)
         state["p2"] = getattr(t, "p2", None)
+        state["f1"] = getattr(t, "f1", None)
+        state["f2"] = getattr(t, "f2", None)
         state["midpoint"] = getattr(t, "midpoint", None)
         state["radius"] = getattr(t, "radius", 0.0)
         state["compass_rot"] = getattr(t, "compass_rot", 0.0)
@@ -382,6 +384,10 @@ class ModalManager:
         if "start" in state: t.start = state["start"]
         if "p1" in state: t.p1 = state["p1"]
         if "p2" in state: t.p2 = state["p2"]
+        if "f1" in state: t.f1 = state["f1"]
+        if "f2" in state: t.f2 = state["f2"]
+        if "rx" in state: t.rx = state["rx"]
+        if "ry" in state: t.ry = state["ry"]
         if "midpoint" in state: t.midpoint = state["midpoint"]
         if "current" in state: t.current = state["current"]
         if "segments" in state: t.segments = state["segments"]
@@ -725,10 +731,10 @@ def modal_arc_common(self, ctx, ev):
         tool_mode = state.get("tool_mode", "1POINT")
         
         if ev.type == 'S': target_mode = 'SEGMENTS'
-        elif ev.type == 'R': target_mode = 'RADIUS'
-        elif ev.type == 'D' and tool_mode in ["2POINT", "CIRCLE_2POINT"]: target_mode = 'RADIUS'
+        elif ev.type == 'R' and tool_mode != "ELLIPSE_CORNERS": target_mode = 'RADIUS'
+        elif ev.type == 'D' and tool_mode in ["2POINT", "CIRCLE_2POINT", "ELLIPSE_ENDPOINTS"]: target_mode = 'RADIUS'
         elif ev.type == 'H' and tool_mode == "2POINT" and state["stage"] == 2: target_mode = 'RADIUS'
-        elif ev.type == 'A' and state["stage"] == 2 and tool_mode not in ["2POINT", "CIRCLE_TAN_TAN_TAN", "LINE_POLY"]: 
+        elif ev.type == 'A' and state["stage"] == 2 and tool_mode not in ["2POINT", "CIRCLE_TAN_TAN_TAN", "LINE_POLY", "ELLIPSE_CORNERS"]: 
             target_mode = 'ANGLE'
         
         if is_number_input(ev): 
@@ -741,7 +747,7 @@ def modal_arc_common(self, ctx, ev):
                 
             if is_angle_stage:
                 target_mode = 'ANGLE'
-            else:
+            elif tool_mode != "ELLIPSE_CORNERS":
                 target_mode = 'RADIUS' # Covers 2POINT Sagitta automatically as it's in Stage 2 but not an angle stage
             
         if target_mode:
