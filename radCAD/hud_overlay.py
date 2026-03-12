@@ -193,7 +193,7 @@ def draw_hotkeys_panel():
         show_perp = True
     elif tool_mode == "1POINT" and state["stage"] >= 1:
         show_perp = True
-    elif tool_mode in ["ELLIPSE_RADIUS", "ELLIPSE_ENDPOINTS", "ELLIPSE_FOCI"] and state["stage"] >= 1:
+    elif tool_mode in ["ELLIPSE_RADIUS", "ELLIPSE_ENDPOINTS", "ELLIPSE_FOCI", "POLYGON_CENTER_CORNER", "POLYGON_CENTER_TANGENT", "POLYGON_CORNER_CORNER", "POLYGON_EDGE"] and state["stage"] >= 1:
         show_perp = True
     elif tool_mode == "ELLIPSE_CORNERS" and state["stage"] == 1:
         show_perp = True
@@ -228,6 +228,16 @@ def draw_hotkeys_panel():
             lines.append(("D: Set Diameter", None))
             if state["stage"] == 2:
                 lines.append(("R: Set Radius", None))
+        
+        elif state.get("tool_mode") == "POLYGON_CENTER_CORNER":
+            lines.append(("R: Set Radius", None))
+            lines.append(("S: Set Segments", None))
+        elif state.get("tool_mode") == "POLYGON_CENTER_TANGENT":
+            lines.append(("A: Set Apothem", None))
+            lines.append(("S: Set Segments", None))
+        elif state.get("tool_mode") in ["POLYGON_CORNER_CORNER", "POLYGON_EDGE"]:
+            lines.append(("L: Edge Length", None))
+            lines.append(("S: Set Segments", None))
         elif state.get("tool_mode") != "ELLIPSE_CORNERS":
             lines.append(("R: Set Radius", None))
     
@@ -506,6 +516,14 @@ def draw_hud_2d():
                         label = "F:" if state["stage"] == 1 else "R:"
                     elif tool_mode == "ELLIPSE_RADIUS":
                         label = "D:" if state["stage"] == 1 else "R:"
+                    elif tool_mode == "POLYGON_CENTER_CORNER":
+                        label = "R:"
+                    elif tool_mode == "POLYGON_CENTER_TANGENT":
+                        label = "A:"
+                    elif tool_mode in ["POLYGON_CORNER_CORNER", "POLYGON_EDGE"]:
+                        label = "L:"
+                    
+                    if state["input_mode"] == 'SEGMENTS': label = "S:"
                     
                     r_txt = get_display_str(label, state['input_string'], True)
                     h1 = draw_ui_box_generic(px, current_y, r_txt, active=True)
