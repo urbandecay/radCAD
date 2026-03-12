@@ -213,19 +213,21 @@ def draw_hotkeys_panel():
             lines.append(("D: Set Diameter", None))
         elif state.get("tool_mode") == "LINE_POLY":            lines.append(("L: Set Length", None)) # --- NEW: Line Length Hint ---
         elif state.get("tool_mode") == "ELLIPSE_FOCI":
-            if state["stage"] == 1:
-                lines.append(("F: Set Foci", None))
+            lines.append(("F: Set Foci", None))
+            if state["stage"] == 2:
+                lines.append(("R: Set Radius", None))
             
             # --- KEEP FOCI TOGGLE ---
             keep_state = "ON" if state.get("keep_foci") else "OFF"
             lines.append((f"K: Keep Foci ({keep_state})", None))
         elif state.get("tool_mode") == "ELLIPSE_RADIUS":
-            dist_d = state.get("rx", 0.0) * 2.0
-            lines.append((f"D: Diameter: {format_length(dist_d)}", None))
-            lines.append((None, None))
-            if state["stage"] == 1:
-                lines.append(("D: Set Diameter", None))
-            lines.append(("R: Set Radius", None))
+            lines.append(("D: Set Diameter", None))
+            if state["stage"] == 2:
+                lines.append(("R: Set Radius", None))
+        elif state.get("tool_mode") == "ELLIPSE_ENDPOINTS":
+            lines.append(("D: Set Diameter", None))
+            if state["stage"] == 2:
+                lines.append(("R: Set Radius", None))
         elif state.get("tool_mode") != "ELLIPSE_CORNERS":
             lines.append(("R: Set Radius", None))
     
