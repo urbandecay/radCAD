@@ -212,40 +212,63 @@ class CircleTool_2Point(SurfaceDrawTool):
                 )
                 if inf_loc: target = inf_loc
 
-            # 2. COORDINATE BASIS CALCULATION
+            # 2. COORDINATE BASIS CALCULATION (Rock-Solid Stability Fix)
             bridge = target - self.pivot
             if bridge.length_squared > 1e-8:
                 b_vec = bridge.normalized()
+                up = self.ref_normal
                 is_perp_mode = self.state.get("is_perpendicular", False)
-                is_vertical = abs(b_vec.dot(self.ref_normal)) > 0.99
+                
+                # A. HYSTERESIS: Detect Verticality with 'Stickiness'
+                # Prevents flip-flopping at the boundary
+                dot_v = abs(b_vec.dot(up))
+                was_vertical = getattr(self, "_is_vert_last", False)
+                threshold = 0.98 if was_vertical else 0.995 
+                is_vertical = dot_v > threshold
+                self._is_vert_last = is_vertical
 
                 if is_perp_mode or is_vertical:
-                    # --- VERTICAL / PERPENDICULAR PLANE ---
+                    # B. CALCULATE STABLE NORMAL (Zp)
                     if is_vertical:
-                        # Case A: Snap is vertical. Use View-Aligned or Manual Override.
+                        # CASE: Vertical Snap
+                        ax_x, ax_y, _ = orthonormal_basis_from_normal(up)
                         if self.vertical_override_axis is None:
-                            # AUTO MODE: Face the Camera
                             rv3d = context.region_data
                             view_dir = rv3d.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
-                            ax_x, ax_y, _ = orthonormal_basis_from_normal(self.ref_normal)
                             new_Zp = ax_x if abs(view_dir.dot(ax_x)) > abs(view_dir.dot(ax_y)) else ax_y
                         else:
-                            # MANUAL MODE: X or Y key pressed
-                            ax_x, ax_y, _ = orthonormal_basis_from_normal(self.ref_normal)
                             new_Zp = ax_x if self.vertical_override_axis == 'X' else ax_y
                     else:
-                        # Case B: Standard Perpendicular 'Swing'
-                        new_Zp = b_vec.cross(self.ref_normal).normalized()
+                        # CASE: Swinging Perpendicular
+                        # STABILIZER: Cross product becomes unstable near vertical.
+                        # We use a horizontal fallback for the 'swing' direction.
+                        horiz_dir = b_vec - up * b_vec.dot(up)
+                        if horiz_dir.length_squared > 1e-6:
+                            new_Zp = horiz_dir.normalized().cross(up).normalized()
+                        else:
+                            # Too close to vertical, reuse last stable normal
+                            new_Zp = getattr(self, "_last_zp", Vector((1,0,0)))
                     
                     if new_Zp.length > 1e-4:
-                        self.Xp = b_vec
+                        # C. VIEW STABILIZATION: Prevent 180-degree normal flips
+                        rv3d = context.region_data
+                        view_dir = rv3d.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
+                        if new_Zp.dot(view_dir) > 0:
+                            new_Zp = -new_Zp
+                        
                         self.Zp = new_Zp.normalized()
-                        self.Yp = self.Zp.cross(self.Xp).normalized()
+                        self.Yp = up.normalized() # Keep circle 'upright'
+                        self.Xp = self.Yp.cross(self.Zp).normalized()
+                        self._last_zp = self.Zp.copy()
                 else:
                     # --- STANDARD FLAT PLANE ---
-                    self.Zp = self.ref_normal.copy()
-                    # Reset basis but keep Xp aligned with diameter for consistency
-                    self.Xp = b_vec
+                    self.Zp = up.copy()
+                    # Keep Xp aligned with diameter projection for smoothness
+                    horiz_x = b_vec - up * b_vec.dot(up)
+                    if horiz_x.length_squared > 1e-6:
+                        self.Xp = horiz_x.normalized()
+                    else:
+                        self.Xp, _, _ = orthonormal_basis_from_normal(self.Zp)
                     self.Yp = self.Zp.cross(self.Xp).normalized()
 
             self.current = target
