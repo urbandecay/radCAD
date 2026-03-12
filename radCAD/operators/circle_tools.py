@@ -177,26 +177,20 @@ class CircleTool_2Point(SurfaceDrawTool):
             return
             
         if self.stage==1:
-            target = snap_point
+            # 1. DIRECT PROJECT TO FLOOR PLANE FIRST
+            from bpy_extras import view3d_utils
+            coord = (event.mouse_region_x, event.mouse_region_y)
+            ray_origin = view3d_utils.region_2d_to_origin_3d(context.region, context.region_data, coord)
+            ray_vector = view3d_utils.region_2d_to_vector_3d(context.region, context.region_data, coord)
             
-            # 1. APPLY SNAPPING FIRST
+            target = geometry.intersect_line_plane(ray_origin, ray_origin + ray_vector, self.pivot, self.ref_normal)
+            if target is None: target = snap_point 
+
+            # 2. APPLY SNAPPING TO THE FLOOR POSITION
             if self.constraint_axis and not event.alt:
-                if self.state.get("geometry_snap", False):
-                    diff = target - self.pivot
-                    proj = self.constraint_axis * diff.dot(self.constraint_axis)
-                    target = self.pivot + proj
-                else:
-                    from bpy_extras import view3d_utils
-                    region = context.region
-                    rv3d = context.region_data
-                    coord = (event.mouse_region_x, event.mouse_region_y)
-                    ray_origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, coord)
-                    ray_vector = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
-                    res = geometry.intersect_line_line(
-                        ray_origin, ray_origin + ray_vector, 
-                        self.pivot, self.pivot + self.constraint_axis
-                    )
-                    if res: target = res[1]
+                diff = target - self.pivot
+                proj = self.constraint_axis * diff.dot(self.constraint_axis)
+                target = self.pivot + proj
             
             elif not self.state.get("geometry_snap", False) and not event.alt:
                 from ..inference_utils import get_axis_snapped_location
@@ -212,64 +206,61 @@ class CircleTool_2Point(SurfaceDrawTool):
                 )
                 if inf_loc: target = inf_loc
 
-            # 2. COORDINATE BASIS CALCULATION (Rock-Solid Stability Fix)
+            # 2. COORDINATE BASIS CALCULATION (Screen-Space Anchor Method)
             bridge = target - self.pivot
             if bridge.length_squared > 1e-8:
                 b_vec = bridge.normalized()
                 up = self.ref_normal
                 is_perp_mode = self.state.get("is_perpendicular", False)
                 
-                # A. HYSTERESIS: Detect Verticality with 'Stickiness'
-                # Prevents flip-flopping at the boundary
+                # A. HYSTERESIS: Detect Verticality
                 dot_v = abs(b_vec.dot(up))
                 was_vertical = getattr(self, "_is_vert_last", False)
                 threshold = 0.98 if was_vertical else 0.995 
                 is_vertical = dot_v > threshold
                 self._is_vert_last = is_vertical
 
-                if is_perp_mode or is_vertical:
-                    # B. CALCULATE STABLE NORMAL (Zp)
-                    if is_vertical:
-                        # CASE: Vertical Snap
-                        ax_x, ax_y, _ = orthonormal_basis_from_normal(up)
-                        if self.vertical_override_axis is None:
-                            rv3d = context.region_data
-                            view_dir = rv3d.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
-                            new_Zp = ax_x if abs(view_dir.dot(ax_x)) > abs(view_dir.dot(ax_y)) else ax_y
-                        else:
-                            new_Zp = ax_x if self.vertical_override_axis == 'X' else ax_y
-                    else:
-                        # CASE: Swinging Perpendicular
-                        # STABILIZER: Cross product becomes unstable near vertical.
-                        # We use a horizontal fallback for the 'swing' direction.
-                        horiz_dir = b_vec - up * b_vec.dot(up)
-                        if horiz_dir.length_squared > 1e-6:
-                            new_Zp = horiz_dir.normalized().cross(up).normalized()
-                        else:
-                            # Too close to vertical, reuse last stable normal
-                            new_Zp = getattr(self, "_last_zp", Vector((1,0,0)))
-                    
-                    if new_Zp.length > 1e-4:
-                        # C. VIEW STABILIZATION: Prevent 180-degree normal flips
-                        rv3d = context.region_data
-                        view_dir = rv3d.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
-                        if new_Zp.dot(view_dir) > 0:
-                            new_Zp = -new_Zp
+                # B. STABILIZED BASIS VIA SCREEN ANGLE
+                # We use the 2D screen angle to drive the 3D orientation.
+                # This bypasses the 3D ray-intersection grid jumps.
+                from bpy_extras.view3d_utils import location_3d_to_region_2d
+                reg, rv3d = context.region, context.region_data
+                p2d = location_3d_to_region_2d(reg, rv3d, self.pivot)
+                
+                if p2d:
+                    # Get 2D Screen Angle
+                    m2d = Vector((event.mouse_region_x, event.mouse_region_y))
+                    screen_dir = (m2d - p2d)
+                    if screen_dir.length_squared > 1:
+                        # Find the 3D vector that aligns with this screen direction
+                        # on the floor plane.
+                        from bpy_extras.view3d_utils import region_2d_to_vector_3d
+                        view_vec = region_2d_to_vector_3d(reg, rv3d, m2d)
                         
-                        self.Zp = new_Zp.normalized()
-                        self.Yp = up.normalized() # Keep circle 'upright'
-                        self.Xp = self.Yp.cross(self.Zp).normalized()
-                        self._last_zp = self.Zp.copy()
-                else:
-                    # --- STANDARD FLAT PLANE ---
-                    self.Zp = up.copy()
-                    # Keep Xp aligned with diameter projection for smoothness
-                    horiz_x = b_vec - up * b_vec.dot(up)
-                    if horiz_x.length_squared > 1e-6:
-                        self.Xp = horiz_x.normalized()
-                    else:
-                        self.Xp, _, _ = orthonormal_basis_from_normal(self.Zp)
-                    self.Yp = self.Zp.cross(self.Xp).normalized()
+                        if is_perp_mode or is_vertical:
+                            if is_vertical:
+                                ax_x, ax_y, _ = orthonormal_basis_from_normal(up)
+                                if self.vertical_override_axis is None:
+                                    view_dir = rv3d.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
+                                    new_Zp = ax_x if abs(view_dir.dot(ax_x)) > abs(view_dir.dot(ax_y)) else ax_y
+                                else:
+                                    new_Zp = ax_x if self.vertical_override_axis == 'X' else ax_y
+                            else:
+                                # Normal case: Plane follows the diameter line
+                                new_Zp = b_vec.cross(up).normalized()
+                            
+                            if new_Zp.length > 1e-4:
+                                # Stabilize normal relative to view
+                                view_fwd = rv3d.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
+                                if new_Zp.dot(view_fwd) > 0: new_Zp = -new_Zp
+                                
+                                self.Zp = new_Zp.normalized()
+                                self.Yp = up.normalized()
+                                self.Xp = self.Yp.cross(self.Zp).normalized()
+                        else:
+                            self.Zp = up.copy()
+                            self.Xp = b_vec
+                            self.Yp = self.Zp.cross(self.Xp).normalized()
 
             self.current = target
             c = (self.pivot + target) * 0.5

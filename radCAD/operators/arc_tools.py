@@ -160,25 +160,32 @@ class ArcTool_Common(SurfaceDrawTool):
                 plane_n = self.Zp if self.Zp else Vector((0,0,1))
                 chord_dir = chord_vec.normalized()
                 
-                # --- INTELLIGENT VERTICAL FALLBACK ---
-                if abs(chord_dir.dot(self.ref_normal)) > 0.99:
-                    # Chord is vertical.
+                # --- SCREEN-SPACE ANCHOR STABILIZATION ---
+                # Use view direction to stabilize verticality and flips
+                rv3d = context.region_data
+                view_fwd = rv3d.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
+
+                # Detect Verticality with Hysteresis
+                dot_v = abs(chord_dir.dot(self.ref_normal))
+                was_vertical = getattr(self, "_is_vert_last", False)
+                threshold = 0.98 if was_vertical else 0.995 
+                is_vertical = dot_v > threshold
+                self._is_vert_last = is_vertical
+
+                if is_vertical:
+                    # Case A: Snap is vertical. Use View-Aligned or Manual Override.
+                    ax_x, ax_y, _ = orthonormal_basis_from_normal(self.ref_normal)
                     if self.vertical_override_axis is None:
-                        # AUTO MODE: Face the Camera
-                        rv3d = context.region_data
-                        view_dir = rv3d.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
-                        ax_x, ax_y, _ = orthonormal_basis_from_normal(self.ref_normal)
-                        plane_n = ax_x if abs(view_dir.dot(ax_x)) > abs(view_dir.dot(ax_y)) else ax_y
+                        plane_n = ax_x if abs(view_fwd.dot(ax_x)) > abs(view_fwd.dot(ax_y)) else ax_y
                     else:
-                        # MANUAL MODE
-                        ax_x, ax_y, _ = orthonormal_basis_from_normal(self.ref_normal)
                         plane_n = ax_x if self.vertical_override_axis == 'X' else ax_y
-                    self.Zp = plane_n
-                elif abs(chord_dir.dot(plane_n)) > 0.99:
-                    # Generic fallback if chord aligns with plane normal but isn't vertical
-                    plane_n = Vector((1, 0, 0))
-                    if abs(chord_dir.dot(plane_n)) > 0.99: plane_n = Vector((0, 1, 0))
-                    self.Zp = plane_n
+                else:
+                    # Case B: Dynamic swinging. 
+                    # Ensure normal always faces camera to prevent jittery flips
+                    plane_n = chord_dir.cross(self.ref_normal).normalized()
+                    if plane_n.dot(view_fwd) > 0: plane_n = -plane_n
+                
+                self.Zp = plane_n
                         
                 perp_dir = plane_n.cross(chord_dir).normalized()
                 target_pt = snap_point
@@ -284,23 +291,32 @@ class ArcTool_Common(SurfaceDrawTool):
                 # --- FIX: Stay on established drawing plane (self.Zp) ---
                 plane_n = self.Zp if self.Zp else Vector((0,0,1))
                 
-                # --- INTELLIGENT VERTICAL FALLBACK FOR 3-POINT ---
+                # --- SCREEN-SPACE ANCHOR STABILIZATION FOR 3-POINT ---
                 chord_vec = self.p2 - self.p1
                 if chord_vec.length > 1e-6:
                     chord_dir = chord_vec.normalized()
-                    if abs(chord_dir.dot(self.ref_normal)) > 0.99:
-                        # Chord is vertical.
+                    rv3d = context.region_data
+                    view_fwd = rv3d.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
+
+                    # Detect Verticality with Hysteresis
+                    dot_v = abs(chord_dir.dot(self.ref_normal))
+                    was_vertical = getattr(self, "_is_vert_last_3pt", False)
+                    threshold = 0.98 if was_vertical else 0.995 
+                    is_vertical = dot_v > threshold
+                    self._is_vert_last_3pt = is_vertical
+
+                    if is_vertical:
+                        # Case A: Snap is vertical. Use View-Aligned or Manual Override.
+                        ax_x, ax_y, _ = orthonormal_basis_from_normal(self.ref_normal)
                         if self.vertical_override_axis is None:
-                            # AUTO MODE: Face the Camera
-                            rv3d = context.region_data
-                            view_dir = rv3d.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
-                            ax_x, ax_y, _ = orthonormal_basis_from_normal(self.ref_normal)
-                            plane_n = ax_x if abs(view_dir.dot(ax_x)) > abs(view_dir.dot(ax_y)) else ax_y
+                            plane_n = ax_x if abs(view_fwd.dot(ax_x)) > abs(view_fwd.dot(ax_y)) else ax_y
                         else:
-                            # MANUAL MODE
-                            ax_x, ax_y, _ = orthonormal_basis_from_normal(self.ref_normal)
                             plane_n = ax_x if self.vertical_override_axis == 'X' else ax_y
-                        self.Zp = plane_n
+                    else:
+                        # Case B: Standard orientation. Stabilize normal to face camera.
+                        if plane_n.dot(view_fwd) > 0: plane_n = -plane_n
+                    
+                    self.Zp = plane_n
 
                 # Project mouse point onto the plane defined by p1 and plane_n
                 d_p3 = snap_point - self.p1
