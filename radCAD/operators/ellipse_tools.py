@@ -187,9 +187,12 @@ class EllipseTool_FromRadius(SurfaceDrawTool):
     def refresh_preview(self):
         if self.stage == 1:
             self.stage = 2 
-            self.preview_pts = [self.pivot, self.pivot + (self.Xp * (self.rx * 2.0))]
+            self.current = self.pivot + (self.Xp * (self.rx * 2.0))
+            self.preview_pts = [self.pivot, self.current]
         elif self.stage >= 2:
             center = self.pivot + (self.Xp * self.rx)
+            # For Stage 2, current is on the minor axis
+            self.current = center + (self.Yp * self.ry)
             self.preview_pts = ellipse_points_world(center, self.rx, self.ry, self.segments, self.Xp, self.Yp)
 
 class EllipseTool_FociPoint(SurfaceDrawTool):
@@ -371,17 +374,21 @@ class EllipseTool_FociPoint(SurfaceDrawTool):
             self.stage = 2 
             self.preview_pts = [self.f1, self.f2]
         elif self.stage >= 2:
-            if self.f1 is None or self.f2 is None or self.current is None:
+            if self.f1 is None or self.f2 is None or self.ry is None:
                 self.preview_pts = []
                 return
             
             center = (self.f1 + self.f2) * 0.5
             c = (self.f2 - self.f1).length * 0.5
-            dist_sum = (self.current - self.f1).length + (self.current - self.f2).length
-            a = dist_sum * 0.5
-            if a < c + 1e-6: a = c + 1e-6
-            b = math.sqrt(a**2 - c**2)
-            self.rx, self.ry = a, b
+            
+            # ry is already set from input. We need rx (a).
+            # b^2 = a^2 - c^2  => a = sqrt(b^2 + c^2)
+            b = self.ry
+            a = math.sqrt(b**2 + c**2)
+            self.rx = a
+            
+            # Update current to reflect the minor radius point
+            self.current = center + (self.Yp * b)
             
             self.preview_pts = ellipse_points_world(center, self.rx, self.ry, self.segments, self.Xp, self.Yp)
 
@@ -549,14 +556,13 @@ class EllipseTool_FromEndpoints(SurfaceDrawTool):
             self.stage = 2 
             self.preview_pts = [self.p1, self.p2]
         elif self.stage >= 2:
-            if self.p1 is None or self.p2 is None or self.current is None:
+            if self.p1 is None or self.p2 is None or self.ry is None:
                 self.preview_pts = []
                 return
             
             center = (self.p1 + self.p2) * 0.5
-            d_raw = self.current - center
-            d_plane = d_raw - self.Zp * d_raw.dot(self.Zp)
-            self.ry = abs(d_plane.dot(self.Yp))
+            # Update current to reflect the minor radius point
+            self.current = center + (self.Yp * self.ry)
             
             self.preview_pts = ellipse_points_world(center, self.rx, self.ry, self.segments, self.Xp, self.Yp)
 
