@@ -371,10 +371,18 @@ class EllipseTool_FociPoint(SurfaceDrawTool):
             self.stage = 2 
             self.preview_pts = [self.f1, self.f2]
         elif self.stage >= 2:
-            if self.f1 is None or self.f2 is None:
+            if self.f1 is None or self.f2 is None or self.current is None:
                 self.preview_pts = []
                 return
+            
             center = (self.f1 + self.f2) * 0.5
+            c = (self.f2 - self.f1).length * 0.5
+            dist_sum = (self.current - self.f1).length + (self.current - self.f2).length
+            a = dist_sum * 0.5
+            if a < c + 1e-6: a = c + 1e-6
+            b = math.sqrt(a**2 - c**2)
+            self.rx, self.ry = a, b
+            
             self.preview_pts = ellipse_points_world(center, self.rx, self.ry, self.segments, self.Xp, self.Yp)
 
 class EllipseTool_FromEndpoints(SurfaceDrawTool):
@@ -541,10 +549,15 @@ class EllipseTool_FromEndpoints(SurfaceDrawTool):
             self.stage = 2 
             self.preview_pts = [self.p1, self.p2]
         elif self.stage >= 2:
-            if self.p1 is None or self.p2 is None:
+            if self.p1 is None or self.p2 is None or self.current is None:
                 self.preview_pts = []
                 return
+            
             center = (self.p1 + self.p2) * 0.5
+            d_raw = self.current - center
+            d_plane = d_raw - self.Zp * d_raw.dot(self.Zp)
+            self.ry = abs(d_plane.dot(self.Yp))
+            
             self.preview_pts = ellipse_points_world(center, self.rx, self.ry, self.segments, self.Xp, self.Yp)
 
 class EllipseTool_FromCorners(SurfaceDrawTool):

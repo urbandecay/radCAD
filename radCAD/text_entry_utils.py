@@ -78,10 +78,25 @@ def apply_input_value(ctx):
         # === ELLIPSE TOOLS LOGIC ===
         elif tool_mode == "ELLIPSE_RADIUS":
             if state["stage"] == 1:
-                state["rx"] = abs(val_meters) * 0.5
+                diam = abs(val_meters)
+                state["rx"] = diam * 0.5
+                # Update current to reflect the diameter endpoint
+                p1 = state["pivot"]
+                d_vec = state["current"] - p1
+                if d_vec.length > 1e-9: d_vec.normalize()
+                else: d_vec = state.get("Xp") or Vector((1,0,0))
+                state["current"] = p1 + d_vec * diam
                 state["stage"] = 2
             elif state["stage"] == 2:
-                state["ry"] = abs(val_meters)
+                ry = abs(val_meters)
+                state["ry"] = ry
+                # Update current to reflect the minor radius endpoint
+                p1 = state["pivot"]
+                Xp = state.get("Xp") or Vector((1,0,0))
+                Yp = state.get("Yp") or Vector((0,1,0))
+                rx = state.get("rx", 0.0)
+                center = p1 + (Xp * rx)
+                state["current"] = center + (Yp * ry)
 
         elif tool_mode == "ELLIPSE_FOCI":
             if state["stage"] == 1:
@@ -92,7 +107,18 @@ def apply_input_value(ctx):
                 state["f2"] = pv + (maj * abs(val_meters))
                 state["stage"] = 2
             elif state["stage"] == 2:
-                state["ry"] = abs(val_meters)
+                ry = abs(val_meters)
+                state["ry"] = ry
+                # Update current to reflect the minor radius endpoint
+                f1, f2 = state.get("f1"), state.get("f2")
+                if f1 and f2:
+                    center = (f1 + f2) * 0.5
+                    Xp = (f2 - f1).normalized()
+                    Zp = state.get("Zp") or Vector((0,0,1))
+                    Yp = Zp.cross(Xp).normalized()
+                    # For Foci mode, current should be on the ellipse itself
+                    # dist_sum = 2*a. For current on minor axis, it's at 'b' distance from center.
+                    state["current"] = center + (Yp * ry)
 
         elif tool_mode == "ELLIPSE_ENDPOINTS":
             if state["stage"] == 1:
@@ -109,7 +135,16 @@ def apply_input_value(ctx):
                 state["current"] = p2
                 state["stage"] = 2
             elif state["stage"] == 2:
-                state["ry"] = abs(val_meters)
+                ry = abs(val_meters)
+                state["ry"] = ry
+                # Update current to reflect the minor radius endpoint
+                p1, p2 = state.get("p1"), state.get("p2")
+                if p1 and p2:
+                    center = (p1 + p2) * 0.5
+                    Xp = (p2 - p1).normalized()
+                    Zp = state.get("Zp") or Vector((0,0,1))
+                    Yp = Zp.cross(Xp).normalized()
+                    state["current"] = center + (Yp * ry)
 
     # --- ANGLE INPUT (1-POINT ONLY) ---
     elif state["input_mode"] == 'ANGLE':

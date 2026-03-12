@@ -340,6 +340,7 @@ class ModalManager:
                 # Force the tool to recalculate its points from the new state
                 if hasattr(self.active_tool, "refresh_preview"):
                     self.active_tool.refresh_preview()
+                self.sync_tool_from_state()
                 context.area.tag_redraw()
                 return
 
