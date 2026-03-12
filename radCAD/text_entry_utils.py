@@ -78,7 +78,7 @@ def apply_input_value(ctx):
         # === ELLIPSE TOOLS LOGIC ===
         elif tool_mode == "ELLIPSE_RADIUS":
             if state["stage"] == 1:
-                state["rx"] = abs(val_meters)
+                state["rx"] = abs(val_meters) * 0.5
                 state["stage"] = 2
             elif state["stage"] == 2:
                 state["ry"] = abs(val_meters)

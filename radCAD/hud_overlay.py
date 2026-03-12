@@ -219,6 +219,10 @@ def draw_hotkeys_panel():
             # --- KEEP FOCI TOGGLE ---
             keep_state = "ON" if state.get("keep_foci") else "OFF"
             lines.append((f"K: Keep Foci ({keep_state})", None))
+        elif state.get("tool_mode") == "ELLIPSE_RADIUS":
+            if state["stage"] == 1:
+                lines.append(("D: Set Diameter", None))
+            lines.append(("R: Set Radius", None))
         elif state.get("tool_mode") != "ELLIPSE_CORNERS":
             lines.append(("R: Set Radius", None))
     
@@ -475,6 +479,8 @@ def draw_hud_2d():
                     elif tool_mode == "LINE_POLY": label = "" # --- REMOVED 'L' for Line Tool
                     elif tool_mode == "ELLIPSE_FOCI": 
                         label = "F:" if state["stage"] == 1 else "R:"
+                    elif tool_mode == "ELLIPSE_RADIUS":
+                        label = "D:" if state["stage"] == 1 else "R:"
                     
                     r_txt = get_display_str(label, state['input_string'], True)
                     h1 = draw_ui_box_generic(px, current_y, r_txt, active=True)
@@ -521,6 +527,23 @@ def draw_hud_2d():
                         r_txt_r = label_r + format_length(r_val)
                         h2 = draw_ui_box_generic(px, current_y, r_txt_r)
                         current_y -= (h2 + 4)
+                elif tool_mode == "ELLIPSE_RADIUS":
+                    # Stage 1: Diameter
+                    label_d = "D: "
+                    r_val_x = state.get("rx", 0.0)
+                    dist_d = r_val_x * 2.0
+                    
+                    r_txt_d = label_d + format_length(dist_d)
+                    h1 = draw_ui_box_generic(px, current_y, r_txt_d)
+                    current_y -= (h1 + 4)
+
+                    # Stage 2: Also show Minor Radius (R)
+                    if state["stage"] == 2:
+                        label_r = "R: "
+                        r_val_y = state.get("ry", 0.0)
+                        r_txt_r = label_r + format_length(r_val_y)
+                        h2 = draw_ui_box_generic(px, current_y, r_txt_r)
+                        current_y -= (h2 + 4)
                 elif tool_mode == "ELLIPSE_CORNERS":
                     pass
                 elif tool_mode in ["2POINT", "3POINT", "CIRCLE_2POINT", "CIRCLE_3POINT"]:
@@ -556,8 +579,8 @@ def draw_hud_2d():
                     current_y -= (h1 + 4)
             
             if state["stage"] == 2:
-                # --- HIDE ANGLE IF 2POINT, 3POINT, LINE_POLY OR ELLIPSE_FOCI ---
-                if tool_mode not in ["2POINT", "3POINT", "CIRCLE_3POINT", "CIRCLE_TAN_TAN_TAN", "LINE_POLY", "ELLIPSE_FOCI"]:
+                # --- HIDE ANGLE IF 2POINT, 3POINT, LINE_POLY, ELLIPSE_FOCI OR ELLIPSE_RADIUS ---
+                if tool_mode not in ["2POINT", "3POINT", "CIRCLE_3POINT", "CIRCLE_TAN_TAN_TAN", "LINE_POLY", "ELLIPSE_FOCI", "ELLIPSE_RADIUS"]:
                     is_input_a = (state["input_mode"] == 'ANGLE')
                     if is_input_a: a_txt = get_display_str("\u2220", state['input_string'], True)
                     else:

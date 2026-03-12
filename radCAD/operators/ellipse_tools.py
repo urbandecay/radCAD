@@ -101,9 +101,9 @@ class EllipseTool_FromRadius(SurfaceDrawTool):
                 
                 self.major_axis = self.Xp.copy()
 
-            self.rx = (target - self.pivot).length
+            self.rx = (target - self.pivot).length * 0.5
             self.current = target
-            self.preview_pts = [self.pivot, self.pivot + (self.Xp * self.rx)]
+            self.preview_pts = [self.pivot, self.pivot + (self.Xp * (self.rx * 2.0))]
 
         if self.stage == 2:
             pv = self.pivot
@@ -187,7 +187,7 @@ class EllipseTool_FromRadius(SurfaceDrawTool):
     def refresh_preview(self):
         if self.stage == 1:
             self.stage = 2 
-            self.preview_pts = [self.pivot, self.pivot + (self.Xp * self.rx)]
+            self.preview_pts = [self.pivot, self.pivot + (self.Xp * (self.rx * 2.0))]
         elif self.stage >= 2:
             self.preview_pts = ellipse_points_world(self.pivot, self.rx, self.ry, self.segments, self.Xp, self.Yp)
 
