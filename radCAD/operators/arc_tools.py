@@ -623,25 +623,44 @@ class ArcTool_Common(SurfaceDrawTool):
                     self.Xp, self.Yp, self.Zp = orthonormal_basis_from_normal(floor_n)
                     self.state["locked_normal"] = floor_n
 
-                # --- FIX: Re-map existing geometry ONLY for P key during drawing ---
+                # --- FIX: Re-tether 1-Point Arc after Plane Toggle ---
                 if self.mode == "1POINT" and self.stage > 0:
-                    if self.start:
-                        # Project start point onto new plane
-                        d_start = self.start - self.pivot
-                        d_plane = d_start - self.Zp * d_start.dot(self.Zp)
-                        self.start = self.pivot + d_plane
+                    from bpy_extras import view3d_utils
+                    region = context.region
+                    rv3d = context.region_data
+                    coord = (event.mouse_region_x, event.mouse_region_y)
+                    ray_origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, coord)
+                    ray_vector = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
+                    
+                    hit = geometry.intersect_line_plane(ray_origin, ray_origin + ray_vector, self.pivot, self.Zp)
+                    if hit:
+                        if self.stage == 1:
+                            # Stage 1: Radius Drag. Line should point at mouse.
+                            self.current = hit
+                            rvec2 = world_to_plane(self.current - self.pivot, self.Xp, self.Yp)
+                            self.radius = rvec2.length
+                        elif self.stage == 2:
+                            # Stage 2: Angle Drag. Sweep should point at mouse.
+                            # First, project the OLD 'start' point to the new plane to keep radius/a0 stable
+                            d_start = self.start - self.pivot
+                            d_plane = d_start - self.Zp * d_start.dot(self.Zp)
+                            self.start = self.pivot + d_plane
+                            
+                            rvec_start = world_to_plane(self.start - self.pivot, self.Xp, self.Yp)
+                            self.radius = rvec_start.length
+                            self.a0 = math.atan2(rvec_start.y, rvec_start.x)
+                            
+                            # Now, find the angle of the mouse on the new plane
+                            rvec_mouse = world_to_plane(hit - self.pivot, self.Xp, self.Yp)
+                            target_angle = math.atan2(rvec_mouse.y, rvec_mouse.x)
+                            
+                            # Update accumulation so the sweep matches the mouse
+                            diff, a_prev = unwrap(self.a0, target_angle, 0.0)
+                            self.accum_angle = diff
+                            self.a1 = self.a0 + diff
+                            self.a_prev_raw = a_prev
                         
-                        # Recalculate local basis angles
-                        rvec2 = world_to_plane(self.start - self.pivot, self.Xp, self.Yp)
-                        self.radius = rvec2.length
-                        self.a0 = math.atan2(rvec2.y, rvec2.x)
-                        self.a1 = self.a0 + self.accum_angle
-                        self.a_prev_raw = self.a0
-                        
-                        # Refresh Preview
-                        self.preview_pts = arc_points_world(
-                            self.pivot, self.radius, self.a0, self.a1, self.segments, self.Xp, self.Yp
-                        )
+                        self.refresh_preview()
                 return True
 
         # 3. Axis Locking (X/Y/Z)
