@@ -207,7 +207,7 @@ def draw_hotkeys_panel():
             lines.append(("H: Set Sagitta Height", None))
             # === NEW: Stage 2 Alt Hint (Bypass 180 Snap) ===
             lines.append(("Alt: Bypass 180\u00B0 Snap", None))
-        elif tool_mode != "CIRCLE_TAN_TAN_TAN" and tool_mode != "LINE_POLY":
+        elif tool_mode not in ["3POINT", "CIRCLE_TAN_TAN_TAN", "LINE_POLY"]:
             lines.append(("A: Set Angle", None))
             
         lines.append(("S: Set Segments", None))
@@ -496,8 +496,8 @@ def draw_hud_2d():
                     current_y -= (h1 + 4)
             
             if state["stage"] == 2:
-                # --- HIDE ANGLE IF 2POINT OR LINE_POLY ---
-                if tool_mode != "2POINT" and tool_mode != "CIRCLE_TAN_TAN_TAN" and tool_mode != "LINE_POLY":
+                # --- HIDE ANGLE IF 2POINT, 3POINT OR LINE_POLY ---
+                if tool_mode not in ["2POINT", "3POINT", "CIRCLE_TAN_TAN_TAN", "LINE_POLY"]:
                     is_input_a = (state["input_mode"] == 'ANGLE')
                     if is_input_a: a_txt = get_display_str("\u2220", state['input_string'], True)
                     else:
