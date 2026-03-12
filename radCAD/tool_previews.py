@@ -496,11 +496,13 @@ def draw_preview_ellipse(ctx, shaders, prefs):
         draw_points(ctx, shaders, [pv], (0,0,0,1), pt_size, prefs)
         
         # Draw Foci specifically
-        if mode == "ELLIPSE_FOCI" and "f2" in state:
+        if mode == "ELLIPSE_FOCI" and "f1" in state and "f2" in state:
+             draw_points(ctx, shaders, [state["f1"]], (0,0,0,1), pt_size, prefs)
              draw_points(ctx, shaders, [state["f2"]], (0,0,0,1), pt_size, prefs)
              if state["current"] is not None:
-                  draw_line(ctx, shaders, pv, state["current"], (0.5, 0.5, 0.5, 0.3), prefs)
-                  draw_line(ctx, shaders, state["f2"], state["current"], (0.5, 0.5, 0.5, 0.3), prefs)
+                  green = (0.0, 1.0, 0.0, 1.0)
+                  draw_line(ctx, shaders, state["f1"], state["current"], green, prefs)
+                  draw_line(ctx, shaders, state["f2"], state["current"], green, prefs)
         
         # Draw Major Axis (Ghosted/Reference)
         if mode == "ELLIPSE_RADIUS" and "Xp" in state and "rx" in state:
@@ -514,8 +516,10 @@ def draw_preview_ellipse(ctx, shaders, prefs):
             
         # Draw Minor Axis line (to cursor)
         if state["current"] is not None:
-             # Just draw a line from pivot (or center) to cursor to visualize the height pull
-             draw_line(ctx, shaders, pv, state["current"], prefs["COL_HEIGHT"], prefs)
+             # Only draw the center-to-cursor line for radius/endpoint modes
+             # Foci mode uses the two lines from the foci points instead
+             if mode in ["ELLIPSE_RADIUS", "ELLIPSE_ENDPOINTS"]:
+                  draw_line(ctx, shaders, pv, state["current"], prefs["COL_HEIGHT"], prefs)
 
         # Draw Ellipse Polyline
         pts = state.get("preview_pts", [])

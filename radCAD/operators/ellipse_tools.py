@@ -129,6 +129,10 @@ class EllipseTool_FociPoint(SurfaceDrawTool):
         # Stage 2: Set Perimeter Point
         if self.stage == 2:
             self.f1 = self.pivot
+            # Ensure foci are in state for the renderer
+            self.state["f1"] = self.f1
+            self.state["f2"] = self.f2
+            
             d_raw = snap_point - self.f1
             d_plane = d_raw - self.Zp * d_raw.dot(self.Zp)
             P = self.f1 + d_plane
