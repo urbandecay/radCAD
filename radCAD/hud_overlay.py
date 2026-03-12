@@ -189,24 +189,23 @@ def draw_hotkeys_panel():
     show_perp = False
     if tool_mode in ["2POINT", "3POINT"] and state["stage"] == 2:
         show_perp = True
-    elif tool_mode == "CIRCLE_2POINT" and state["stage"] == 1:
+    elif tool_mode in ["CIRCLE_2POINT", "CIRCLE_3POINT"] and state["stage"] == 1:
         show_perp = True
     elif tool_mode == "1POINT" and state["stage"] >= 1:
         show_perp = True
 
     if show_perp:
         lines.append((f"P: Perpendicular ({perp_state})", perp_col))
-    
+
     # --- INSERT SPACER IF RADIUS/DISTANCE IS ABOUT TO BE SHOWN ---
     if state["stage"] >= 1:
         lines.append((None, None))
-        if state.get("tool_mode") in ["2POINT", "3POINT", "CIRCLE_2POINT"]:
+        if state.get("tool_mode") in ["2POINT", "3POINT", "CIRCLE_2POINT", "CIRCLE_3POINT"]:
             # --- FIX: Only show Diameter hint in Stage 1 ---
             if state["stage"] == 1:
                 lines.append(("D: Set Diameter", None))
                 lines.append(("Alt: Bypass Axis Snap", None))
-        elif state.get("tool_mode") == "LINE_POLY":
-            lines.append(("L: Set Length", None)) # --- NEW: Line Length Hint ---
+        elif state.get("tool_mode") == "LINE_POLY":            lines.append(("L: Set Length", None)) # --- NEW: Line Length Hint ---
         else:
             lines.append(("R: Set Radius", None))
     

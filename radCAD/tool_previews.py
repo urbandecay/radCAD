@@ -58,10 +58,10 @@ def apply_view_bias(points, ctx, amount=0.002, lift_mult=10.0, persp_percent=0.2
 def get_axis_aligned_color(vec, default_col):
     if vec.length_squared < 1e-6: return default_col
     v_norm = vec.normalized()
-    tol = 0.999999 
-    if abs(v_norm.dot(Vector((1, 0, 0)))) > tol: return (0.85, 0.00, 0.00, 1.00) # Red
-    if abs(v_norm.dot(Vector((0, 1, 0)))) > tol: return (0.00, 0.60, 0.00, 1.00) # Green
-    if abs(v_norm.dot(Vector((0, 0, 1)))) > tol: return (0.149, 0.376, 1.0, 1.0) # Blue
+    tol = 0.9999
+    if abs(v_norm.dot(Vector((1, 0, 0)))) > tol: return (1.0, 0.1, 0.1, 1.0) # Brighter Red
+    if abs(v_norm.dot(Vector((0, 1, 0)))) > tol: return (0.1, 1.0, 0.1, 1.0) # Brighter Green
+    if abs(v_norm.dot(Vector((0, 0, 1)))) > tol: return (0.2, 0.5, 1.0, 1.0) # Brighter Blue
     return default_col
 
 def get_render_settings(ctx):
@@ -565,9 +565,8 @@ def draw_preview_circle_3point(ctx, shaders, prefs):
         col = get_axis_aligned_color(diff, (0.5, 0.5, 0.5, 0.5))
         draw_line(ctx, shaders, pv, state["current"], col, prefs)
         
-        pts = state.get("preview_pts", [])
-        if pts:
-            draw_polyline(ctx, shaders, pts, (0,0,0,1), prefs)
+        # --- REMOVED: Black polyline in Stage 1 was muddying the axis line ---
+        pass
 
     # --- STAGE 2: Dragging p3 ---
     elif state["stage"] == 2:

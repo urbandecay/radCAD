@@ -309,31 +309,185 @@ class CircleTool_2Point(SurfaceDrawTool):
         return False
 
 class CircleTool_3Point(SurfaceDrawTool):
-    def __init__(self, core): super().__init__(core); self.mode="CIRCLE_3POINT"; self.segments=self.state["segments"]; self.p1=None; self.p2=None; self.current=None; self.preview_pts=[]
+    def __init__(self, core): 
+        super().__init__(core)
+        self.mode="CIRCLE_3POINT"
+        self.segments=self.state["segments"]
+        self.p1=None
+        self.p2=None
+        self.current=None
+        self.preview_pts=[]
+        self.constraint_axis=None
+        self.ref_normal = Vector((0,0,1))
+        self.vertical_override_axis = None
+
     def update(self, context, event, snap_point, snap_normal):
-        if self.stage==0: self.update_initial_plane(context, event, snap_point, snap_normal); return
+        if self.stage==0: 
+            self.update_initial_plane(context, event, snap_point, snap_normal)
+            if self.Zp: self.ref_normal = self.Zp.copy()
+            return
+            
         if self.stage==1:
-            t=snap_point; d=t-self.pivot; dp=d-self.Zp*d.dot(self.Zp); t=self.pivot+dp; self.current=t
-            c=(self.pivot+t)*0.5; r=(self.pivot-c).length; self.segments=self.state["segments"]
-            self.preview_pts=arc_points_world(c, r, 0.0, 2*math.pi, self.segments, self.Xp, self.Yp) if r>1e-6 else [self.pivot, t]; return
+            # 1. DIRECT PROJECT TO FLOOR PLANE FIRST
+            from bpy_extras import view3d_utils
+            coord = (event.mouse_region_x, event.mouse_region_y)
+            ray_origin = view3d_utils.region_2d_to_origin_3d(context.region, context.region_data, coord)
+            ray_vector = view3d_utils.region_2d_to_vector_3d(context.region, context.region_data, coord)
+            
+            target = geometry.intersect_line_plane(ray_origin, ray_origin + ray_vector, self.pivot, self.ref_normal)
+            if target is None: target = snap_point 
+
+            # 2. APPLY SNAPPING TO THE FLOOR POSITION
+            if self.constraint_axis and not event.alt:
+                diff = target - self.pivot
+                proj = self.constraint_axis * diff.dot(self.constraint_axis)
+                target = self.pivot + proj
+            
+            elif not self.state.get("geometry_snap", False) and not event.alt:
+                from ..inference_utils import get_axis_snapped_location
+                strength_deg = self.state.get("snap_strength", 6.0)
+                strength_deg = max(0.1, min(89.0, strength_deg))
+                axis_thresh = math.cos(math.radians(strength_deg))
+
+                inf_loc, _, _ = get_axis_snapped_location(
+                    self.pivot, 
+                    (event.mouse_region_x, event.mouse_region_y), 
+                    context,
+                    snap_threshold=axis_thresh
+                )
+                if inf_loc: target = inf_loc
+
+            # 2. COORDINATE BASIS CALCULATION (Screen-Space Anchor Method)
+            bridge = target - self.pivot
+            if bridge.length_squared > 1e-8:
+                b_vec = bridge.normalized()
+                up = self.ref_normal
+                is_perp_mode = self.state.get("is_perpendicular", False)
+                
+                # A. HYSTERESIS: Detect Verticality
+                dot_v = abs(b_vec.dot(up))
+                was_vertical = getattr(self, "_is_vert_last_3pt", False)
+                threshold = 0.98 if was_vertical else 0.995 
+                is_vertical = dot_v > threshold
+                self._is_vert_last_3pt = is_vertical
+
+                # B. STABILIZED BASIS VIA SCREEN ANGLE
+                from bpy_extras.view3d_utils import location_3d_to_region_2d
+                reg, rv3d = context.region, context.region_data
+                p2d = location_3d_to_region_2d(reg, rv3d, self.pivot)
+                
+                if p2d:
+                    m2d = Vector((event.mouse_region_x, event.mouse_region_y))
+                    screen_dir = (m2d - p2d)
+                    if screen_dir.length_squared > 1:
+                        if is_perp_mode or is_vertical:
+                            if is_vertical:
+                                ax_x, ax_y, _ = orthonormal_basis_from_normal(up)
+                                if self.vertical_override_axis is None:
+                                    view_dir = rv3d.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
+                                    new_Zp = ax_x if abs(view_dir.dot(ax_x)) > abs(view_dir.dot(ax_y)) else ax_y
+                                else:
+                                    new_Zp = ax_x if self.vertical_override_axis == 'X' else ax_y
+                            else:
+                                new_Zp = b_vec.cross(up).normalized()
+                            
+                            if new_Zp.length > 1e-4:
+                                view_fwd = rv3d.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
+                                if new_Zp.dot(view_fwd) > 0: new_Zp = -new_Zp
+                                
+                                self.Zp = new_Zp.normalized()
+                                self.Yp = up.normalized()
+                                self.Xp = self.Yp.cross(self.Zp).normalized()
+                        else:
+                            self.Zp = up.copy()
+                            self.Xp = b_vec
+                            self.Yp = self.Zp.cross(self.Xp).normalized()
+
+            self.current = target
+            self.preview_pts = [self.pivot, target]
+            return
+
         if self.stage==2:
-            p1,p2=self.p1,self.p2; d=snap_point-p1; dp=d-self.Zp*d.dot(self.Zp); p3=p1+dp; self.current=p3
-            v1=p2-p1; v2=p3-p2
-            if v1.length<1e-6 or v2.length<1e-6 or abs(v1.normalized().dot(v2.normalized()))>0.9999: self.preview_pts=[p1,p2,p3]; return
-            m1=(p1+p2)*0.5; m2=(p2+p3)*0.5; n1=v1.cross(self.Zp).normalized(); n2=v2.cross(self.Zp).normalized()
-            c1,c2=geometry.intersect_line_line(m1, m1+n1, m2, m2+n2)
-            if c1:
-                c=(c1+c2)*0.5; r=(p1-c).length; self.segments=self.state["segments"]
-                self.preview_pts=arc_points_world(c, r, 0.0, 2*math.pi, self.segments, self.Xp, self.Yp)
-            else: self.preview_pts=[p1,p2,p3]
+            self.current = snap_point
+            p1, p2, p3 = self.p1, self.p2, snap_point
+            
+            v1 = p2 - p1
+            v2 = p3 - p1
+            if v1.length < 1e-6 or v2.length < 1e-6 or abs(v1.normalized().dot(v2.normalized())) > 0.999:
+                 plane_n = self.Zp if self.Zp else Vector((0,0,1))
+            else:
+                 plane_n = v1.cross(v2).normalized()
+            
+            d_p3 = p3 - p1
+            d_plane = d_p3 - plane_n * d_p3.dot(plane_n)
+            p3_proj = p1 + d_plane
+            
+            m1 = (p1 + p3_proj) / 2
+            m2 = (p2 + p3_proj) / 2
+            vec1 = p3_proj - p1
+            vec2 = p2 - p3_proj
+            
+            if vec1.length < 1e-5 or vec2.length < 1e-5:
+                self.preview_pts = [p1, p3_proj, p2]
+                return
+
+            n1 = plane_n.cross(vec1)
+            n2 = plane_n.cross(vec2)
+            
+            isect = geometry.intersect_line_line(m1, m1 + n1, m2, m2 + n2)
+            if isect is None:
+                self.preview_pts = [p1, p3_proj, p2]
+            else:
+                c1, c2 = isect
+                center = (c1 + c2) / 2
+                radius = (p1 - center).length
+                self.radius = radius
+                
+                X_arc = (p1 - center).normalized()
+                Y_arc = plane_n.cross(X_arc).normalized()
+                self.preview_pts = arc_points_world(center, radius, 0.0, 2*math.pi, self.state["segments"], X_arc, Y_arc)
+
     def handle_click(self, context, event, snap_point, snap_normal, button_id=None):
-        if self.stage==0: self.pivot=snap_point; self.state["locked"]=True; self.state["locked_normal"]=self.Zp; self.stage=1; return 'NEXT_STAGE'
+        if self.stage==0: 
+            self.pivot=snap_point
+            self.p1=snap_point
+            self.state["locked"]=False
+            if self.Zp: self.ref_normal = self.Zp.copy()
+            self.stage=1
+            return 'NEXT_STAGE'
         if self.stage==1:
-            self.p1=self.pivot; self.p2=self.current
-            if (self.p2-self.p1).length<1e-6: return None
-            self.stage=2; return 'NEXT_STAGE'
+            self.p2=self.current
+            self.stage=2
+            return 'NEXT_STAGE'
         if self.stage==2: return 'FINISHED'
         return None
+
+    def handle_input(self, context, event):
+        # 1. Check Parent Input (L Key)
+        if super().handle_plane_lock_input(context, event):
+            if self.Zp: self.ref_normal = self.Zp.copy()
+            return True
+
+        # 2. Tool Specifics (P Key)
+        if event.type == 'P' and event.value == 'PRESS':
+            if self.stage == 0: return False
+            self.state["is_perpendicular"] = not self.state.get("is_perpendicular", False)
+            self.vertical_override_axis = None 
+            self.state["locked"] = True
+            self.state["locked_normal"] = self.ref_normal
+            return True
+
+        # 3. Vertical Orientation Override (X/Y)
+        if event.type in {'X', 'Y'} and event.value == 'PRESS':
+            if self.pivot and self.current:
+                bridge = self.current - self.pivot
+                if bridge.length_squared > 1e-8:
+                    is_vertical = abs(bridge.normalized().dot(self.ref_normal)) > 0.99
+                    if is_vertical or self.state.get("is_perpendicular"):
+                        self.vertical_override_axis = event.type
+                        self.core.report({'INFO'}, f"Orientation Locked to {event.type}-Facing")
+                        return True
+        return False
 
 # --- RESTORED TAN TAN CLASS (No Rail Lag) ---
 class CircleTool_TanTan(SurfaceDrawTool):
