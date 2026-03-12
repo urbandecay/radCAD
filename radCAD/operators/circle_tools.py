@@ -167,11 +167,18 @@ class CircleTool_2Point(SurfaceDrawTool):
         self.current=None
         self.preview_pts=[]
         self.constraint_axis=None
+        self.ref_normal = Vector((0,0,1)) # Track the 'floor' normal for dynamic pivoting
+
     def update(self, context, event, snap_point, snap_normal):
-        if self.stage==0: self.update_initial_plane(context, event, snap_point, snap_normal); return
+        if self.stage==0: 
+            self.update_initial_plane(context, event, snap_point, snap_normal)
+            if self.Zp: self.ref_normal = self.Zp.copy()
+            return
+            
         if self.stage==1:
             target = snap_point
             
+            # 1. APPLY SNAPPING FIRST
             # --- FIX: Alt bypasses Axis Snapping in Stage 1 ---
             if self.constraint_axis and not event.alt:
                 if self.state.get("geometry_snap", False):
@@ -205,18 +212,79 @@ class CircleTool_2Point(SurfaceDrawTool):
                 )
                 if inf_loc: target = inf_loc
 
+            # 2. DYNAMIC PERPENDICULAR PIVOTING BASED ON FINAL TARGET
+            if self.state.get("is_perpendicular") and self.pivot:
+                bridge = target - self.pivot
+                if bridge.length_squared > 1e-8:
+                    b_vec = bridge.normalized()
+                    # Calculate vertical plane normal by crossing diameter with floor normal
+                    new_Zp = b_vec.cross(self.ref_normal).normalized()
+                    if new_Zp.length > 1e-4:
+                        new_Yp = self.ref_normal
+                        new_Xp = new_Yp.cross(new_Zp).normalized()
+                        self.Xp, self.Yp, self.Zp = new_Xp, new_Yp, new_Zp
+
             self.current = target
             c = (self.pivot + target) * 0.5
             r = (target - self.pivot).length * 0.5
             self.radius = r
             self.segments = self.state["segments"]
             self.preview_pts = arc_points_world(c, r, 0.0, 2*math.pi, self.segments, self.Xp, self.Yp) if r > 1e-6 else []
+
     def handle_click(self, context, event, snap_point, snap_normal, button_id=None):
-        if self.stage==0: self.pivot=snap_point; self.state["locked"]=False; self.stage=1; return 'NEXT_STAGE'
+        if self.stage==0: 
+            self.pivot=snap_point
+            self.state["locked"]=False
+            if self.Zp: self.ref_normal = self.Zp.copy()
+            self.stage=1
+            return 'NEXT_STAGE'
         if self.stage==1: return 'FINISHED'
         return None
 
     def handle_input(self, context, event):
+        # 1. Check Parent Input (L Key)
+        if super().handle_plane_lock_input(context, event):
+            # If we just locked/unlocked via L, sync ref_normal
+            if self.Zp: self.ref_normal = self.Zp.copy()
+            return True
+
+        # 2. Tool Specifics (P Key)
+        if event.type == 'P' and event.value == 'PRESS':
+            if self.stage == 0: return False
+            bridge = None
+            
+            if self.stage == 1 and self.current: bridge = self.current - self.pivot
+            
+            if bridge and bridge.length_squared > 1e-6:
+                self.state["is_perpendicular"] = not self.state.get("is_perpendicular", False)
+                
+                if self.state["is_perpendicular"]:
+                    # Ensure we have a valid reference 'floor' normal
+                    if self.state.get("locked") and self.state.get("locked_normal"):
+                        self.ref_normal = self.state["locked_normal"].copy()
+                    elif self.Zp:
+                        self.ref_normal = self.Zp.copy()
+                    else:
+                        self.ref_normal = Vector((0,0,1))
+
+                    # Perform initial dynamic calc
+                    b_vec = bridge.normalized()
+                    new_Zp = b_vec.cross(self.ref_normal).normalized()
+                    new_Yp = self.ref_normal
+                    new_Xp = new_Yp.cross(new_Zp).normalized() 
+                    self.Xp, self.Yp, self.Zp = new_Xp, new_Yp, new_Zp
+                    # We keep the 'floor' locked for the mouse, but use Zp for geometry
+                    self.state["locked"] = True
+                    self.state["locked_normal"] = self.ref_normal
+                else:
+                    # Reset to the floor plane
+                    self.Zp = self.ref_normal.copy()
+                    self.Xp, self.Yp, _ = orthonormal_basis_from_normal(self.Zp)
+                    self.state["locked_normal"] = self.Zp
+                    self.state["is_perpendicular"] = False
+                return True
+
+        # 3. Axis Locking (X/Y/Z)
         if event.type in {'X', 'Y', 'Z'} and event.value == 'PRESS':
             if self.stage == 0: return False
             axes = {'X': Vector((1, 0, 0)), 'Y': Vector((0, 1, 0)), 'Z': Vector((0, 0, 1))}

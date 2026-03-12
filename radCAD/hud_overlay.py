@@ -185,8 +185,16 @@ def draw_hotkeys_panel():
     tool_mode = state.get("tool_mode", "1POINT")
     lines = []
     
-    # --- ONLY SHOW PERPENDICULAR ONCE ARC DRAWING STARTS (STAGE 2) ---
-    if state["stage"] == 2:
+    # --- ONLY SHOW PERPENDICULAR ONCE ARC DRAWING STARTS ---
+    show_perp = False
+    if tool_mode in ["2POINT", "3POINT"] and state["stage"] == 2:
+        show_perp = True
+    elif tool_mode == "CIRCLE_2POINT" and state["stage"] == 1:
+        show_perp = True
+    elif tool_mode == "1POINT" and state["stage"] >= 1:
+        show_perp = True
+
+    if show_perp:
         lines.append((f"P: Perpendicular ({perp_state})", perp_col))
     
     # --- INSERT SPACER IF RADIUS/DISTANCE IS ABOUT TO BE SHOWN ---
