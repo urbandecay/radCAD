@@ -365,9 +365,14 @@ class EllipseTool_FociPoint(SurfaceDrawTool):
 
     def refresh_preview(self):
         if self.stage == 1:
+            self.f1 = self.pivot
+            self.f2 = self.current if self.current else self.f1
             self.stage = 2 
             self.preview_pts = [self.f1, self.f2]
         elif self.stage >= 2:
+            if self.f1 is None or self.f2 is None:
+                self.preview_pts = []
+                return
             center = (self.f1 + self.f2) * 0.5
             self.preview_pts = ellipse_points_world(center, self.rx, self.ry, self.segments, self.Xp, self.Yp)
 
@@ -530,9 +535,14 @@ class EllipseTool_FromEndpoints(SurfaceDrawTool):
 
     def refresh_preview(self):
         if self.stage == 1:
+            self.p1 = self.pivot
+            self.p2 = self.current if self.current else self.p1
             self.stage = 2 
-            self.preview_pts = [self.p1, self.current]
+            self.preview_pts = [self.p1, self.p2]
         elif self.stage >= 2:
+            if self.p1 is None or self.p2 is None:
+                self.preview_pts = []
+                return
             center = (self.p1 + self.p2) * 0.5
             self.preview_pts = ellipse_points_world(center, self.rx, self.ry, self.segments, self.Xp, self.Yp)
 

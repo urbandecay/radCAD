@@ -96,7 +96,17 @@ def apply_input_value(ctx):
 
         elif tool_mode == "ELLIPSE_ENDPOINTS":
             if state["stage"] == 1:
-                state["rx"] = abs(val_meters) * 0.5
+                p1 = state["pivot"]
+                d = state["current"] - p1
+                if d.length > 1e-9: d.normalize()
+                else: d = Vector((1,0,0))
+                
+                diam = abs(val_meters)
+                p2 = p1 + d * diam
+                state["p1"] = p1
+                state["p2"] = p2
+                state["rx"] = diam * 0.5
+                state["current"] = p2
                 state["stage"] = 2
             elif state["stage"] == 2:
                 state["ry"] = abs(val_meters)
