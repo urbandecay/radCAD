@@ -17,6 +17,7 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
     # =========================================================================
     show_global_settings: bpy.props.BoolProperty(name="Global Settings", default=True)
     show_arc_settings: bpy.props.BoolProperty(name="1 Point Arc Settings", default=True)
+    show_points_by_arc_settings: bpy.props.BoolProperty(name="Points by Arc Settings", default=True)
     show_arc_2pt_settings: bpy.props.BoolProperty(name="2 Point Arc Settings", default=True)
 
     # =========================================================================
@@ -92,6 +93,59 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
         min=0.0, max=1.0,
         default=(0.2, 0.8, 0.2, 1.0), # Green
         description="This colors the line that shoots up from the middle to set the arc's height"
+    )
+
+    # VISUAL COLORS (Points by Arc)
+    color_points_by_arc_1: bpy.props.FloatVectorProperty(
+        name="Arc 1 Color",
+        subtype='COLOR',
+        size=4,
+        min=0.0, max=1.0,
+        default=(0.2, 0.8, 0.2, 1.0), # Green
+        description="Color for the first reference arc"
+    )
+
+    color_points_by_arc_2: bpy.props.FloatVectorProperty(
+        name="Arc 2 Color",
+        subtype='COLOR',
+        size=4,
+        min=0.0, max=1.0,
+        default=(0.2, 0.8, 0.2, 1.0), # Green
+        description="Color for the second reference arc"
+    )
+
+    color_points_by_arc_start: bpy.props.FloatVectorProperty(
+        name="Start Line Color",
+        subtype='COLOR',
+        size=4,
+        min=0.0, max=1.0,
+        default=(0.5, 0.5, 0.5, 1.0), # Grey
+        description="Color for the radius guide line"
+    )
+
+    color_points_by_arc_end: bpy.props.FloatVectorProperty(
+        name="End Line Color",
+        subtype='COLOR',
+        size=4,
+        min=0.0, max=1.0,
+        default=(0.5, 0.5, 0.5, 1.0), # Grey
+        description="Color for the angle guide line"
+    )
+
+    points_by_arc_crosshair_size: bpy.props.IntProperty(
+        name="Crosshair Size",
+        description="Size of the crosshair marker during second radius setup",
+        default=25,
+        min=1,
+        max=500
+    )
+
+    points_by_arc_square_size: bpy.props.IntProperty(
+        name="Intersection Square Size",
+        description="Size of the final result intersection square",
+        default=3,
+        min=1,
+        max=100
     )
 
     # --- SNAP MARKER SETTINGS (1-POINT) ---
@@ -384,7 +438,88 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
             col_global.separator()
 
         # ==================================
-        # 2. 1 POINT ARC SETTINGS (Collapsible Wrapper)
+        # 2. POINTS BY ARC SETTINGS
+        # ==================================
+        icon_val_points = 0
+        try:
+            from . import panel
+            pcoll = getattr(panel, "preview_collection", None)
+            if pcoll and "point_by_arcs" in pcoll:
+                icon_val_points = pcoll["point_by_arcs"].icon_id
+        except ImportError:
+            pass
+
+        box_points = layout.box()
+        row_header_points = box_points.row(align=True)
+        
+        is_expanded_points = self.show_points_by_arc_settings
+        icon_state_points = "TRIA_DOWN" if is_expanded_points else "TRIA_RIGHT"
+        row_header_points.prop(self, "show_points_by_arc_settings", icon=icon_state_points, text="", icon_only=True, emboss=False)
+        
+        if icon_val_points:
+            row_header_points.label(text="Points by Arc Settings", icon_value=icon_val_points)
+        else:
+            row_header_points.label(text="Points by Arc Settings", icon='GP_SELECT_POINTS')
+
+        if is_expanded_points:
+            split_main = box_points.split(factor=0.02)
+            split_main.label(text="") 
+            col = split_main.column(align=True)
+            
+            # --- Visual Colors ---
+            col.label(text="Visuals (Reference Arcs):", icon='COLOR')
+            
+            # Arc 1
+            split = col.split(factor=0.5, align=True)
+            row_label = split.row()
+            row_label.separator()
+            row_label.label(text="Arc 1 Color:", icon='BLANK1')
+            split.prop(self, "color_points_by_arc_1", text="")
+            
+            # Arc 2
+            split = col.split(factor=0.5, align=True)
+            row_label = split.row()
+            row_label.separator()
+            row_label.label(text="Arc 2 Color:", icon='BLANK1')
+            split.prop(self, "color_points_by_arc_2", text="")
+            
+            # Start Line
+            split = col.split(factor=0.5, align=True)
+            row_label = split.row()
+            row_label.separator()
+            row_label.label(text="Start Line Color:", icon='BLANK1')
+            split.prop(self, "color_points_by_arc_start", text="")
+            
+            # End Line
+            split = col.split(factor=0.5, align=True)
+            row_label = split.row()
+            row_label.separator()
+            row_label.label(text="End Line Color:", icon='BLANK1')
+            split.prop(self, "color_points_by_arc_end", text="")
+            
+            col.separator(factor=2.0)
+
+            # --- Marker Sizes ---
+            col.label(text="Marker Sizes:", icon='SNAP_ON')
+            
+            # Crosshair
+            split = col.split(factor=0.5, align=True)
+            row_label = split.row()
+            row_label.separator()
+            row_label.label(text="Crosshair Size (Setup):", icon='BLANK1')
+            split.prop(self, "points_by_arc_crosshair_size", text="")
+            
+            # Square
+            split = col.split(factor=0.5, align=True)
+            row_label = split.row()
+            row_label.separator()
+            row_label.label(text="Intersection Square (Final):", icon='BLANK1')
+            split.prop(self, "points_by_arc_square_size", text="")
+            
+            col.separator()
+
+        # ==================================
+        # 3. 1 POINT ARC SETTINGS (Collapsible Wrapper)
         # ==================================
         icon_val = 0
         try:
@@ -536,7 +671,7 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
             col.separator()
 
         # ==================================
-        # 3. 2 POINT ARC SETTINGS
+        # 4. 2 POINT ARC SETTINGS
         # ==================================
         icon_val_2pt = 0
         try:

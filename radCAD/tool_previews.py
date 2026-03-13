@@ -96,6 +96,12 @@ def get_render_settings(ctx):
         prefs["COL_CHORD"] = addon_prefs.color_arc_2pt_chord
         prefs["COL_HEIGHT"] = addon_prefs.color_arc_2pt_height
         prefs["PREVIEW_VERTEX_SIZE"] = addon_prefs.preview_vertex_size
+        
+        # --- NEW: Points by Arc Settings ---
+        prefs["POINTS_BY_ARC_COL1"] = addon_prefs.color_points_by_arc_1
+        prefs["POINTS_BY_ARC_COL2"] = addon_prefs.color_points_by_arc_2
+        prefs["POINTS_BY_ARC_CROSS_SIZE"] = addon_prefs.points_by_arc_crosshair_size
+        prefs["POINTS_BY_ARC_SQUARE_SIZE"] = addon_prefs.points_by_arc_square_size
     except (KeyError, AttributeError):
         pass
         
@@ -741,35 +747,50 @@ def draw_cb_3d():
             if center and Xc and Yc:
                 draw_compass_geometry(ctx, shaders, center, Xc, Yc, state["compass_rot"], 125, 15.0, (0,0,0,1), settings)
             
-            # --- GREEN SMOOTH ARCS ---
-            green_col = (0.2, 0.8, 0.2, 1.0)
+            # --- COLORS FROM PREFS ---
+            addon_prefs = ctx.preferences.addons["radCAD"].preferences
+            arc1_col = addon_prefs.color_points_by_arc_1
+            arc2_col = addon_prefs.color_points_by_arc_2
+            start_col = addon_prefs.color_points_by_arc_start
+            end_col = addon_prefs.color_points_by_arc_end
+            cross_sz = addon_prefs.points_by_arc_crosshair_size
+            square_sz = addon_prefs.points_by_arc_square_size
+
+            # 1. Arc 1 (Always Arc 1 Color)
             if state.get("arc1_pts"):
-                draw_polyline(ctx, shaders, state["arc1_pts"], green_col, settings)
+                draw_polyline(ctx, shaders, state["arc1_pts"], arc1_col, settings)
+            
+            # 2. Active Preview Arc (Map to Arc 1 or Arc 2 based on Stage)
             if state.get("preview_pts"):
-                draw_polyline(ctx, shaders, state["preview_pts"], green_col, settings)
+                if state["stage"] <= 2:
+                    # Still drawing Arc 1
+                    draw_polyline(ctx, shaders, state["preview_pts"], arc1_col, settings)
+                else:
+                    # Now drawing Arc 2
+                    draw_polyline(ctx, shaders, state["preview_pts"], arc2_col, settings)
             
             # --- INTERSECTION MARKERS (Stage-Dependent) ---
             if state.get("intersection_pts"):
-                # Size 25 (CROSS) while setting up radius, 5px (SQUARE) for preview
+                # Size from Prefs
                 if state["stage"] == 4:
-                    draw_crosshair(ctx, shaders, state.get("intersection_pts"), (0, 0, 0, 1), 25, settings, Xc, Yc, custom_lift=settings.get("LIFT_ARC", 20.0) + 50.0)
+                    draw_crosshair(ctx, shaders, state.get("intersection_pts"), (0, 0, 0, 1), cross_sz, settings, Xc, Yc, custom_lift=settings.get("LIFT_ARC", 20.0) + 50.0)
                 else:
-                    draw_points(ctx, shaders, state.get("intersection_pts"), (0, 0, 0, 1), 4, settings, custom_lift=settings.get("LIFT_ARC", 20.0) + 50.0)
+                    draw_points(ctx, shaders, state.get("intersection_pts"), (0, 0, 0, 1), square_sz, settings, custom_lift=settings.get("LIFT_ARC", 20.0) + 50.0)
             
             # Standard radius/angle guide lines (Yellow/Gold)
             pv = state.get("pivot")
             if pv:
                 # Stage 1 & 4: Radius line follows mouse (snapped to circle)
                 if state["stage"] in [1, 4] and state["current"]:
-                    draw_line(ctx, shaders, pv, state["current"], settings["COL_START"], settings)
+                    draw_line(ctx, shaders, pv, state["current"], start_col, settings)
                 
                 # Stage 2 & 5: Angle lines tethered to Arc Endpoints
                 elif state["stage"] in [2, 5]:
                     if state.get("start"):
-                        draw_line(ctx, shaders, pv, state["start"], settings["COL_START"], settings)
+                        draw_line(ctx, shaders, pv, state["start"], start_col, settings)
                     pts = state.get("preview_pts")
                     if pts:
-                        draw_line(ctx, shaders, pv, pts[-1], settings["COL_END"], settings)
+                        draw_line(ctx, shaders, pv, pts[-1], end_col, settings)
                 
         # UPDATED: Added all Line Curve Tools
         elif mode in ["LINE_POLY", "CURVE_INTERPOLATE", "CURVE_FREEHAND", "LINE_PERP_FROM_CURVE", "LINE_PERP_TO_TWO_CURVES", "LINE_TANGENT_FROM_CURVE", "LINE_TAN_TAN"]:
