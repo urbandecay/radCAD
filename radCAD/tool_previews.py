@@ -750,11 +750,11 @@ def draw_cb_3d():
             
             # --- INTERSECTION MARKERS (Stage-Dependent) ---
             if state.get("intersection_pts"):
-                # Size 25 (CROSS) while setting up radius, 10px (DOT) while drawing arc
+                # Size 25 (CROSS) while setting up radius, 5px (SQUARE) for preview
                 if state["stage"] == 4:
                     draw_crosshair(ctx, shaders, state.get("intersection_pts"), (0, 0, 0, 1), 25, settings, Xc, Yc, custom_lift=settings.get("LIFT_ARC", 20.0) + 50.0)
                 else:
-                    draw_points(ctx, shaders, state.get("intersection_pts"), (0, 0, 0, 1), 7, settings, custom_lift=settings.get("LIFT_ARC", 20.0) + 50.0)
+                    draw_points(ctx, shaders, state.get("intersection_pts"), (0, 0, 0, 1), 4, settings, custom_lift=settings.get("LIFT_ARC", 20.0) + 50.0)
             
             # Standard radius/angle guide lines (Yellow/Gold)
             pv = state.get("pivot")
