@@ -245,6 +245,10 @@ def draw_hotkeys_panel():
             lines.append(("Backspace: Remove Point", None))
             lines.append(("Wheel: Segments", None))
             lines.append(("Segments:", None))
+        elif state.get("tool_mode") == "CURVE_FREEHAND":
+            lines.append(("Click & Drag to Draw", None))
+            lines.append(("Wheel: Segments", None))
+            lines.append(("Segments:", None))
         elif state.get("tool_mode") != "ELLIPSE_CORNERS":
             lines.append(("R: Set Radius", None))
     

@@ -193,6 +193,9 @@ class ModalManager:
         elif t_mode == "CURVE_INTERPOLATE": 
             from .operators import curve_tools
             self.active_tool = curve_tools.CurveTool_Interpolate(self)
+        elif t_mode == "CURVE_FREEHAND": 
+            from .operators import curve_tools
+            self.active_tool = curve_tools.CurveTool_Freehand(self)
             
         elif t_mode == "POINT_BY_ARCS": 
             from .operators import point_tools
@@ -702,8 +705,12 @@ def modal_arc_common(self, ctx, ev):
 
     if ev.type == 'MOUSEMOVE':
         self.manager.on_move(ctx, ev)
+        # Force redraw while drawing freehand to keep it smooth
+        if state.get("tool_mode") == "CURVE_FREEHAND" and getattr(self.manager.active_tool, "is_drawing", False):
+            ctx.area.tag_redraw()
+        return {'RUNNING_MODAL'}
 
-    elif ev.value == 'PRESS':
+    if ev.value == 'PRESS':
         if self.manager.active_tool:
             if self.manager.active_tool.handle_input(ctx, ev):
                 self.manager.on_move(ctx, ev)

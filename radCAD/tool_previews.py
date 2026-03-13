@@ -750,7 +750,7 @@ def draw_cb_3d():
                         draw_line(ctx, shaders, pv, pts[-1], settings["COL_END"], settings)
                 
         # UPDATED: Added all Line Curve Tools
-        elif mode in ["LINE_POLY", "CURVE_INTERPOLATE", "LINE_PERP_FROM_CURVE", "LINE_PERP_TO_TWO_CURVES", "LINE_TANGENT_FROM_CURVE", "LINE_TAN_TAN"]:
+        elif mode in ["LINE_POLY", "CURVE_INTERPOLATE", "CURVE_FREEHAND", "LINE_PERP_FROM_CURVE", "LINE_PERP_TO_TWO_CURVES", "LINE_TANGENT_FROM_CURVE", "LINE_TAN_TAN"]:
             
             pts = state.get("preview_pts", [])
             if pts:

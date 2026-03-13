@@ -46,6 +46,7 @@ IMPLEMENTED_TOOLS = {
     "line_perpendicular_to_two_curves",
     "line_tangent_from_curve", 
     "curve_interpolate_points",
+    "curve_freehand",
     "point_by_arcs",
     "rectangle_from_center",
     "rectangle_from_corners",
@@ -58,7 +59,7 @@ SVG_FILES = {
     "arc_3_point": "3_point_arc.svg",
     "arc_from_endpoint": "arc_from_endpoint.svg",
     "line": "line.svg",
-    "line_freehand": "line_freehand.svg",
+    "curve_freehand": "line_freehand.svg",
     "line_tangent_from_curve": "line_tangent_from_curve.svg",
     "line_tangent_to_two_curves": "line_tangent_to_two_curves.svg",
     "line_perpendicular_from_curve": "line_perpendicular_from_curve.svg",
@@ -131,6 +132,8 @@ class RADCAD_OT_generic(bpy.types.Operator):
         elif self.panel == "curve":
             if self.name == "curve_interpolate_points":
                 bpy.ops.view3d.curve_interpolate('INVOKE_DEFAULT')
+            elif self.name == "curve_freehand":
+                bpy.ops.view3d.curve_freehand('INVOKE_DEFAULT')
 
         elif self.panel == "arc" and self.name == "arc_1_point":
             bpy.ops.view3d.arc_overlay_preview('INVOKE_DEFAULT')

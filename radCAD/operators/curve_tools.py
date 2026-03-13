@@ -4,83 +4,71 @@ from ..inference_utils import get_axis_snapped_location
 from .base_tool import SurfaceDrawTool 
 
 def safe_lerp(p_a, p_b, t, t_a, t_b):
-    """
-    Safely interpolates between p_a and p_b.
-    Prevents ZeroDivisionError if t_a and t_b are identical (distance is 0).
-    """
+    """Safely interpolates between p_a and p_b."""
     if abs(t_b - t_a) < 1e-6:
         return p_a
     return (t_b - t) / (t_b - t_a) * p_a + (t - t_a) / (t_b - t_a) * p_b
 
+def evaluate_catmull_rom(p0, p1, p2, p3, t_normalized):
+    """Directly evaluates a Catmull-Rom point for a single segment p1-p2."""
+    alpha = 0.5
+    def get_t(t, pa, pb): return t + pow((pb - pa).length_squared, alpha * 0.5)
+    
+    t0 = 0.0
+    t1 = get_t(t0, p0, p1)
+    t2 = get_t(t1, p1, p2)
+    t3 = get_t(t2, p2, p3)
+    
+    t = t1 + (t2 - t1) * t_normalized
+    A1 = safe_lerp(p0, p1, t, t0, t1)
+    A2 = safe_lerp(p1, p2, t, t1, t2)
+    A3 = safe_lerp(p2, p3, t, t2, t3)
+    B1 = safe_lerp(A1, A2, t, t0, t2)
+    B2 = safe_lerp(A2, A3, t, t1, t3)
+    return safe_lerp(B1, B2, t, t1, t2)
+
 def solve_catmull_rom_chain(points, num_segments=16):
     """
-    Generates a smooth path passing through all points with perfectly uniform spacing.
-    'num_segments' is now the TOTAL number of segments for the whole curve.
+    Highly efficient uniform curve solver.
+    Directly evaluates requested segments using chord-length distances.
     """
-    if len(points) < 2:
-        return points
-        
-    # 1. Generate a high-resolution raw spline first
-    chain = [points[0]] + points + [points[-1]]
-    raw_path = []
-    alpha = 0.5 
-    sub_samples = 10 # High-res samples per control segment
-    
-    def get_t(t, p0, p1):
-        dist_sq = (p1 - p0).length_squared
-        return t + pow(dist_sq, alpha * 0.5)
+    if len(points) < 2: return points
+    if len(points) == 2:
+        return [points[0].lerp(points[1], i/num_segments) for i in range(num_segments + 1)]
 
-    for i in range(len(chain) - 3):
-        p0, p1, p2, p3 = chain[i:i+4]
-        if (p1 - p2).length_squared < 1e-8:
-            raw_path.append(p1)
-            continue
-
-        t0, t1 = 0.0, 0.0
-        t1 = get_t(t0, p0, p1)
-        t2 = get_t(t1, p1, p2)
-        t3 = get_t(t2, p2, p3)
-
-        for j in range(sub_samples):
-            t = t1 + (t2 - t1) * (j / sub_samples)
-            A1 = safe_lerp(p0, p1, t, t0, t1)
-            A2 = safe_lerp(p1, p2, t, t1, t2)
-            A3 = safe_lerp(p2, p3, t, t2, t3)
-            B1 = safe_lerp(A1, A2, t, t0, t2)
-            B2 = safe_lerp(A2, A3, t, t1, t3)
-            raw_path.append(safe_lerp(B1, B2, t, t1, t2))
-            
-    raw_path.append(points[-1])
-
-    # 2. Resample the high-res path to be perfectly uniform
-    if len(raw_path) < 2: return points
-    
-    # Calculate cumulative distances along the high-res path
+    # 1. Calculate cumulative straight-line distances between control points
     dists = [0.0]
     total_len = 0.0
-    for i in range(len(raw_path) - 1):
-        total_len += (raw_path[i+1] - raw_path[i]).length
+    for i in range(len(points) - 1):
+        total_len += (points[i+1] - points[i]).length
         dists.append(total_len)
-        
+    
     if total_len < 1e-6: return [points[0], points[-1]]
 
-    # Sample exactly 'num_segments' evenly
-    uniform_path = []
+    # 2. Add boundary points for Catmull-Rom
+    chain = [points[0]] + points + [points[-1]]
+    
+    # 3. Sample exactly 'num_segments' points along the curve
+    final_pts = []
     for i in range(num_segments):
         target_d = total_len * (i / num_segments)
         
-        # Find segment in high-res path
+        # Find which segment this distance falls into
         idx = 0
         while idx < len(dists) - 2 and dists[idx+1] < target_d:
             idx += 1
             
-        # Lerp between the two high-res points
+        # Local 't' within the segment [idx, idx+1]
         d0, d1 = dists[idx], dists[idx+1]
-        factor = (target_d - d0) / (d1 - d0) if (d1 - d0) > 1e-8 else 0.0
-        uniform_path.append(raw_path[idx].lerp(raw_path[idx+1], factor))
+        local_t = (target_d - d0) / (d1 - d0) if (d1 - d0) > 1e-8 else 0.0
         
-    uniform_path.append(points[-1])
-    return uniform_path
+        # Evaluate spline using P[idx-1], P[idx], P[idx+1], P[idx+2]
+        # (Offset by 1 because of the boundary points added to 'chain')
+        p0, p1, p2, p3 = chain[idx:idx+4]
+        final_pts.append(evaluate_catmull_rom(p0, p1, p2, p3, local_t))
+        
+    final_pts.append(points[-1])
+    return final_pts
 
 class CurveTool_Interpolate(SurfaceDrawTool):
     def __init__(self, core):
@@ -91,19 +79,16 @@ class CurveTool_Interpolate(SurfaceDrawTool):
         self.constraint_axis = None
 
     def update(self, context, event, snap_point, snap_normal):
-        # Stage 0: Just finding the start point
         if self.stage == 0:
             self.update_initial_plane(context, event, snap_point, snap_normal)
             self.current = snap_point
             self.preview_pts = []
             return
 
-        # Stage 1+: Drawing Spline
         if self.stage >= 1:
             ref_point = self.control_points[-1] if self.control_points else self.pivot
             target = snap_point
             
-            # --- AXIS CONSTRAINT LOGIC ---
             if self.constraint_axis:
                 if self.state.get("geometry_snap", False):
                     diff = target - ref_point
@@ -111,88 +96,117 @@ class CurveTool_Interpolate(SurfaceDrawTool):
                     target = ref_point + proj
                 else:
                     from bpy_extras import view3d_utils
-                    region = context.region
-                    rv3d = context.region_data
-                    coord = (event.mouse_region_x, event.mouse_region_y)
-                    ray_origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, coord)
-                    ray_vector = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
-                    res = geometry.intersect_line_line(
-                        ray_origin, ray_origin + ray_vector, 
-                        ref_point, ref_point + self.constraint_axis
-                    )
+                    ray_origin = view3d_utils.region_2d_to_origin_3d(context.region, context.region_data, (event.mouse_region_x, event.mouse_region_y))
+                    ray_vector = view3d_utils.region_2d_to_vector_3d(context.region, context.region_data, (event.mouse_region_x, event.mouse_region_y))
+                    res = geometry.intersect_line_line(ray_origin, ray_origin + ray_vector, ref_point, ref_point + self.constraint_axis)
                     if res: target = res[1]
-            
             elif not self.state.get("geometry_snap", False):
-                strength_deg = self.state.get("snap_strength", 6.0)
-                strength_deg = max(0.1, min(89.0, strength_deg))
-                axis_thresh = math.cos(math.radians(strength_deg))
-                inf_loc, _, _ = get_axis_snapped_location(
-                    ref_point, (event.mouse_region_x, event.mouse_region_y), context, snap_threshold=axis_thresh
-                )
+                axis_thresh = math.cos(math.radians(self.state.get("snap_strength", 6.0)))
+                inf_loc, _, _ = get_axis_snapped_location(ref_point, (event.mouse_region_x, event.mouse_region_y), context, snap_threshold=axis_thresh)
                 if inf_loc: target = inf_loc
 
             self.current = target
-            
-            # Use dynamic segment count from global state
             num_segs = self.state.get("segments", 12)
-            
-            # Calculate smooth curve using the safe chain function
-            all_pts = self.control_points + [self.current]
-            self.preview_pts = solve_catmull_rom_chain(all_pts, num_segments=num_segs)
+            self.preview_pts = solve_catmull_rom_chain(self.control_points + [self.current], num_segments=num_segs)
 
     def refresh_preview(self):
         if self.stage >= 1 and self.current:
             num_segs = self.state.get("segments", 12)
-            all_pts = self.control_points + [self.current]
-            self.preview_pts = solve_catmull_rom_chain(all_pts, num_segments=num_segs)
+            self.preview_pts = solve_catmull_rom_chain(self.control_points + [self.current], num_segments=num_segs)
 
     def handle_click(self, context, event, snap_point, snap_normal, button_id=None):
         if self.stage == 0:
             self.pivot = snap_point
             self.control_points.append(snap_point)
-            
-            self.state["locked"] = True
-            self.state["locked_normal"] = self.Zp
-            
+            self.state["locked"], self.state["locked_normal"] = True, self.Zp
             self.stage = 1
             return 'NEXT_STAGE'
-
         if self.stage >= 1:
-            # Don't add point if it's too close to the last one (Double Click protection)
-            if (self.current - self.control_points[-1]).length < 1e-5:
-                return None
-                
+            if (self.current - self.control_points[-1]).length < 1e-5: return None
             self.control_points.append(self.current)
-            self.constraint_axis = None
-            self.state["constraint_axis"] = None
+            self.constraint_axis = self.state["constraint_axis"] = None
             self.pivot = self.current 
-            
             return 'NEXT_STAGE'
-            
         return None
 
     def handle_input(self, context, event):
-        if super().handle_plane_lock_input(context, event):
-            return True
-
+        if super().handle_plane_lock_input(context, event): return True
         if event.type in {'X', 'Y', 'Z'} and event.value == 'PRESS':
             axes = {'X': Vector((1, 0, 0)), 'Y': Vector((0, 1, 0)), 'Z': Vector((0, 0, 1))}
-            new_axis = axes[event.type]
-            if self.constraint_axis == new_axis:
-                self.constraint_axis = None
-                self.state["constraint_axis"] = None
-            else:
-                self.constraint_axis = new_axis
-                self.state["constraint_axis"] = new_axis
+            self.constraint_axis = self.state["constraint_axis"] = None if self.constraint_axis == axes[event.type] else axes[event.type]
             return True
-            
-        if event.type == 'BACK_SPACE' and event.value == 'PRESS':
-            if len(self.control_points) > 1:
-                self.control_points.pop()
-                self.pivot = self.control_points[-1]
-                all_pts = self.control_points + [self.current] if self.current else self.control_points
-                num_segs = self.state.get("segments", 12)
-                self.preview_pts = solve_catmull_rom_chain(all_pts, num_segments=num_segs)
-                return True
-                
+        if event.type == 'BACK_SPACE' and event.value == 'PRESS' and len(self.control_points) > 1:
+            self.control_points.pop()
+            self.pivot = self.control_points[-1]
+            self.refresh_preview()
+            return True
         return False
+
+class CurveTool_Freehand(SurfaceDrawTool):
+    def __init__(self, core):
+        super().__init__(core)
+        self.mode = "CURVE_FREEHAND"
+        self.points = []
+        self.current = None
+        self.last_collect_pos = None
+        self.is_drawing = False
+        self.min_dist = 0.05 # Optimal for direct solving
+
+    def update(self, context, event, snap_point, snap_normal):
+        if self.stage == 0:
+            self.update_initial_plane(context, event, snap_point, snap_normal)
+            self.current = snap_point
+            self.preview_pts = []
+            return
+
+        if self.stage == 1 and self.is_drawing:
+            target = snap_point
+            if self.Zp and self.pivot:
+                from bpy_extras import view3d_utils
+                coord = (event.mouse_region_x, event.mouse_region_y)
+                ray_origin = view3d_utils.region_2d_to_origin_3d(context.region, context.region_data, coord)
+                ray_vector = view3d_utils.region_2d_to_vector_3d(context.region, context.region_data, coord)
+                hit = geometry.intersect_line_plane(ray_origin, ray_origin + ray_vector, self.pivot, self.Zp)
+                if hit: target = hit
+            
+            self.current = target
+            
+            if self.last_collect_pos is None or (target - self.last_collect_pos).length > self.min_dist:
+                self.points.append(target.copy())
+                self.last_collect_pos = target.copy()
+            
+            # DIRECT SOLVE: Perfectly smooth, perfectly fast
+            num_segs = self.state.get("segments", 12)
+            self.preview_pts = solve_catmull_rom_chain(self.points, num_segments=num_segs)
+            self.state["preview_pts"] = self.preview_pts
+
+        if self.stage == 2:
+            self.current = snap_point
+
+    def refresh_preview(self):
+        if len(self.points) > 1:
+            num_segs = self.state.get("segments", 12)
+            self.preview_pts = solve_catmull_rom_chain(self.points, num_segments=num_segs)
+            self.state["preview_pts"] = self.preview_pts
+
+    def handle_click(self, context, event, snap_point, snap_normal, button_id=None):
+        if event.value != 'PRESS': return None
+        if self.stage == 0:
+            self.pivot = snap_point
+            self.points = [snap_point.copy()]
+            self.last_collect_pos = snap_point.copy()
+            self.is_drawing = True
+            self.state["locked"], self.state["locked_normal"] = True, self.Zp
+            self.stage = 1
+            return 'NEXT_STAGE'
+        if self.stage == 1:
+            self.is_drawing = False
+            if (snap_point - self.points[-1]).length > 1e-5: self.points.append(snap_point.copy())
+            self.refresh_preview()
+            self.stage = 2
+            return 'NEXT_STAGE'
+        if self.stage == 2: return 'FINISHED'
+        return None
+
+    def handle_input(self, context, event):
+        return super().handle_plane_lock_input(context, event)

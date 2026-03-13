@@ -44,6 +44,7 @@ op_line_tan_tan = _import("operators.op_line_tan_tan")
 op_line_perp_to_two_curves = _import("operators.op_line_perp_to_two_curves")
 op_line_tangent_from_curve = _import("operators.op_line_tangent_from_curve")
 op_curve_interpolate = _import("operators.op_curve_interpolate")
+op_curve_freehand = _import("operators.op_curve_freehand")
 op_point_by_arcs = _import("operators.op_point_by_arcs")
 
 def register():
@@ -83,6 +84,7 @@ def register():
     bpy.utils.register_class(op_line_perp_to_two_curves.VIEW3D_OT_line_perp_to_two_curves)
     bpy.utils.register_class(op_line_tangent_from_curve.VIEW3D_OT_line_tangent_from_curve) 
     bpy.utils.register_class(op_curve_interpolate.VIEW3D_OT_curve_interpolate)
+    bpy.utils.register_class(op_curve_freehand.VIEW3D_OT_curve_freehand)
     bpy.utils.register_class(op_point_by_arcs.VIEW3D_OT_point_by_arcs)
 
     if hasattr(panel, "register"):
@@ -93,6 +95,7 @@ def unregister():
         panel.unregister()
 
     bpy.utils.unregister_class(op_point_by_arcs.VIEW3D_OT_point_by_arcs)
+    bpy.utils.unregister_class(op_curve_freehand.VIEW3D_OT_curve_freehand)
     bpy.utils.unregister_class(op_curve_interpolate.VIEW3D_OT_curve_interpolate)
     bpy.utils.unregister_class(op_line_tangent_from_curve.VIEW3D_OT_line_tangent_from_curve)
     bpy.utils.unregister_class(op_line_perp_to_two_curves.VIEW3D_OT_line_perp_to_two_curves)
