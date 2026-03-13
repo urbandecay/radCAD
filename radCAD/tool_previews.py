@@ -498,7 +498,7 @@ def draw_preview_ellipse(ctx, shaders, prefs):
             draw_line(ctx, shaders, pts[0], pts[1], col, prefs)
         else:
             diff = state["current"] - pv
-            col = get_axis_aligned_color(diff, prefs["COL_START"])
+            col = get_axis_aligned_color(diff, (0.5, 0.5, 0.5, 1.0))
             draw_line(ctx, shaders, pv, state["current"], col, prefs)
         
     elif state["stage"] == 2:
@@ -560,7 +560,7 @@ def draw_preview_polygon(ctx, shaders, prefs):
             draw_line(ctx, shaders, pv, pts[1], prefs["COL_START"], prefs)
         else:
             diff = state["current"] - pv
-            col = get_axis_aligned_color(diff, prefs["COL_START"])
+            col = get_axis_aligned_color(diff, (0.5, 0.5, 0.5, 1.0))
             draw_line(ctx, shaders, pv, state["current"], col, prefs)
             
         draw_points(ctx, shaders, [state["current"]], (0,0,0,1), pt_size, prefs)

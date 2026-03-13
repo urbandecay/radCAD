@@ -99,8 +99,8 @@ class PolygonTool_CenterCorner(SurfaceDrawTool):
                     self.Xp = b_vec
                     self.Yp = self.Zp.cross(self.Xp).normalized()
 
-            # Final project to current plane (only if NOT axis snapped)
-            if not inf_loc:
+            # Final project to current plane (only if NOT axis snapped OR alt is held)
+            if not inf_loc or event.alt:
                 ray_origin = view3d_utils.region_2d_to_origin_3d(context.region, context.region_data, coord)
                 ray_vector = view3d_utils.region_2d_to_vector_3d(context.region, context.region_data, coord)
                 hit = geometry.intersect_line_plane(ray_origin, ray_origin + ray_vector, pv, self.Zp)
@@ -111,12 +111,36 @@ class PolygonTool_CenterCorner(SurfaceDrawTool):
             # Radius is distance to corner
             d_vec = target - pv
             self.radius = d_vec.length
+            self.state["radius"] = self.radius
             
             # Calculate Angle to align vertex with mouse cursor
             d2 = world_to_plane(d_vec, self.Xp, self.Yp)
             rot_angle = math.atan2(d2.y, d2.x)
             
             self.segments = max(3, self.state["segments"])
+            self.state["segments"] = self.segments
+            
+            self.preview_pts = polygon_points_world(
+                self.pivot,
+                self.radius,
+                rot_angle,
+                self.segments,
+                self.Xp,
+                self.Yp
+            )
+
+    def refresh_preview(self):
+        """Forces preview update using current state (for live typing)."""
+        if self.stage == 1 and self.pivot:
+            # Re-calculate angle based on last current mouse pos vs pivot
+            d_vec = self.current - self.pivot
+            d2 = world_to_plane(d_vec, self.Xp, self.Yp)
+            rot_angle = math.atan2(d2.y, d2.x)
+            
+            # Update 'current' point to reflect the new typed radius
+            dir_vec = d_vec.normalized()
+            self.current = self.pivot + (dir_vec * self.radius)
+            self.state["current"] = self.current
             
             self.preview_pts = polygon_points_world(
                 self.pivot,
@@ -223,8 +247,8 @@ class PolygonTool_CenterTangent(SurfaceDrawTool):
                     self.Xp = b_vec
                     self.Yp = self.Zp.cross(self.Xp).normalized()
 
-            # Final project to current plane (only if NOT axis snapped)
-            if not inf_loc:
+            # Final project to current plane (only if NOT axis snapped OR alt is held)
+            if not inf_loc or event.alt:
                 ray_origin = view3d_utils.region_2d_to_origin_3d(context.region, context.region_data, coord)
                 ray_vector = view3d_utils.region_2d_to_vector_3d(context.region, context.region_data, coord)
                 hit = geometry.intersect_line_plane(ray_origin, ray_origin + ray_vector, pv, self.Zp)
@@ -235,14 +259,40 @@ class PolygonTool_CenterTangent(SurfaceDrawTool):
             d_vec = target - pv
             apothem = d_vec.length
             self.radius = apothem 
+            self.state["radius"] = apothem
             
             d2 = world_to_plane(d_vec, self.Xp, self.Yp)
             mouse_angle = math.atan2(d2.y, d2.x)
             
             self.segments = max(3, self.state["segments"])
+            self.state["segments"] = self.segments
             
             half_seg_angle = math.pi / self.segments
             circumradius = apothem / math.cos(half_seg_angle)
+            start_angle = mouse_angle - half_seg_angle
+            
+            self.preview_pts = polygon_points_world(
+                self.pivot,
+                circumradius,
+                start_angle,
+                self.segments,
+                self.Xp,
+                self.Yp
+            )
+
+    def refresh_preview(self):
+        if self.stage == 1 and self.pivot:
+            d_vec = self.current - self.pivot
+            d2 = world_to_plane(d_vec, self.Xp, self.Yp)
+            mouse_angle = math.atan2(d2.y, d2.x)
+
+            # Update 'current' point to reflect the new typed apothem
+            dir_vec = d_vec.normalized()
+            self.current = self.pivot + (dir_vec * self.radius)
+            self.state["current"] = self.current
+            
+            half_seg_angle = math.pi / self.segments
+            circumradius = self.radius / math.cos(half_seg_angle)
             start_angle = mouse_angle - half_seg_angle
             
             self.preview_pts = polygon_points_world(
@@ -351,8 +401,8 @@ class PolygonTool_CornerCorner(SurfaceDrawTool):
                     self.Xp = b_vec
                     self.Yp = self.Zp.cross(self.Xp).normalized()
 
-            # Final project to current plane (only if NOT axis snapped)
-            if not inf_loc:
+            # Final project to current plane (only if NOT axis snapped OR alt is held)
+            if not inf_loc or event.alt:
                 ray_origin = view3d_utils.region_2d_to_origin_3d(context.region, context.region_data, coord)
                 ray_vector = view3d_utils.region_2d_to_vector_3d(context.region, context.region_data, coord)
                 hit = geometry.intersect_line_plane(ray_origin, ray_origin + ray_vector, corner1, self.Zp)
@@ -360,42 +410,57 @@ class PolygonTool_CornerCorner(SurfaceDrawTool):
 
             self.current = target
             
-            # 1. Calculate Edge Vector on Plane
+            # 1. Midpoint is Center, Radius is half the distance
             d_vec = target - corner1
-            d_plane = d_vec # Already on plane
+            center = corner1 + (d_vec * 0.5)
+            self.radius = d_vec.length * 0.5
+            self.state["radius"] = self.radius
             
-            side_length = d_plane.length
-            
-            # Avoid division by zero if points are too close
-            if side_length < 1e-6:
+            if self.radius < 1e-6:
                 self.preview_pts = []
                 return
 
             self.segments = max(3, self.state["segments"])
+            self.state["segments"] = self.segments
             
-            # 2. Calculate Circumradius (R) from Side Length (s)
-            angle_step = math.pi / self.segments
-            circumradius = side_length / (2.0 * math.sin(angle_step))
-            
-            # 3. Calculate Apothem (distance from edge center to polygon center)
-            apothem = side_length / (2.0 * math.tan(angle_step))
-            
-            # 4. Find the Center of the Polygon
-            edge_midpoint = corner1 + (d_plane * 0.5)
-            edge_dir = d_plane.normalized()
-            perp_dir = edge_dir.cross(self.Zp).normalized()
-            
-            # NOTE: This builds the polygon to the "Left" of the direction you draw.
-            center = edge_midpoint + (perp_dir * apothem)
-            
-            # 5. Calculate Start Angle
+            # 2. Angle from center to first click
             to_c1 = corner1 - center
             to_c1_2d = world_to_plane(to_c1, self.Xp, self.Yp)
             start_angle = math.atan2(to_c1_2d.y, to_c1_2d.x)
             
             self.preview_pts = polygon_points_world(
                 center,
-                circumradius,
+                self.radius,
+                start_angle,
+                self.segments,
+                self.Xp,
+                self.Yp
+            )
+
+    def refresh_preview(self):
+        if self.stage == 1 and self.pivot:
+            corner1 = self.pivot
+            d_vec = self.current - corner1
+            center = corner1 + (d_vec * 0.5)
+            self.radius = d_vec.length * 0.5 # Use current length from state
+
+            # Update 'current' point to reflect the new typed radius (span)
+            dir_vec = d_vec.normalized()
+            # self.radius here is half-span, so total span is 2*radius
+            self.current = corner1 + (dir_vec * (self.radius * 2.0))
+            self.state["current"] = self.current
+            
+            if self.radius < 1e-6:
+                self.preview_pts = []
+                return
+
+            to_c1 = corner1 - center
+            to_c1_2d = world_to_plane(to_c1, self.Xp, self.Yp)
+            start_angle = math.atan2(to_c1_2d.y, to_c1_2d.x)
+            
+            self.preview_pts = polygon_points_world(
+                center,
+                self.radius,
                 start_angle,
                 self.segments,
                 self.Xp,
@@ -504,8 +569,8 @@ class PolygonTool_Edge(SurfaceDrawTool):
                     self.Xp = b_vec
                     self.Yp = self.Zp.cross(self.Xp).normalized()
 
-            # Final project to current plane (only if NOT axis snapped)
-            if not inf_loc:
+            # Final project to current plane (only if NOT axis snapped OR alt is held)
+            if not inf_loc or event.alt:
                 ray_origin = view3d_utils.region_2d_to_origin_3d(context.region, context.region_data, coord)
                 ray_vector = view3d_utils.region_2d_to_vector_3d(context.region, context.region_data, coord)
                 hit = geometry.intersect_line_plane(ray_origin, ray_origin + ray_vector, p1, self.Zp)
@@ -513,41 +578,77 @@ class PolygonTool_Edge(SurfaceDrawTool):
 
             self.current = target
             
-            # 1. Calculate Edge Vector on Plane
+            # 1. Calculation for Odd-Sided Polygon (Corner to Opposite Edge Midpoint)
+            # The distance 'h' between a corner and the opposite edge midpoint is:
+            # h = R * (1 + cos(pi/n))
+            # So R = h / (1 + cos(pi/n))
+            
             d_vec = target - p1
-            d_plane = d_vec # Already on plane
+            h = d_vec.length
             
-            side_length = d_plane.length
+            self.segments = self.state["segments"]
+            if self.segments % 2 == 0: self.segments += 1 # Force Odd
+            self.state["segments"] = self.segments
             
-            if side_length < 1e-6:
+            angle_step = math.pi / self.segments
+            radius = h / (1.0 + math.cos(angle_step))
+            self.radius = radius
+            self.state["radius"] = radius
+            
+            if h < 1e-6:
                 self.preview_pts = []
                 return
 
-            self.segments = max(3, self.state["segments"])
+            # 2. Center is located 'radius' away from the first click (the corner)
+            dir_vec = d_vec.normalized()
+            center = p1 + (dir_vec * radius)
             
-            # 2. Geometry Math
-            angle_step = math.pi / self.segments
-            circumradius = side_length / (2.0 * math.sin(angle_step))
-            
-            # Apothem = s / (2 * tan(pi/n))
-            apothem = side_length / (2.0 * math.tan(angle_step))
-            
-            # 3. Find Center
-            edge_midpoint = p1 + (d_plane * 0.5)
-            edge_dir = d_plane.normalized()
-            perp_dir = edge_dir.cross(self.Zp).normalized()
-            
-            # Build polygon "Outwards" (Left of edge)
-            center = edge_midpoint + (perp_dir * apothem)
-            
-            # 4. Start Angle (Center -> p1)
+            # 3. Angle from center to first click (p1)
             to_p1 = p1 - center
             to_p1_2d = world_to_plane(to_p1, self.Xp, self.Yp)
             start_angle = math.atan2(to_p1_2d.y, to_p1_2d.x)
             
             self.preview_pts = polygon_points_world(
                 center,
-                circumradius,
+                self.radius,
+                start_angle,
+                self.segments,
+                self.Xp,
+                self.Yp
+            )
+
+    def refresh_preview(self):
+        if self.stage == 1 and self.pivot:
+            p1 = self.pivot
+            d_vec = self.current - p1
+            h = d_vec.length
+            
+            if self.segments % 2 == 0: self.segments += 1 # Force Odd
+            self.state["segments"] = self.segments
+            
+            angle_step = math.pi / self.segments
+            self.radius = h / (1.0 + math.cos(angle_step))
+            self.state["radius"] = self.radius
+
+            # Update 'current' point to reflect the new typed 'h' (span)
+            # Since radius is derived from h, h = radius * (1 + cos(pi/n))
+            dir_vec = d_vec.normalized()
+            new_h = self.radius * (1.0 + math.cos(angle_step))
+            self.current = p1 + (dir_vec * new_h)
+            self.state["current"] = self.current
+            
+            if h < 1e-6:
+                self.preview_pts = []
+                return
+
+            center = p1 + (dir_vec * self.radius)
+            to_p1 = p1 - center
+            to_p1_2d = world_to_plane(to_p1, self.Xp, self.Yp)
+            start_angle = math.atan2(to_p1_2d.y, to_p1_2d.x)
+            
+            self.preview_pts = polygon_points_world(
+                center,
+                self.radius,
                 start_angle,
                 self.segments,
                 self.Xp,

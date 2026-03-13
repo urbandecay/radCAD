@@ -231,13 +231,16 @@ def draw_hotkeys_panel():
         
         elif state.get("tool_mode") == "POLYGON_CENTER_CORNER":
             lines.append(("R: Set Radius", None))
-            lines.append(("S: Set Segments", None))
+            lines.append(("Segments:", None))
+            lines.append(("Alt: Bypass Axis Snap", None))
         elif state.get("tool_mode") == "POLYGON_CENTER_TANGENT":
             lines.append(("A: Set Apothem", None))
-            lines.append(("S: Set Segments", None))
+            lines.append(("Segments:", None))
+            lines.append(("Alt: Bypass Axis Snap", None))
         elif state.get("tool_mode") in ["POLYGON_CORNER_CORNER", "POLYGON_EDGE"]:
             lines.append(("L: Edge Length", None))
-            lines.append(("S: Set Segments", None))
+            lines.append(("Segments:", None))
+            lines.append(("Alt: Bypass Axis Snap", None))
         elif state.get("tool_mode") != "ELLIPSE_CORNERS":
             lines.append(("R: Set Radius", None))
     
@@ -523,7 +526,8 @@ def draw_hud_2d():
                     elif tool_mode in ["POLYGON_CORNER_CORNER", "POLYGON_EDGE"]:
                         label = "L:"
                     
-                    if state["input_mode"] == 'SEGMENTS': label = "S:"
+                    if state["input_mode"] == 'SEGMENTS':
+                        label = "Segments:" if tool_mode in ["POLYGON_CENTER_CORNER", "POLYGON_CENTER_TANGENT", "POLYGON_CORNER_CORNER", "POLYGON_EDGE"] else "S:"
                     
                     r_txt = get_display_str(label, state['input_string'], True)
                     h1 = draw_ui_box_generic(px, current_y, r_txt, active=True)
@@ -579,6 +583,23 @@ def draw_hud_2d():
                         r_txt_r = "R: " + format_length(r_val_y)
                         h2 = draw_ui_box_generic(px, current_y, r_txt_r)
                         current_y -= (h2 + 4)
+                elif tool_mode in ["POLYGON_CENTER_CORNER", "POLYGON_CENTER_TANGENT", "POLYGON_CORNER_CORNER", "POLYGON_EDGE"]:
+                    # Label based on tool
+                    label = "R: "
+                    if tool_mode == "POLYGON_CENTER_TANGENT": label = "A: "
+                    elif tool_mode in ["POLYGON_CORNER_CORNER", "POLYGON_EDGE"]: label = "L: "
+                    
+                    # Size (Radius/Apothem/Length)
+                    r_val = state.get("radius", 0.0)
+                    r_txt = label + format_length(r_val)
+                    h1 = draw_ui_box_generic(px, current_y, r_txt)
+                    current_y -= (h1 + 4)
+                    
+                    # Segments
+                    s_val = state.get("segments", 6)
+                    s_txt = f"Segments: {s_val}"
+                    h2 = draw_ui_box_generic(px, current_y, s_txt)
+                    current_y -= (h2 + 4)
                 elif tool_mode == "ELLIPSE_CORNERS":
                     pass
                 elif tool_mode in ["2POINT", "3POINT", "CIRCLE_2POINT", "CIRCLE_3POINT"]:

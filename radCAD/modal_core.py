@@ -682,14 +682,16 @@ def modal_arc_common(self, ctx, ev):
 
     if ev.type == 'WHEELUPMOUSE':
         if state.get("tool_mode") != "POINT_BY_ARCS":
-            state["segments"] = min(256, state["segments"] + 1)
+            step = 2 if state.get("tool_mode") == "POLYGON_EDGE" else 1
+            state["segments"] = min(256, state["segments"] + step)
             if self.manager.active_tool: self.manager.active_tool.segments = state["segments"]; self.manager.on_move(ctx, ev)
         ctx.area.tag_redraw()
         return {'RUNNING_MODAL'}
         
     if ev.type == 'WHEELDOWNMOUSE':
         if state.get("tool_mode") != "POINT_BY_ARCS":
-            state["segments"] = max(3, state["segments"] - 1)
+            step = 2 if state.get("tool_mode") == "POLYGON_EDGE" else 1
+            state["segments"] = max(3, state["segments"] - step)
             if self.manager.active_tool: self.manager.active_tool.segments = state["segments"]; self.manager.on_move(ctx, ev)
         ctx.area.tag_redraw()
         return {'RUNNING_MODAL'}
