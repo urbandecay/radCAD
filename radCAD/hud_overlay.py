@@ -193,7 +193,7 @@ def draw_hotkeys_panel():
         show_perp = True
     elif tool_mode == "1POINT" and state["stage"] >= 1:
         show_perp = True
-    elif tool_mode in ["ELLIPSE_RADIUS", "ELLIPSE_ENDPOINTS", "ELLIPSE_FOCI", "POLYGON_CENTER_CORNER", "POLYGON_CENTER_TANGENT", "POLYGON_CORNER_CORNER", "POLYGON_EDGE"] and state["stage"] >= 1:
+    elif tool_mode in ["ELLIPSE_RADIUS", "ELLIPSE_ENDPOINTS", "ELLIPSE_FOCI", "POLYGON_CENTER_CORNER", "POLYGON_CENTER_TANGENT", "POLYGON_CORNER_CORNER", "POLYGON_EDGE", "RECTANGLE_3_POINTS"] and state["stage"] >= 1:
         show_perp = True
     elif tool_mode == "ELLIPSE_CORNERS" and state["stage"] == 1:
         show_perp = True

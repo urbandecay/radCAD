@@ -561,7 +561,14 @@ def draw_preview_polygon(ctx, shaders, prefs):
         else:
             diff = state["current"] - pv
             col = get_axis_aligned_color(diff, (0.5, 0.5, 0.5, 1.0))
-            draw_line(ctx, shaders, pv, state["current"], col, prefs)
+            is_3pt_rect = tool_mode == "RECTANGLE_3_POINTS"
+            is_other_rect = tool_mode in ["RECTANGLE_CENTER_CORNER", "RECTANGLE_CORNER_CORNER"]
+            is_aligned = (col != (0.5, 0.5, 0.5, 1.0))
+            
+            # Draw line for polygons and 3-point rectangle (if aligned)
+            if not is_other_rect:
+                if not is_3pt_rect or is_aligned:
+                    draw_line(ctx, shaders, pv, state["current"], col, prefs)
             
         draw_points(ctx, shaders, [state["current"]], (0,0,0,1), pt_size, prefs)
         
