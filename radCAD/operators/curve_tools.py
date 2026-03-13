@@ -27,7 +27,7 @@ def evaluate_catmull_rom(p0, p1, p2, p3, t_normalized):
     B2 = safe_lerp(A2, A3, t, t1, t3)
     return safe_lerp(B1, B2, t, t1, t2)
 
-def solve_catmull_rom_chain(points, num_segments=16):
+def solve_catmull_rom_chain(points, num_segments=16, cached_dists=None):
     """
     Highly efficient uniform curve solver.
     Directly evaluates requested segments using chord-length distances.
@@ -37,11 +37,16 @@ def solve_catmull_rom_chain(points, num_segments=16):
         return [points[0].lerp(points[1], i/num_segments) for i in range(num_segments + 1)]
 
     # 1. Calculate cumulative straight-line distances between control points
-    dists = [0.0]
-    total_len = 0.0
-    for i in range(len(points) - 1):
-        total_len += (points[i+1] - points[i]).length
-        dists.append(total_len)
+    # Use cached version if available (O(1) vs O(N))
+    if cached_dists and len(cached_dists) == len(points):
+        dists = cached_dists
+        total_len = dists[-1]
+    else:
+        dists = [0.0]
+        total_len = 0.0
+        for i in range(len(points) - 1):
+            total_len += (points[i+1] - points[i]).length
+            dists.append(total_len)
     
     if total_len < 1e-6: return [points[0], points[-1]]
 
@@ -50,11 +55,15 @@ def solve_catmull_rom_chain(points, num_segments=16):
     
     # 3. Sample exactly 'num_segments' points along the curve
     final_pts = []
+    # Optimization: pre-calculate step
+    step = total_len / num_segments
+    
+    idx = 0
     for i in range(num_segments):
-        target_d = total_len * (i / num_segments)
+        target_d = step * i
         
         # Find which segment this distance falls into
-        idx = 0
+        # Optimization: start search from previous index (O(1) average case)
         while idx < len(dists) - 2 and dists[idx+1] < target_d:
             idx += 1
             
@@ -77,6 +86,7 @@ class CurveTool_Interpolate(SurfaceDrawTool):
         self.control_points = [] 
         self.current = None
         self.constraint_axis = None
+        self.dists = [0.0] # Cached for speed
 
     def update(self, context, event, snap_point, snap_normal):
         if self.stage == 0:
@@ -107,22 +117,33 @@ class CurveTool_Interpolate(SurfaceDrawTool):
 
             self.current = target
             num_segs = self.state.get("segments", 12)
-            self.preview_pts = solve_catmull_rom_chain(self.control_points + [self.current], num_segments=num_segs)
+            # Temporary distances for the point under mouse
+            temp_pts = self.control_points + [self.current]
+            temp_len = self.dists[-1] + (self.current - self.control_points[-1]).length
+            temp_dists = self.dists + [temp_len]
+            self.preview_pts = solve_catmull_rom_chain(temp_pts, num_segments=num_segs, cached_dists=temp_dists)
 
     def refresh_preview(self):
         if self.stage >= 1 and self.current:
             num_segs = self.state.get("segments", 12)
-            self.preview_pts = solve_catmull_rom_chain(self.control_points + [self.current], num_segments=num_segs)
+            temp_pts = self.control_points + [self.current]
+            temp_len = self.dists[-1] + (self.current - self.control_points[-1]).length
+            temp_dists = self.dists + [temp_len]
+            self.preview_pts = solve_catmull_rom_chain(temp_pts, num_segments=num_segs, cached_dists=temp_dists)
 
     def handle_click(self, context, event, snap_point, snap_normal, button_id=None):
         if self.stage == 0:
             self.pivot = snap_point
             self.control_points.append(snap_point)
+            self.dists = [0.0]
             self.state["locked"], self.state["locked_normal"] = True, self.Zp
             self.stage = 1
             return 'NEXT_STAGE'
         if self.stage >= 1:
             if (self.current - self.control_points[-1]).length < 1e-5: return None
+            # Update distance cache
+            seg_len = (self.current - self.control_points[-1]).length
+            self.dists.append(self.dists[-1] + seg_len)
             self.control_points.append(self.current)
             self.constraint_axis = self.state["constraint_axis"] = None
             self.pivot = self.current 
@@ -137,6 +158,7 @@ class CurveTool_Interpolate(SurfaceDrawTool):
             return True
         if event.type == 'BACK_SPACE' and event.value == 'PRESS' and len(self.control_points) > 1:
             self.control_points.pop()
+            self.dists.pop()
             self.pivot = self.control_points[-1]
             self.refresh_preview()
             return True
@@ -151,6 +173,7 @@ class CurveTool_Freehand(SurfaceDrawTool):
         self.last_collect_pos = None
         self.is_drawing = False
         self.min_dist = 0.05 # Optimal for direct solving
+        self.dists = [0.0]
 
     def update(self, context, event, snap_point, snap_normal):
         if self.stage == 0:
@@ -172,12 +195,17 @@ class CurveTool_Freehand(SurfaceDrawTool):
             self.current = target
             
             if self.last_collect_pos is None or (target - self.last_collect_pos).length > self.min_dist:
+                # Update distance cache
+                if self.points:
+                    seg_len = (target - self.points[-1]).length
+                    self.dists.append(self.dists[-1] + seg_len)
+                
                 self.points.append(target.copy())
                 self.last_collect_pos = target.copy()
             
             # DIRECT SOLVE: Perfectly smooth, perfectly fast
             num_segs = self.state.get("segments", 12)
-            self.preview_pts = solve_catmull_rom_chain(self.points, num_segments=num_segs)
+            self.preview_pts = solve_catmull_rom_chain(self.points, num_segments=num_segs, cached_dists=self.dists)
             self.state["preview_pts"] = self.preview_pts
 
         if self.stage == 2:
@@ -186,22 +214,31 @@ class CurveTool_Freehand(SurfaceDrawTool):
     def refresh_preview(self):
         if len(self.points) > 1:
             num_segs = self.state.get("segments", 12)
-            self.preview_pts = solve_catmull_rom_chain(self.points, num_segments=num_segs)
+            self.preview_pts = solve_catmull_rom_chain(self.points, num_segments=num_segs, cached_dists=self.dists)
             self.state["preview_pts"] = self.preview_pts
 
     def handle_click(self, context, event, snap_point, snap_normal, button_id=None):
         if event.value != 'PRESS': return None
+        
+        # Safety: If snap_point is None (skipped for performance), use the calculated current position
+        target = snap_point if snap_point is not None else self.current
+        if target is None: return None
+
         if self.stage == 0:
-            self.pivot = snap_point
-            self.points = [snap_point.copy()]
-            self.last_collect_pos = snap_point.copy()
+            self.pivot = target
+            self.points = [target.copy()]
+            self.dists = [0.0]
+            self.last_collect_pos = target.copy()
             self.is_drawing = True
             self.state["locked"], self.state["locked_normal"] = True, self.Zp
             self.stage = 1
             return 'NEXT_STAGE'
         if self.stage == 1:
             self.is_drawing = False
-            if (snap_point - self.points[-1]).length > 1e-5: self.points.append(snap_point.copy())
+            if (target - self.points[-1]).length > 1e-5:
+                seg_len = (target - self.points[-1]).length
+                self.dists.append(self.dists[-1] + seg_len)
+                self.points.append(target.copy())
             self.refresh_preview()
             self.stage = 2
             return 'NEXT_STAGE'

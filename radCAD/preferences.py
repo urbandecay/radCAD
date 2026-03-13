@@ -51,7 +51,7 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
     preview_vertex_size: bpy.props.IntProperty(
         name="Preview Vertex Size",
         description="Customize the size of the points shown during drawing",
-        default=5,
+        default=3,
         min=1,
         max=50
     )

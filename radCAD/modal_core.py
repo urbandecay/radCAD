@@ -213,59 +213,62 @@ class ModalManager:
             print(f"radCAD Report {type_set}: {message}")
 
     def get_snap_data(self, ctx, x, y):
-        try:
-            from .snapping_utils import snap_to_mesh_components
-        except ImportError:
-            def snap_to_mesh_components(**kwargs): return None
-
+        snapped_pos = None
+        
         reg, rv3d = self.region, self.rv3d
         if not reg or not rv3d: return Vector((0,0,0)), Vector((0,0,1))
         snap_radius = self.state.get("snap_strength", 6.0) * 2.0
-        snapped_pos = snap_to_mesh_components(
-            ctx, ctx.edit_object, x, y, max_px=snap_radius,
-            do_verts=state.get("snap_verts", True),
-            do_edges=state.get("snap_edges", True),
-            do_edge_center=state.get("snap_edge_center", True),
-            do_faces=False, 
-            do_face_center=state.get("snap_face_center", True)
-        )
 
-        # --- PREVIEW SNAPPING (SELF-SNAP) ---
-        # Allow snapping to points created in the current tool session
-        # Check both generic preview_pts and specialized tool attributes like endpoints_1
-        self_snap_targets = []
-        if state.get("tool_mode") == "LINE_POLY":
-            preview_pts = state.get("preview_pts", [])
-            if len(preview_pts) > 1: self_snap_targets = preview_pts[:-1]
-        elif state.get("tool_mode") == "POINT_BY_ARCS":
-            self_snap_targets = getattr(self.active_tool, "endpoints_1", [])
+        # --- OPTIMIZATION: Skip expensive mesh snapping for Freehand tool ---
+        if state.get("tool_mode") != "CURVE_FREEHAND":
+            try:
+                from .snapping_utils import snap_to_mesh_components
+            except ImportError:
+                def snap_to_mesh_components(**kwargs): return None
 
-        if self_snap_targets:
-            best_self_pt = None
-            best_self_dist = float('inf')
-            limit_sq = snap_radius * snap_radius
-            mvec = Vector((x, y))
+            snapped_pos = snap_to_mesh_components(
+                ctx, ctx.edit_object, x, y, max_px=snap_radius,
+                do_verts=state.get("snap_verts", True),
+                do_edges=state.get("snap_edges", True),
+                do_edge_center=state.get("snap_edge_center", True),
+                do_faces=False, 
+                do_face_center=state.get("snap_face_center", True)
+            )
 
-            for pt in self_snap_targets:
-                p2d = location_3d_to_region_2d(reg, rv3d, pt)
-                if p2d:
-                    d2 = (mvec - p2d).length_squared
-                    if d2 < limit_sq and d2 < best_self_dist:
-                        best_self_dist = d2
-                        best_self_pt = pt
-            
-            if best_self_pt:
-                use_self = True
-                if snapped_pos:
-                    p2d_mesh = location_3d_to_region_2d(reg, rv3d, snapped_pos)
-                    if p2d_mesh:
-                        dist_mesh = (mvec - p2d_mesh).length_squared
-                        if dist_mesh <= best_self_dist:
-                            use_self = False
-                if use_self:
-                    snapped_pos = best_self_pt
-        # ------------------------------------
+            # --- PREVIEW SNAPPING (SELF-SNAP) ---
+            self_snap_targets = []
+            if state.get("tool_mode") == "LINE_POLY":
+                preview_pts = state.get("preview_pts", [])
+                if len(preview_pts) > 1: self_snap_targets = preview_pts[:-1]
+            elif state.get("tool_mode") == "POINT_BY_ARCS":
+                self_snap_targets = getattr(self.active_tool, "endpoints_1", [])
 
+            if self_snap_targets:
+                best_self_pt = None
+                best_self_dist = float('inf')
+                limit_sq = snap_radius * snap_radius
+                mvec = Vector((x, y))
+
+                for pt in self_snap_targets:
+                    p2d = location_3d_to_region_2d(reg, rv3d, pt)
+                    if p2d:
+                        d2 = (mvec - p2d).length_squared
+                        if d2 < limit_sq and d2 < best_self_dist:
+                            best_self_dist = d2
+                            best_self_pt = pt
+                
+                if best_self_pt:
+                    use_self = True
+                    if snapped_pos:
+                        p2d_mesh = location_3d_to_region_2d(reg, rv3d, snapped_pos)
+                        if p2d_mesh:
+                            dist_mesh = (mvec - p2d_mesh).length_squared
+                            if dist_mesh <= best_self_dist:
+                                use_self = False
+                    if use_self:
+                        snapped_pos = best_self_pt
+
+        # --- FALLBACK TO SURFACE/PLANE (STILL ACTIVE FOR FREEHAND) ---
         state["snap_point"] = None 
         if snapped_pos is not None:
             state["geometry_snap"] = True
@@ -301,29 +304,20 @@ class ModalManager:
             return loc, norm
 
         # --- FALLBACK: VOID DRAWING (Smart Ortho Alignment) ---
-        # Default to Up, but check for Ortho View alignment
         plane_normal = Vector((0, 0, 1))
-        
         if rv3d.view_perspective == 'ORTHO':
-            # Calculate view direction
             view_dir = rv3d.view_matrix.inverted().to_3x3() @ Vector((0, 0, -1))
-            
-            # Check for alignment with major axes (X, Y, Z)
             x_align = abs(view_dir.dot(Vector((1, 0, 0))))
             y_align = abs(view_dir.dot(Vector((0, 1, 0))))
             z_align = abs(view_dir.dot(Vector((0, 0, 1))))
-            
             limit = 0.99
             if x_align > limit: plane_normal = Vector((1, 0, 0))
             elif y_align > limit: plane_normal = Vector((0, 1, 0))
             elif z_align > limit: plane_normal = Vector((0, 0, 1))
-            else:
-                # If tilted ortho, use view direction itself
-                plane_normal = -view_dir
+            else: plane_normal = -view_dir
 
         denom = view_vec.dot(plane_normal)
         if abs(denom) > 1e-6:
-            # Project onto plane through world origin
             t = (Vector((0,0,0)) - ray_origin).dot(plane_normal) / denom
             gpos = ray_origin + view_vec * t
         else:

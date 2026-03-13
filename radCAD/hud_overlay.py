@@ -447,6 +447,7 @@ def draw_hud_2d():
             else:
                 # --- Standard Arc Fill (TRI_FAN) ---
                 if state.get("tool_mode") != "POINT_BY_ARCS":
+                    base_pt = style.get("point_px", 4)
                     final_pt = max(1, base_pt - 1) if bpy.app.version >= (5, 0, 0) else base_pt
                     r = final_pt / 2.0
                     col = (0.0, 0.0, 0.0, 1.0)
@@ -468,7 +469,8 @@ def draw_hud_2d():
         
         # 2. Draw Menus
         draw_hotkeys_panel()
-        draw_bottom_bar()
+        if state.get("tool_mode") != "CURVE_FREEHAND":
+            draw_bottom_bar()
         
         # 3. Measurements
         if state["show_measure"]:
@@ -613,7 +615,7 @@ def draw_hud_2d():
                     if is_input_s: s_txt = get_display_str("Segments:", state['input_string'], True)
                     else: s_txt = f"Segments: {state['segments']}"
                     draw_ui_box_generic(px, current_y, s_txt, active=is_input_s)
-                    current_y -= (40 * style["ui_scale"])
+                    current_y -= (40 * style["ui_scale"]) if "ui_scale" in style else 40
                 elif tool_mode == "ELLIPSE_CORNERS":
                     pass
                 elif tool_mode in ["2POINT", "3POINT", "CIRCLE_2POINT", "CIRCLE_3POINT"]:

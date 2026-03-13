@@ -71,7 +71,7 @@ def get_render_settings(ctx):
         "LINE_COL": (1.0, 1.0, 0.0, 0.7),
         "COL_START": (0.8, 0.8, 0.2, 1.0), "COL_END": (0.2, 0.8, 0.2, 1.0),
         "COL_CHORD": (0.2, 0.8, 0.2, 1.0), "COL_HEIGHT": (0.2, 0.8, 0.2, 1.0),
-        "PREVIEW_VERTEX_SIZE": 5,
+        "PREVIEW_VERTEX_SIZE": 3,
         "UI_SCALE": 1.0,
         "VIEWPORT_SIZE": (100.0, 100.0)
     }
@@ -251,27 +251,32 @@ def draw_crosshair(ctx, shaders, points, color, size, settings, Xp, Yp, custom_l
     batch_for_shader(sh, 'LINES', {"pos": segs}).draw(sh)
 
 def draw_points(ctx, shaders, points, color, size, settings, Xp=None, Yp=None, custom_lift=None):
-    """Draws points as small 3D cubes using the Polyline shader."""
+    """Draws points as 3D cubes that are stabilized to always appear as 4px squares on screen."""
     if not points: return
     
     lift = custom_lift if custom_lift is not None else settings.get("LIFT_ARC", 20.0)
     pts = apply_view_bias(points, ctx, lift_mult=lift, persp_percent=settings.get("LIFT_PERSP", 0.2))
     
-    # Basis for the cube orientation (World-aligned)
-    X = Vector((1, 0, 0))
-    Y = Vector((0, 1, 0))
-    Z = Vector((0, 0, 1))
+    # Use Camera Basis so cubes always face the viewer (looking "squared")
+    rv3d = ctx.region_data
+    view_inv = rv3d.view_matrix.inverted()
+    X = view_inv.to_3x3() @ Vector((1, 0, 0))
+    Y = view_inv.to_3x3() @ Vector((0, 1, 0))
+    Z = view_inv.to_3x3() @ Vector((0, 0, 1))
     
-    # Calculate world-space radius for the cube
-    offset = world_radius_for_pixel_size(ctx, points[0], X, Y, size / 2.0)
-    if offset <= 0: offset = 0.05
+    sh_fill = shaders["UNIFORM"]
+    sh_line = shaders["POLYLINE"]
     
-    sh = shaders["POLYLINE"]
-    setup_polyline_shader(sh, color, 1.0, settings)
+    tris = []
+    lines = []
     
-    segs = []
     for p in pts:
-        # Define 8 corners of the cube
+        # Calculate world-space radius for this specific point's depth
+        # Passing 'size' directly ensures the total width (2 * offset) equals 'size' pixels
+        offset = world_radius_for_pixel_size(ctx, p, X, Y, size)
+        if offset <= 0: offset = 0.02
+        
+        # Define 8 corners of the cube (Camera Aligned)
         c1 = p + X*offset + Y*offset + Z*offset
         c2 = p + X*offset - Y*offset + Z*offset
         c3 = p - X*offset - Y*offset + Z*offset
@@ -281,15 +286,32 @@ def draw_points(ctx, shaders, points, color, size, settings, Xp=None, Yp=None, c
         c7 = p - X*offset - Y*offset - Z*offset
         c8 = p - X*offset + Y*offset - Z*offset
         
-        # 12 Edges of the cube
-        cube_edges = [
-            c1,c2, c2,c3, c3,c4, c4,c1, # Top
-            c5,c6, c6,c7, c7,c8, c8,c5, # Bottom
-            c1,c5, c2,c6, c3,c7, c4,c8  # Pillars
-        ]
-        segs.extend(cube_edges)
+        # 12 Triangles for solid faces
+        tris.extend([
+            c1,c2,c3, c1,c3,c4, # Front
+            c5,c6,c7, c5,c7,c8, # Back
+            c1,c2,c6, c1,c6,c5, # Top
+            c4,c3,c7, c4,c7,c8, # Bottom
+            c1,c4,c8, c1,c8,c5, # Right
+            c2,c3,c7, c2,c7,c6  # Left
+        ])
         
-    batch_for_shader(sh, 'LINES', {"pos": segs}).draw(sh)
+        # 12 Edges for the outline
+        lines.extend([
+            c1,c2, c2,c3, c3,c4, c4,c1, # Front Face
+            c5,c6, c6,c7, c7,c8, c8,c5, # Back Face
+            c1,c5, c2,c6, c3,c7, c4,c8  # Connecting Pillars
+        ])
+
+    # 1. Draw Solid Faces
+    sh_fill.bind()
+    sh_fill.uniform_float("color", color)
+    batch_for_shader(sh_fill, 'TRIS', {"pos": tris}).draw(sh_fill)
+    
+    # 2. Draw Wireframe Outline
+    outline_color = (color[0]*0.5, color[1]*0.5, color[2]*0.5, color[3])
+    setup_polyline_shader(sh_line, outline_color, 1.0, settings)
+    batch_for_shader(sh_line, 'LINES', {"pos": lines}).draw(sh_line)
 # =========================================================================
 #  TOOL SPECIALISTS
 # =========================================================================
