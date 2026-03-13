@@ -622,27 +622,23 @@ def modal_arc_common(self, ctx, ev):
              return {'RUNNING_MODAL'}
 
     # --- Commit / Finish ---
-    if ev.type in {'SPACE', 'RET', 'NUMPAD_ENTER'} and ev.value == 'PRESS':
-        if state["tool_mode"] == "LINE_POLY" and self.manager.active_tool:
-            # If we have a keyboard value active, commit it as a click first
-            if state.get("input_string"):
-                mx, my = ev.mouse_region_x, ev.mouse_region_y
-                snap_pt, snap_n = self.manager.get_snap_data(ctx, mx, my)
-                self.manager.active_tool.handle_click(ctx, ev, snap_pt, snap_n)
-                self.manager.on_move(ctx, ev)
-
-        commit_arc_to_mesh(ctx)
-        finish_modal(self, ctx)
-        return {'FINISHED'}
-    
-    if ev.type == 'RIGHTMOUSE' and ev.value == 'PRESS':
-        if state["tool_mode"] == "LINE_POLY" and self.manager.active_tool:
-            # If we have a keyboard value active, commit it as a click first
-            if state.get("input_string"):
-                mx, my = ev.mouse_region_x, ev.mouse_region_y
-                snap_pt, snap_n = self.manager.get_snap_data(ctx, mx, my)
-                self.manager.active_tool.handle_click(ctx, ev, snap_pt, snap_n)
-                self.manager.on_move(ctx, ev)
+    if (ev.type in {'SPACE', 'RET', 'NUMPAD_ENTER'} and ev.value == 'PRESS') or (ev.type == 'RIGHTMOUSE' and ev.value == 'PRESS'):
+        if self.manager.active_tool:
+            if state["tool_mode"] == "LINE_POLY":
+                # If we have a keyboard value active, commit it as a click first
+                if state.get("input_string"):
+                    mx, my = ev.mouse_region_x, ev.mouse_region_y
+                    snap_pt, snap_n = self.manager.get_snap_data(ctx, mx, my)
+                    self.manager.active_tool.handle_click(ctx, ev, snap_pt, snap_n)
+                    self.manager.on_move(ctx, ev)
+            
+            elif state["tool_mode"] == "CURVE_INTERPOLATE":
+                # Clear preview_pts so it doesn't include the mouse point during final commit
+                if hasattr(self.manager.active_tool, "control_points"):
+                    pts = self.manager.active_tool.control_points
+                    num_segs = state.get("segments", 12)
+                    from .operators.curve_tools import solve_catmull_rom_chain
+                    state["preview_pts"] = solve_catmull_rom_chain(pts, num_segments=num_segs)
 
         commit_arc_to_mesh(ctx)
         finish_modal(self, ctx)
@@ -681,18 +677,26 @@ def modal_arc_common(self, ctx, ev):
             return {'RUNNING_MODAL'} 
 
     if ev.type == 'WHEELUPMOUSE':
-        if state.get("tool_mode") != "POINT_BY_ARCS":
+        if state.get("tool_mode") not in ["POINT_BY_ARCS", "LINE_POLY"]:
             step = 2 if state.get("tool_mode") == "POLYGON_EDGE" else 1
             state["segments"] = min(256, state["segments"] + step)
-            if self.manager.active_tool: self.manager.active_tool.segments = state["segments"]; self.manager.on_move(ctx, ev)
+            if self.manager.active_tool: 
+                self.manager.active_tool.segments = state["segments"]
+                if hasattr(self.manager.active_tool, "refresh_preview"):
+                    self.manager.active_tool.refresh_preview()
+                self.manager.on_move(ctx, ev)
         ctx.area.tag_redraw()
         return {'RUNNING_MODAL'}
         
     if ev.type == 'WHEELDOWNMOUSE':
-        if state.get("tool_mode") != "POINT_BY_ARCS":
+        if state.get("tool_mode") not in ["POINT_BY_ARCS", "LINE_POLY"]:
             step = 2 if state.get("tool_mode") == "POLYGON_EDGE" else 1
-            state["segments"] = max(3, state["segments"] - step)
-            if self.manager.active_tool: self.manager.active_tool.segments = state["segments"]; self.manager.on_move(ctx, ev)
+            state["segments"] = max(1 if "CURVE" in state.get("tool_mode", "") else 3, state["segments"] - step)
+            if self.manager.active_tool: 
+                self.manager.active_tool.segments = state["segments"]
+                if hasattr(self.manager.active_tool, "refresh_preview"):
+                    self.manager.active_tool.refresh_preview()
+                self.manager.on_move(ctx, ev)
         ctx.area.tag_redraw()
         return {'RUNNING_MODAL'}
 

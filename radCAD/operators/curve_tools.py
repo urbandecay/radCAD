@@ -14,55 +14,73 @@ def safe_lerp(p_a, p_b, t, t_a, t_b):
 
 def solve_catmull_rom_chain(points, num_segments=16):
     """
-    Generates a smooth path passing through all given points.
-    Includes protections against stacked points.
+    Generates a smooth path passing through all points with perfectly uniform spacing.
+    'num_segments' is now the TOTAL number of segments for the whole curve.
     """
     if len(points) < 2:
         return points
         
-    # Duplicate ends to ensure the curve goes through start and end control points
+    # 1. Generate a high-resolution raw spline first
     chain = [points[0]] + points + [points[-1]]
-    
-    smooth_path = []
+    raw_path = []
     alpha = 0.5 
+    sub_samples = 10 # High-res samples per control segment
     
     def get_t(t, p0, p1):
-        # Calculate 'time' based on distance
-        a = pow((p1 - p0).length_squared, alpha * 0.5)
-        return t + a
+        dist_sq = (p1 - p0).length_squared
+        return t + pow(dist_sq, alpha * 0.5)
 
     for i in range(len(chain) - 3):
-        p0 = chain[i]
-        p1 = chain[i+1]
-        p2 = chain[i+2]
-        p3 = chain[i+3]
-        
-        # [CRITICAL FIX] If points are too close, skip calculation to avoid crash
-        if (p1 - p2).length_squared < 1e-6:
-            smooth_path.append(p1)
+        p0, p1, p2, p3 = chain[i:i+4]
+        if (p1 - p2).length_squared < 1e-8:
+            raw_path.append(p1)
             continue
 
-        t0 = 0.0
+        t0, t1 = 0.0, 0.0
         t1 = get_t(t0, p0, p1)
         t2 = get_t(t1, p1, p2)
         t3 = get_t(t2, p2, p3)
 
-        for j in range(num_segments):
-            t = t1 + (t2 - t1) * (j / num_segments)
-            
-            # Use safe_lerp instead of raw math
+        for j in range(sub_samples):
+            t = t1 + (t2 - t1) * (j / sub_samples)
             A1 = safe_lerp(p0, p1, t, t0, t1)
             A2 = safe_lerp(p1, p2, t, t1, t2)
             A3 = safe_lerp(p2, p3, t, t2, t3)
-            
             B1 = safe_lerp(A1, A2, t, t0, t2)
             B2 = safe_lerp(A2, A3, t, t1, t3)
+            raw_path.append(safe_lerp(B1, B2, t, t1, t2))
             
-            C = safe_lerp(B1, B2, t, t1, t2)
-            smooth_path.append(C)
+    raw_path.append(points[-1])
+
+    # 2. Resample the high-res path to be perfectly uniform
+    if len(raw_path) < 2: return points
+    
+    # Calculate cumulative distances along the high-res path
+    dists = [0.0]
+    total_len = 0.0
+    for i in range(len(raw_path) - 1):
+        total_len += (raw_path[i+1] - raw_path[i]).length
+        dists.append(total_len)
+        
+    if total_len < 1e-6: return [points[0], points[-1]]
+
+    # Sample exactly 'num_segments' evenly
+    uniform_path = []
+    for i in range(num_segments):
+        target_d = total_len * (i / num_segments)
+        
+        # Find segment in high-res path
+        idx = 0
+        while idx < len(dists) - 2 and dists[idx+1] < target_d:
+            idx += 1
             
-    smooth_path.append(points[-1])
-    return smooth_path
+        # Lerp between the two high-res points
+        d0, d1 = dists[idx], dists[idx+1]
+        factor = (target_d - d0) / (d1 - d0) if (d1 - d0) > 1e-8 else 0.0
+        uniform_path.append(raw_path[idx].lerp(raw_path[idx+1], factor))
+        
+    uniform_path.append(points[-1])
+    return uniform_path
 
 class CurveTool_Interpolate(SurfaceDrawTool):
     def __init__(self, core):
@@ -115,9 +133,18 @@ class CurveTool_Interpolate(SurfaceDrawTool):
 
             self.current = target
             
+            # Use dynamic segment count from global state
+            num_segs = self.state.get("segments", 12)
+            
             # Calculate smooth curve using the safe chain function
             all_pts = self.control_points + [self.current]
-            self.preview_pts = solve_catmull_rom_chain(all_pts, num_segments=12)
+            self.preview_pts = solve_catmull_rom_chain(all_pts, num_segments=num_segs)
+
+    def refresh_preview(self):
+        if self.stage >= 1 and self.current:
+            num_segs = self.state.get("segments", 12)
+            all_pts = self.control_points + [self.current]
+            self.preview_pts = solve_catmull_rom_chain(all_pts, num_segments=num_segs)
 
     def handle_click(self, context, event, snap_point, snap_normal, button_id=None):
         if self.stage == 0:
@@ -164,7 +191,8 @@ class CurveTool_Interpolate(SurfaceDrawTool):
                 self.control_points.pop()
                 self.pivot = self.control_points[-1]
                 all_pts = self.control_points + [self.current] if self.current else self.control_points
-                self.preview_pts = solve_catmull_rom_chain(all_pts, num_segments=12)
+                num_segs = self.state.get("segments", 12)
+                self.preview_pts = solve_catmull_rom_chain(all_pts, num_segments=num_segs)
                 return True
                 
         return False
