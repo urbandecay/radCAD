@@ -272,14 +272,21 @@ class Spline:
         range_val = constraintRadius
         
         max_u = float(len(self.points) - 1) if not self.is_cyclic else float(len(self.points))
-        start = max(0.0, seedU - range_val)
-        end = min(max_u, seedU + range_val)
+        start = seedU - range_val
+        end = seedU + range_val
         
         # Coarse scan
         u = start
         while u <= end:
-            p = self.evalCatmull(u)
-            deriv = self.evalDeriv(u)
+            # Handle wrapping for cyclic splines
+            test_u = u
+            if self.is_cyclic:
+                test_u = test_u % max_u
+            else:
+                test_u = max(0.0, min(max_u, test_u))
+
+            p = self.evalCatmull(test_u)
+            deriv = self.evalDeriv(test_u)
             tan = deriv.normalized() if deriv.length_squared > 1e-8 else Vector((1,0))
             toMouse = target - p
             dist = toMouse.length
@@ -290,7 +297,7 @@ class Spline:
             error = abs(tan.x * dir_vec.y - tan.y * dir_vec.x)
             if error < minError:
                 minError = error
-                bestU = u
+                bestU = test_u
             u += 0.01
             
         # Refinement
@@ -301,12 +308,16 @@ class Spline:
             e1 = self.getTangentError(currU + step, target)
             e2 = self.getTangentError(currU - step, target)
             
-            if e1 < e0 and (currU + step <= end):
+            if e1 < e0:
                 currU += step
-            elif e2 < e0 and (currU - step >= start):
+            elif e2 < e0:
                 currU -= step
             else:
                 step *= 0.5
+            
+            if self.is_cyclic: currU = currU % max_u
+            else: currU = max(0.0, min(max_u, currU))
+
         return currU
 
     def scanForSnaps(self, anchorSpline, anchorU, minU, maxU):
