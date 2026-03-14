@@ -677,6 +677,10 @@ class LineTool_PerpFromCurve(SurfaceDrawTool):
             bm = bmesh.from_edit_mesh(obj.data)
             self.all_chains = get_disjoint_chains(bm)
             if not self.all_chains: core.report({'WARNING'}, "Select at least one curve")
+            
+            # --- NEW: Pre-initialize splines (in 2D later) ---
+            # We don't have the plane yet, so we store them as raw world points for now
+            self.splines = [] 
         else:
             self.all_chains = []
 
@@ -688,7 +692,7 @@ class LineTool_PerpFromCurve(SurfaceDrawTool):
                 self.spline_geom = []
                 mw = context.edit_object.matrix_world if context.edit_object else Matrix.Identity(4)
                 for chain in self.all_chains:
-                    # --- FIX: Transform local coordinates to World Space ---
+                    # Transform local coordinates to World Space
                     world_chain = [mw @ v for v in chain]
                     pts_2d = [world_to_plane(v, self.Xp, self.Yp) for v in world_chain]
                     s = Spline(pts_2d)
@@ -696,11 +700,13 @@ class LineTool_PerpFromCurve(SurfaceDrawTool):
                     # Convert spline samples to 3D for preview
                     pts_3d = [plane_to_world(sample['pos'], self.Xp, self.Yp) for sample in s.samples]
                     self.spline_geom.append(pts_3d)
-                
-                # Sync with global state for the renderer
-                self.state["catmull_spline_previews"] = self.spline_geom
             else:
                 return
+        
+        # Sync with global state for the renderer
+        if self.spline_geom and not self.state.get("catmull_spline_previews"):
+            self.state["catmull_spline_previews"] = self.spline_geom
+
         if not self.splines: return
         
         m_2d = None
@@ -731,8 +737,19 @@ class LineTool_PerpFromCurve(SurfaceDrawTool):
                 s = self.splines[self.source_idx]
                 p = s.evalCatmull(self.current_u)
                 self.head_3d = plane_to_world(p, self.Xp, self.Yp)
-                self.current = self.head_3d
-                self.preview_pts = [self.head_3d]
+                
+                # Calculate perpendicular line preview even in stage 0
+                deriv = s.evalDeriv(self.current_u)
+                if deriv.length_squared == 0: norm = Vector((1,0))
+                else:
+                    tan = deriv.normalized()
+                    norm = Vector((-tan.y, tan.x))
+                
+                t2 = p + norm * (m_2d - p).dot(norm)
+                self.tail_3d = plane_to_world(t2, self.Xp, self.Yp)
+                
+                self.preview_pts = [self.head_3d, self.tail_3d]
+                self.current = self.tail_3d
             return
 
         # STAGE 1: SLIDE & SNAP
