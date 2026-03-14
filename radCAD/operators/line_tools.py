@@ -841,44 +841,55 @@ class LineTool_TangentFromCurve(SurfaceDrawTool):
         m_2d = world_to_plane(raw_world_pos, self.Xp, self.Yp)
 
         if self.stage == 0:
-            # Stage 0: Select the source curve
+            # Stage 0: Select the source curve (Dot Preview)
             best_d = float('inf')
-            for i, s in enumerate(self.splines):
+            for j, s in enumerate(self.splines):
                 u = s.getClosestU_Global(m_2d)
                 p = s.evalCatmull(u)
                 d = (p - m_2d).length_squared
                 if d < best_d:
                     best_d = d
-                    self.source_idx = i
+                    self.source_idx = j
                     self.current_u = u
             if self.source_idx != -1:
                 s = self.splines[self.source_idx]
+                p = s.evalCatmull(self.current_u)
+                self.head_3d = plane_to_world(p, self.Xp, self.Yp)
                 
-                # --- NEW: Responsive Refinement (Tangent search) ---
-                constraintRadius = 2.0 
-                self.current_u = s.solveRollingContact(m_2d, self.current_u, self.current_u, constraintRadius)
-                
-                h2 = s.evalCatmull(self.current_u)
-                self.head_3d = plane_to_world(h2, self.Xp, self.Yp)
-                
-                # Calculate tangent line preview
-                deriv = s.evalDeriv(self.current_u)
-                tan = deriv.normalized() if deriv.length_squared > 1e-8 else Vector((1,0))
-                toM = m_2d - h2
-                dist = toM.dot(tan)
-                t2 = h2 + tan * dist
-                self.tail_3d = plane_to_world(t2, self.Xp, self.Yp)
-                
-                self.preview_pts = [self.head_3d, self.tail_3d]
-                self.current = self.tail_3d
+                self.current = self.head_3d
+                self.preview_pts = [self.head_3d]
             return
+
+        # STAGE 1: SLIDE & SNAP (Tangent Logic)
+        sourceS = self.splines[self.source_idx]
+        
+        constraintRadius = 2.0 # Adjust range
+        suggestedU = sourceS.solveRollingContact(m_2d, self.current_u, self.current_u, constraintRadius)
+        self.current_u = suggestedU
+        
+        # Calculate tangent line
+        h2 = sourceS.evalCatmull(self.current_u)
+        deriv = sourceS.evalDeriv(self.current_u)
+        tan = deriv.normalized() if deriv.length_squared > 1e-8 else Vector((1,0))
+        toM = m_2d - h2
+        dist = toM.dot(tan)
+        t2 = h2 + tan * dist
+        
+        self.head_3d = plane_to_world(h2, self.Xp, self.Yp)
+        self.tail_3d = plane_to_world(t2, self.Xp, self.Yp)
+        
+        self.preview_pts = [self.head_3d, self.tail_3d]
+        self.current = self.tail_3d
+
     def handle_click(self, context, event, snap_point, snap_normal, button_id=None):
         if self.stage == 0:
             if self.source_idx != -1:
-                return 'FINISHED'
+                self.stage = 1
+                return 'NEXT_STAGE'
             return None
-        return 'FINISHED'
-        
+        elif self.stage == 1:
+            return 'FINISHED'
+        return 'CANCELLED'
     def handle_input(self, context, event):
         return super().handle_plane_lock_input(context, event)
 
