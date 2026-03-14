@@ -59,9 +59,9 @@ state = {
     "stage": 0,
     "preview_pts": [],
     "visual_pts": [],       # NEW: Stores high-res overlay
-    "arc1_pts": [],         
-    "intersection_pts": [], 
-    
+    "catmull_spline_previews": [], # NEW: Stores tool-specific curve overlays
+    "arc1_pts": [], 
+    "intersection_pts": [],    
     # NEW: Tan-Tan specific state keys to prevent persistence
     "smooth_curve_1": [],
     "smooth_curve_2": [],
@@ -200,6 +200,7 @@ def reset_state_from_context(ctx):
         "stage": 0, 
         "preview_pts": [], 
         "visual_pts": [],       # CLEARED: High-res overlay
+        "catmull_spline_previews": [], # CLEARED: Tool-specific curve overlays
         "arc1_pts": [], 
         "intersection_pts": [],
         
