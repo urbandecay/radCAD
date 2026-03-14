@@ -212,7 +212,7 @@ def perform_x_weld(bm, arc_edges, target_edges, radius, mw):
                         v_arc_existing.co = intersect_l
                     
                     cuts += 1
-                    break 
+                    # --- FIX: Removed 'break' to allow the other end of the edge to weld too ---
                         
     return cuts
 

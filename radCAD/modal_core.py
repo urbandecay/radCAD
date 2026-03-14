@@ -498,13 +498,20 @@ def commit_arc_to_mesh(ctx):
                    "POLYGON_CENTER_CORNER", "POLYGON_CENTER_TANGENT", "POLYGON_CORNER_CORNER", "POLYGON_EDGE", 
                    "RECTANGLE_CENTER_CORNER", "RECTANGLE_CORNER_CORNER", "RECTANGLE_3_POINTS"]
 
+    # Line-to-Curve tools that should commit BOTH points without closing
+    complete_line_tools = ["LINE_PERP_FROM_CURVE", "LINE_PERP_TO_TWO_CURVES", "LINE_TANGENT_FROM_CURVE", "LINE_TAN_TAN"]
+
     if state["tool_mode"] in shape_tools:
         is_closed = True
     
-    if state["tool_mode"] in continuous_tools:
+    # If it's a fixed line tool, we want to create exactly what's in preview_pts (usually 2 pts)
+    elif state["tool_mode"] in complete_line_tools:
+        is_closed = False
+        # Do NOT discard any points for these tools
+    
+    elif state["tool_mode"] in continuous_tools:
         is_closed = False
         # Discard the last point if it is the "floating" mouse point.
-        # We know it is floating if there is no active/just-confirmed keyboard input.
         if len(pts) > 1 and not state.get("input_string"):
             pts = pts[:-1]
 
