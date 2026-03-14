@@ -1033,10 +1033,36 @@ class LineTool_TanTan(SurfaceDrawTool):
             
             if best_idx != -1:
                 self.current_candidate = {'idx': best_idx, 'u': best_u}
-                p2d = self.splines[best_idx].evalCatmull(best_u)
-                p3d = plane_to_world(p2d, self.Xp, self.Yp)
-                self.preview_pts = [p3d]
-                self.current = p3d
+                
+                # --- NEW: Immediate Preview in Stage 0 ---
+                best_dist2 = float('inf')
+                best_idx2 = -1
+                best_u2 = 0.0
+                for i, s in enumerate(self.splines):
+                    if i == best_idx: continue
+                    u = s.getClosestU_Global(m_2d)
+                    p = s.evalCatmull(u)
+                    dist = (p - m_2d).length
+                    if dist < best_dist2:
+                        best_dist2 = dist
+                        best_idx2 = i
+                        best_u2 = u
+                
+                if best_idx2 != -1:
+                    s1 = self.splines[best_idx]
+                    s2 = self.splines[best_idx2]
+                    res_u1, res_u2 = solve_rhino_tangent(s1, s2, best_u, best_u2)
+                    p1_2d = s1.evalCatmull(res_u1)
+                    p2_2d = s2.evalCatmull(res_u2)
+                    start_3d = plane_to_world(p1_2d, self.Xp, self.Yp)
+                    end_3d = plane_to_world(p2_2d, self.Xp, self.Yp)
+                    self.preview_pts = [start_3d, end_3d]
+                    self.current = end_3d
+                else:
+                    p2d = self.splines[best_idx].evalCatmull(best_u)
+                    p3d = plane_to_world(p2d, self.Xp, self.Yp)
+                    self.preview_pts = [p3d]
+                    self.current = p3d
                 
         elif self.stage == 1:
             idx1 = self.first_click_info['idx']
@@ -1170,10 +1196,36 @@ class LineTool_PerpToTwoCurves(SurfaceDrawTool):
             
             if best_idx != -1:
                 self.current_candidate = {'idx': best_idx, 'u': best_u}
-                p2d = self.splines[best_idx].evalCatmull(best_u)
-                p3d = plane_to_world(p2d, self.Xp, self.Yp)
-                self.preview_pts = [p3d]
-                self.current = p3d
+                
+                # --- NEW: Immediate Preview in Stage 0 ---
+                best_dist2 = float('inf')
+                best_idx2 = -1
+                best_u2 = 0.0
+                for i, s in enumerate(self.splines):
+                    if i == best_idx: continue
+                    u = s.getClosestU_Global(m_2d)
+                    p = s.evalCatmull(u)
+                    dist = (p - m_2d).length
+                    if dist < best_dist2:
+                        best_dist2 = dist
+                        best_idx2 = i
+                        best_u2 = u
+                
+                if best_idx2 != -1:
+                    s1 = self.splines[best_idx]
+                    s2 = self.splines[best_idx2]
+                    res_u1, res_u2 = solve_rhino_perp(s1, s2, best_u, best_u2)
+                    p1_2d = s1.evalCatmull(res_u1)
+                    p2_2d = s2.evalCatmull(res_u2)
+                    start_3d = plane_to_world(p1_2d, self.Xp, self.Yp)
+                    end_3d = plane_to_world(p2_2d, self.Xp, self.Yp)
+                    self.preview_pts = [start_3d, end_3d]
+                    self.current = end_3d
+                else:
+                    p2d = self.splines[best_idx].evalCatmull(best_u)
+                    p3d = plane_to_world(p2d, self.Xp, self.Yp)
+                    self.preview_pts = [p3d]
+                    self.current = p3d
                 
         elif self.stage == 1:
             idx1 = self.first_click_info['idx']
