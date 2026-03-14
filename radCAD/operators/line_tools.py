@@ -1215,8 +1215,11 @@ class LineTool_PerpToTwoCurves(SurfaceDrawTool):
                     s1 = self.splines[best_idx]
                     s2 = self.splines[best_idx2]
                     res_u1, res_u2 = solve_rhino_perp(s1, s2, best_u, best_u2)
+                    
+                    # LOCK to the solved perpendicular points only
                     p1_2d = s1.evalCatmull(res_u1)
                     p2_2d = s2.evalCatmull(res_u2)
+                    
                     start_3d = plane_to_world(p1_2d, self.Xp, self.Yp)
                     end_3d = plane_to_world(p2_2d, self.Xp, self.Yp)
                     self.preview_pts = [start_3d, end_3d]
@@ -1252,12 +1255,12 @@ class LineTool_PerpToTwoCurves(SurfaceDrawTool):
                 
                 res_u1, res_u2 = solve_rhino_perp(s1, s2, u1_seed, best_u)
                 
+                # LOCK to the solved perpendicular points only
                 p1_2d = s1.evalCatmull(res_u1)
                 p2_2d = s2.evalCatmull(res_u2)
                 
                 start_3d = plane_to_world(p1_2d, self.Xp, self.Yp)
                 end_3d = plane_to_world(p2_2d, self.Xp, self.Yp)
-                
                 self.preview_pts = [start_3d, end_3d]
                 self.radius = (start_3d - end_3d).length
                 self.current = end_3d
