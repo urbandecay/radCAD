@@ -46,6 +46,10 @@ state = {
     "line_tangent_show_catmull": True,
     "line_tangent_col_catmull": (0.0, 0.8, 1.0, 0.5),
     "line_tangent_width_catmull": 2.0,
+
+    "line_tan_tan_show_catmull": True,
+    "line_tan_tan_col_catmull": (0.0, 0.8, 1.0, 0.5),
+    "line_tan_tan_width_catmull": 2.0,
     
     "color_arc_start": (0.8, 0.8, 0.2, 1.0),
     "color_arc_end": (0.2, 0.8, 0.2, 1.0),
@@ -133,6 +137,8 @@ def reset_state_from_context(ctx):
     line_perp2_width = 2.0
     line_tangent_show = True; line_tangent_col = (0.0, 0.8, 1.0, 0.5)
     line_tangent_width = 2.0
+    line_tan_tan_show = True; line_tan_tan_col = (0.0, 0.8, 1.0, 0.5)
+    line_tan_tan_width = 2.0
 
     if prefs:
         c_size = prefs.compass_size
@@ -169,6 +175,10 @@ def reset_state_from_context(ctx):
         line_tangent_show = getattr(prefs, "line_tangent_show_catmull", True)
         line_tangent_col = tuple(getattr(prefs, "line_tangent_col_catmull", (0.0, 0.8, 1.0, 0.5)))
         line_tangent_width = getattr(prefs, "line_tangent_width_catmull", 2.0)
+
+        line_tan_tan_show = getattr(prefs, "line_tan_tan_show_catmull", True)
+        line_tan_tan_col = tuple(getattr(prefs, "line_tan_tan_col_catmull", (0.0, 0.8, 1.0, 0.5)))
+        line_tan_tan_width = getattr(prefs, "line_tan_tan_width_catmull", 2.0)
 
     try:
         theme = ctx.preferences.themes[0].view_3d
@@ -216,6 +226,8 @@ def reset_state_from_context(ctx):
         "line_perp2_width_catmull": line_perp2_width,
         "line_tangent_show_catmull": line_tangent_show, "line_tangent_col_catmull": line_tangent_col,
         "line_tangent_width_catmull": line_tangent_width,
+        "line_tan_tan_show_catmull": line_tan_tan_show, "line_tan_tan_col_catmull": line_tan_tan_col,
+        "line_tan_tan_width_catmull": line_tan_tan_width,
         "show_measure": getattr(scene, "arc_show_measurements", True),
         "color": tuple(getattr(scene, "arc_color", (1.0, 0.6, 0.0, 1.0))),
         "color_arc_start": col_start, "color_arc_end": col_end,
