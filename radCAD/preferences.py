@@ -21,6 +21,7 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
     show_arc_2pt_settings: bpy.props.BoolProperty(name="2 Point Arc Settings", default=True)
     show_line_settings: bpy.props.BoolProperty(name="Line Settings", default=True)
     show_line_perp_settings: bpy.props.BoolProperty(name="Line Perpendicular from Curve Settings", default=True)
+    show_line_perp2_settings: bpy.props.BoolProperty(name="Line Perpendicular to Two Curves Settings", default=True)
 
     # =========================================================================
     # SETTINGS PROPERTIES
@@ -51,6 +52,30 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
     line_perp_width_catmull: bpy.props.FloatProperty(
         name="Catmull Overlay Thickness",
         description="Line thickness for the Catmull-Rom spline preview in the Perpendicular Line tool",
+        default=2.0,
+        min=0.5, max=10.0,
+        precision=1
+    )
+
+    # --- Line Perpendicular to Two Curves ---
+    line_perp2_show_catmull: bpy.props.BoolProperty(
+        name="Show Catmull Overlay",
+        description="Toggle the visibility of the Catmull-Rom spline overlay for the Perp to Two Curves tool",
+        default=True
+    )
+
+    line_perp2_col_catmull: bpy.props.FloatVectorProperty(
+        name="Catmull Overlay Color",
+        subtype='COLOR',
+        size=4,
+        min=0.0, max=1.0,
+        default=(0.0, 0.8, 1.0, 0.5),
+        description="Color for the Catmull-Rom spline preview in the Perp to Two Curves tool"
+    )
+
+    line_perp2_width_catmull: bpy.props.FloatProperty(
+        name="Catmull Overlay Thickness",
+        description="Line thickness for the Catmull-Rom spline preview in the Perp to Two Curves tool",
         default=2.0,
         min=0.5, max=10.0,
         precision=1
@@ -645,7 +670,46 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
             col.separator()
 
         # ==================================
-        # 5. 1 POINT ARC SETTINGS (Collapsible Wrapper)
+        # 5. LINE PERPENDICULAR TO TWO CURVES SETTINGS
+        # ==================================
+        box_perp2 = layout.box()
+        row_header_perp2 = box_perp2.row(align=True)
+        
+        is_expanded_perp2 = self.show_line_perp2_settings
+        icon_state_perp2 = "TRIA_DOWN" if is_expanded_perp2 else "TRIA_RIGHT"
+        row_header_perp2.prop(self, "show_line_perp2_settings", icon=icon_state_perp2, text="", icon_only=True, emboss=False)
+        row_header_perp2.label(text="Line Perpendicular to Two Curves Settings", icon='CURVE_NCURVE')
+
+        if is_expanded_perp2:
+            split_main = box_perp2.split(factor=0.02)
+            split_main.label(text="") 
+            col = split_main.column(align=True)
+            
+            # Toggle
+            split = col.split(factor=0.5, align=True)
+            row_label = split.row()
+            row_label.separator()
+            row_label.label(text="Show Catmull Overlay:", icon='BLANK1')
+            split.prop(self, "line_perp2_show_catmull", text="Enable")
+            
+            # Color
+            split = col.split(factor=0.5, align=True)
+            row_label = split.row()
+            row_label.separator()
+            row_label.label(text="Catmull Overlay Color:", icon='BLANK1')
+            split.prop(self, "line_perp2_col_catmull", text="")
+
+            # Thickness
+            split = col.split(factor=0.5, align=True)
+            row_label = split.row()
+            row_label.separator()
+            row_label.label(text="Catmull Overlay Thickness:", icon='BLANK1')
+            split.prop(self, "line_perp2_width_catmull", text="")
+            
+            col.separator()
+
+        # ==================================
+        # 6. 1 POINT ARC SETTINGS (Collapsible Wrapper)
         # ==================================
         icon_val = 0
         try:
@@ -786,7 +850,7 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
             col.separator()
 
         # ==================================
-        # 5. 2 POINT ARC SETTINGS
+        # 7. 2 POINT ARC SETTINGS
         # ==================================
         icon_val_2pt = 0
         try:
