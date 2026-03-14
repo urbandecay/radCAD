@@ -19,11 +19,18 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
     show_arc_settings: bpy.props.BoolProperty(name="1 Point Arc Settings", default=True)
     show_points_by_arc_settings: bpy.props.BoolProperty(name="Points by Arc Settings", default=True)
     show_arc_2pt_settings: bpy.props.BoolProperty(name="2 Point Arc Settings", default=True)
+    show_line_settings: bpy.props.BoolProperty(name="Line Settings", default=True)
 
     # =========================================================================
     # SETTINGS PROPERTIES
     # =========================================================================
     
+    use_axis_colors: bpy.props.BoolProperty(
+        name="Use Axis Colors",
+        description="When snapped to X, Y, or Z, the line will turn the axis color (Red, Green, Blue). If off, it stays the default color",
+        default=True
+    )
+
     compass_size: bpy.props.IntProperty(
         name="Compass Size",
         description="Controls the size of the visual compass circle is on your screen",
@@ -391,7 +398,6 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
             split_geo = col_global.split(factor=0.5, align=True)
             row_label = split_geo.row()
             row_label.separator()
-            # MODIFIED: Removed "(Deg)" text
             row_label.label(text="Snap Strength:", icon='BLANK1')
             split_geo.prop(self, "snap_strength", text="")
             
@@ -434,6 +440,17 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
                 row_xy = split_pos.row(align=True)
                 row_xy.prop(self, "hotkeys_offset_x", text="X (Right)")
                 row_xy.prop(self, "hotkeys_offset_y", text="Y (Top)")
+
+            col_global.separator(factor=2.5)
+
+            # --- Metric Display (MOVED HERE) ---
+            col_global.label(text="Metric Display:", icon='DOT')
+            
+            split_metric = col_global.split(factor=0.5, align=True)
+            row_label = split_metric.row()
+            row_label.separator()
+            row_label.label(text="Decimal Precision:", icon='BLANK1')
+            split_metric.prop(self, "display_precision", text="")
 
             col_global.separator()
 
@@ -519,7 +536,31 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
             col.separator()
 
         # ==================================
-        # 3. 1 POINT ARC SETTINGS (Collapsible Wrapper)
+        # 3. LINE SETTINGS
+        # ==================================
+        box_line = layout.box()
+        row_header_line = box_line.row(align=True)
+        
+        is_expanded_line = self.show_line_settings
+        icon_state_line = "TRIA_DOWN" if is_expanded_line else "TRIA_RIGHT"
+        row_header_line.prop(self, "show_line_settings", icon=icon_state_line, text="", icon_only=True, emboss=False)
+        row_header_line.label(text="Line Settings", icon='LINCURVE')
+
+        if is_expanded_line:
+            split_main = box_line.split(factor=0.02)
+            split_main.label(text="") 
+            col = split_main.column(align=True)
+            
+            split = col.split(factor=0.5, align=True)
+            row_label = split.row()
+            row_label.separator()
+            row_label.label(text="Snapping Visuals:", icon='BLANK1')
+            split.prop(self, "use_axis_colors", text="Use Axis Colors")
+            
+            col.separator()
+
+        # ==================================
+        # 4. 1 POINT ARC SETTINGS (Collapsible Wrapper)
         # ==================================
         icon_val = 0
         try:
@@ -639,17 +680,6 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
             sub.prop(self, "overlay_offset_y", text="Y")
             
             col.separator(factor=2.0) 
-            
-            # --- G. Metric Display ---
-            col.label(text="Metric Display:", icon='DOT')
-            
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Decimal Precision:", icon='BLANK1')
-            split.prop(self, "display_precision", text="")
-
-            col.separator(factor=2.0)
 
             # --- I. Visuals ---
             col.label(text="Visuals (Preview Lines):", icon='COLOR')
@@ -671,7 +701,7 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
             col.separator()
 
         # ==================================
-        # 4. 2 POINT ARC SETTINGS
+        # 5. 2 POINT ARC SETTINGS
         # ==================================
         icon_val_2pt = 0
         try:

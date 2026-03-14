@@ -55,8 +55,13 @@ def apply_view_bias(points, ctx, amount=0.002, lift_mult=10.0, persp_percent=0.2
         cam_part = cam_pos * real_amount
         return [p * factor + cam_part for p in points]
 
-def get_axis_aligned_color(vec, default_col):
+def get_axis_aligned_color(vec, default_col, settings=None):
     if vec.length_squared < 1e-6: return default_col
+
+    # --- FIX: Respect the "Use Axis Colors" toggle ---
+    if settings and not settings.get("USE_AXIS_COLORS", True):
+        return default_col
+
     v_norm = vec.normalized()
     tol = 0.9999
     if abs(v_norm.dot(Vector((1, 0, 0)))) > tol: return (1.0, 0.1, 0.1, 1.0) # Brighter Red
@@ -73,20 +78,22 @@ def get_render_settings(ctx):
         "COL_CHORD": (0.2, 0.8, 0.2, 1.0), "COL_HEIGHT": (0.2, 0.8, 0.2, 1.0),
         "PREVIEW_VERTEX_SIZE": 3,
         "UI_SCALE": 1.0,
-        "VIEWPORT_SIZE": (100.0, 100.0)
+        "VIEWPORT_SIZE": (100.0, 100.0),
+        "USE_AXIS_COLORS": True
     }
-    
+
     system_prefs = ctx.preferences.system
     prefs["UI_SCALE"] = system_prefs.ui_scale
-    
+
     vp = gpu.state.viewport_get()
     prefs["VIEWPORT_SIZE"] = (float(vp[2]), float(vp[3]))
 
     pkg = __package__ if __package__ else "radCAD"
     if '.' in pkg: pkg = pkg.split('.')[0] 
-    
+
     try:
         addon_prefs = ctx.preferences.addons[pkg].preferences
+        prefs["USE_AXIS_COLORS"] = addon_prefs.use_axis_colors
         prefs["LIFT_COMPASS"] = addon_prefs.lift_compass
         prefs["LIFT_ARC"] = addon_prefs.lift_arc
         prefs["LIFT_PERSP"] = addon_prefs.lift_perspective
@@ -812,7 +819,8 @@ def draw_cb_3d():
                     
                     axis_vec = state.get("current_axis_vector")
                     if axis_vec:
-                        active_col = get_axis_aligned_color(axis_vec, base_color)
+                        # --- FIX: Only Line tools respect this toggle ---
+                        active_col = get_axis_aligned_color(axis_vec, base_color, settings)
                     
                     draw_polyline(ctx, shaders, active_seg, active_col, settings)
                 else:
