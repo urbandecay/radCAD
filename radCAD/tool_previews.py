@@ -82,7 +82,9 @@ def get_render_settings(ctx):
         "UI_SCALE": 1.0,
         "VIEWPORT_SIZE": (100.0, 100.0),
         "USE_AXIS_COLORS": True,
-        "AXIS_DIM": 1.0
+        "AXIS_DIM": 1.0,
+        "LINE_PERP_SHOW_CATMULL": True,
+        "LINE_PERP_COL_CATMULL": (0.0, 0.8, 1.0, 0.5)
     }
 
     system_prefs = ctx.preferences.system
@@ -98,6 +100,8 @@ def get_render_settings(ctx):
         addon_prefs = ctx.preferences.addons[pkg].preferences
         prefs["USE_AXIS_COLORS"] = addon_prefs.use_axis_colors
         prefs["AXIS_DIM"] = getattr(addon_prefs, "axis_color_dim", 1.0)
+        prefs["LINE_PERP_SHOW_CATMULL"] = getattr(addon_prefs, "line_perp_show_catmull", True)
+        prefs["LINE_PERP_COL_CATMULL"] = getattr(addon_prefs, "line_perp_col_catmull", (0.0, 0.8, 1.0, 0.5))
         prefs["LIFT_COMPASS"] = addon_prefs.lift_compass
         prefs["LIFT_ARC"] = addon_prefs.lift_arc
         prefs["LIFT_PERSP"] = addon_prefs.lift_perspective
@@ -744,9 +748,20 @@ def draw_cb_3d():
         # --- NEW: DRAW GREY CATMULL OUTLINES FOR INPUT SELECTION ---
         catmull_outlines = state.get("catmull_spline_previews", [])
         if catmull_outlines:
-            for c_pts in catmull_outlines:
-                # Grey color (R=0.5, G=0.5, B=0.5, A=0.7)
-                draw_polyline(ctx, shaders, c_pts, (0.5, 0.5, 0.5, 0.7), settings, custom_lift=settings["LIFT_ARC"] - 5.0, custom_width=2.0)
+            mode = state.get("tool_mode", "1POINT")
+            
+            # Default for selection outlines
+            draw_col = (0.5, 0.5, 0.5, 0.7)
+            do_draw = True
+            
+            # Override for specific tool
+            if mode == "LINE_PERP_FROM_CURVE":
+                do_draw = settings.get("LINE_PERP_SHOW_CATMULL", True)
+                draw_col = settings.get("LINE_PERP_COL_CATMULL", (0.0, 0.8, 1.0, 0.5))
+
+            if do_draw:
+                for c_pts in catmull_outlines:
+                    draw_polyline(ctx, shaders, c_pts, draw_col, settings, custom_lift=settings["LIFT_ARC"] - 5.0, custom_width=2.0)
         
         # --- REMOVED SPLINE OVERLAYS TO PRESERVE ORANGE SELECTION ---
 

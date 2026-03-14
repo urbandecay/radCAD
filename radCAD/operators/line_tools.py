@@ -696,6 +696,9 @@ class LineTool_PerpFromCurve(SurfaceDrawTool):
                     # Convert spline samples to 3D for preview
                     pts_3d = [plane_to_world(sample['pos'], self.Xp, self.Yp) for sample in s.samples]
                     self.spline_geom.append(pts_3d)
+                
+                # Sync with global state for the renderer
+                self.state["catmull_spline_previews"] = self.spline_geom
             else:
                 return
         if not self.splines: return

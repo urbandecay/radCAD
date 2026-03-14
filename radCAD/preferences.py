@@ -20,6 +20,7 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
     show_points_by_arc_settings: bpy.props.BoolProperty(name="Points by Arc Settings", default=True)
     show_arc_2pt_settings: bpy.props.BoolProperty(name="2 Point Arc Settings", default=True)
     show_line_settings: bpy.props.BoolProperty(name="Line Settings", default=True)
+    show_line_perp_settings: bpy.props.BoolProperty(name="Line Perpendicular from Curve Settings", default=True)
 
     # =========================================================================
     # SETTINGS PROPERTIES
@@ -29,6 +30,22 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
         name="Use Axis Colors",
         description="When snapped to X, Y, or Z, the line will turn the axis color (Red, Green, Blue). If off, it stays the default color",
         default=True
+    )
+
+    # --- Line Perpendicular from Curve ---
+    line_perp_show_catmull: bpy.props.BoolProperty(
+        name="Show Catmull Overlay",
+        description="Toggle the visibility of the Catmull-Rom spline overlay for the Perpendicular Line tool",
+        default=True
+    )
+
+    line_perp_col_catmull: bpy.props.FloatVectorProperty(
+        name="Catmull Overlay Color",
+        subtype='COLOR',
+        size=4,
+        min=0.0, max=1.0,
+        default=(0.0, 0.8, 1.0, 0.5), # Cyan-ish
+        description="Color for the Catmull-Rom spline preview in the Perpendicular Line tool"
     )
 
     axis_color_dim: bpy.props.FloatProperty(
@@ -571,6 +588,7 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
             split_main.label(text="") 
             col = split_main.column(align=True)
             
+            # --- Axis Snap ---
             split = col.split(factor=0.5, align=True)
             row_label = split.row()
             row_label.separator()
@@ -580,7 +598,39 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
             col.separator()
 
         # ==================================
-        # 4. 1 POINT ARC SETTINGS (Collapsible Wrapper)
+        # 4. LINE PERPENDICULAR FROM CURVE SETTINGS
+        # ==================================
+        box_perp = layout.box()
+        row_header_perp = box_perp.row(align=True)
+        
+        is_expanded_perp = self.show_line_perp_settings
+        icon_state_perp = "TRIA_DOWN" if is_expanded_perp else "TRIA_RIGHT"
+        row_header_perp.prop(self, "show_line_perp_settings", icon=icon_state_perp, text="", icon_only=True, emboss=False)
+        row_header_perp.label(text="Line Perpendicular from Curve Settings", icon='CURVE_NCURVE')
+
+        if is_expanded_perp:
+            split_main = box_perp.split(factor=0.02)
+            split_main.label(text="") 
+            col = split_main.column(align=True)
+            
+            # Toggle
+            split = col.split(factor=0.5, align=True)
+            row_label = split.row()
+            row_label.separator()
+            row_label.label(text="Show Catmull Overlay:", icon='BLANK1')
+            split.prop(self, "line_perp_show_catmull", text="Enable")
+            
+            # Color
+            split = col.split(factor=0.5, align=True)
+            row_label = split.row()
+            row_label.separator()
+            row_label.label(text="Catmull Overlay Color:", icon='BLANK1')
+            split.prop(self, "line_perp_col_catmull", text="")
+            
+            col.separator()
+
+        # ==================================
+        # 5. 1 POINT ARC SETTINGS (Collapsible Wrapper)
         # ==================================
         icon_val = 0
         try:
