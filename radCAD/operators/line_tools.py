@@ -906,8 +906,17 @@ class LineTool_TangentFromCurve(SurfaceDrawTool):
                 s = self.splines[self.source_idx]
                 p = s.evalCatmull(self.current_u)
                 self.head_3d = plane_to_world(p, self.Xp, self.Yp)
-                self.current = self.head_3d
-                self.preview_pts = [self.head_3d]
+                
+                # Calculate tangent line preview even in stage 0
+                deriv = s.evalDeriv(self.current_u)
+                tan = deriv.normalized() if deriv.length_squared > 1e-8 else Vector((1,0))
+                toM = m_2d - p
+                dist = toM.dot(tan)
+                t2 = p + tan * dist
+                self.tail_3d = plane_to_world(t2, self.Xp, self.Yp)
+                
+                self.preview_pts = [self.head_3d, self.tail_3d]
+                self.current = self.tail_3d
             return
 
         # STAGE 1: SLIDE & SNAP (Tangent Logic)
