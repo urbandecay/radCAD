@@ -714,14 +714,21 @@ class LineTool_PerpFromCurve(SurfaceDrawTool):
         coord = (event.mouse_region_x, event.mouse_region_y)
         ray_origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, coord)
         ray_vector = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
-        ref_point = self.pivot if self.pivot else snap_point
-        if ref_point and self.Zp:
-            denom = ray_vector.dot(self.Zp)
-            if abs(denom) > 1e-6:
-                t = (ref_point - ray_origin).dot(self.Zp) / denom
-                raw_world_pos = ray_origin + ray_vector * t
-                m_2d = world_to_plane(raw_world_pos, self.Xp, self.Yp)
-        if m_2d is None: m_2d = world_to_plane(snap_point, self.Xp, self.Yp)
+        
+        # --- NEW: PRIORITIZE GEOMETRY SNAP ---
+        if self.state.get("geometry_snap", False) and snap_point:
+            raw_world_pos = snap_point
+        else:
+            ref_point = self.pivot if self.pivot else snap_point
+            if ref_point and self.Zp:
+                denom = ray_vector.dot(self.Zp)
+                if abs(denom) > 1e-6:
+                    t = (ref_point - ray_origin).dot(self.Zp) / denom
+                    raw_world_pos = ray_origin + ray_vector * t
+                else: raw_world_pos = snap_point
+            else: raw_world_pos = snap_point
+        
+        m_2d = world_to_plane(raw_world_pos, self.Xp, self.Yp)
 
         if self.stage == 0:
             best_d = float('inf')
@@ -862,6 +869,11 @@ class LineTool_TangentFromCurve(SurfaceDrawTool):
                     self.spline_geom.append(pts_3d)
             else:
                 return
+        
+        # Sync with global state for the renderer
+        if self.spline_geom and not self.state.get("catmull_spline_previews"):
+            self.state["catmull_spline_previews"] = self.spline_geom
+
         if not self.splines: return
         
         m_2d = None
@@ -869,14 +881,21 @@ class LineTool_TangentFromCurve(SurfaceDrawTool):
         coord = (event.mouse_region_x, event.mouse_region_y)
         ray_origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, coord)
         ray_vector = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
-        ref_point = self.pivot if self.pivot else snap_point
-        if ref_point and self.Zp:
-            denom = ray_vector.dot(self.Zp)
-            if abs(denom) > 1e-6:
-                t = (ref_point - ray_origin).dot(self.Zp) / denom
-                raw_world_pos = ray_origin + ray_vector * t
-                m_2d = world_to_plane(raw_world_pos, self.Xp, self.Yp)
-        if m_2d is None: m_2d = world_to_plane(snap_point, self.Xp, self.Yp)
+        
+        # --- NEW: PRIORITIZE GEOMETRY SNAP ---
+        if self.state.get("geometry_snap", False) and snap_point:
+            raw_world_pos = snap_point
+        else:
+            ref_point = self.pivot if self.pivot else snap_point
+            if ref_point and self.Zp:
+                denom = ray_vector.dot(self.Zp)
+                if abs(denom) > 1e-6:
+                    t = (ref_point - ray_origin).dot(self.Zp) / denom
+                    raw_world_pos = ray_origin + ray_vector * t
+                else: raw_world_pos = snap_point
+            else: raw_world_pos = snap_point
+        
+        m_2d = world_to_plane(raw_world_pos, self.Xp, self.Yp)
 
         if self.stage == 0:
             # Stage 0: Select the source curve
@@ -970,6 +989,10 @@ class LineTool_TanTan(SurfaceDrawTool):
             else:
                 return
         
+        # Sync with global state for the renderer
+        if self.spline_geom and not self.state.get("catmull_spline_previews"):
+            self.state["catmull_spline_previews"] = self.spline_geom
+
         if len(self.splines) < 2: return
         
         # 2. Mouse Input
@@ -978,14 +1001,21 @@ class LineTool_TanTan(SurfaceDrawTool):
         coord = (event.mouse_region_x, event.mouse_region_y)
         ray_origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, coord)
         ray_vector = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
-        ref_point = self.pivot if self.pivot else snap_point
-        if ref_point and self.Zp:
-            denom = ray_vector.dot(self.Zp)
-            if abs(denom) > 1e-6:
-                t = (ref_point - ray_origin).dot(self.Zp) / denom
-                raw_world_pos = ray_origin + ray_vector * t
-                m_2d = world_to_plane(raw_world_pos, self.Xp, self.Yp)
-        if m_2d is None: m_2d = world_to_plane(snap_point, self.Xp, self.Yp)
+        
+        # --- NEW: PRIORITIZE GEOMETRY SNAP ---
+        if self.state.get("geometry_snap", False) and snap_point:
+            raw_world_pos = snap_point
+        else:
+            ref_point = self.pivot if self.pivot else snap_point
+            if ref_point and self.Zp:
+                denom = ray_vector.dot(self.Zp)
+                if abs(denom) > 1e-6:
+                    t = (ref_point - ray_origin).dot(self.Zp) / denom
+                    raw_world_pos = ray_origin + ray_vector * t
+                else: raw_world_pos = snap_point
+            else: raw_world_pos = snap_point
+        
+        m_2d = world_to_plane(raw_world_pos, self.Xp, self.Yp)
         
         if self.stage == 0:
             best_dist = float('inf')
@@ -1096,6 +1126,10 @@ class LineTool_PerpToTwoCurves(SurfaceDrawTool):
             else:
                 return
         
+        # Sync with global state for the renderer
+        if self.spline_geom and not self.state.get("catmull_spline_previews"):
+            self.state["catmull_spline_previews"] = self.spline_geom
+
         if len(self.splines) < 2: return
         
         # 2. Mouse Input
@@ -1104,14 +1138,21 @@ class LineTool_PerpToTwoCurves(SurfaceDrawTool):
         coord = (event.mouse_region_x, event.mouse_region_y)
         ray_origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, coord)
         ray_vector = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
-        ref_point = self.pivot if self.pivot else snap_point
-        if ref_point and self.Zp:
-            denom = ray_vector.dot(self.Zp)
-            if abs(denom) > 1e-6:
-                t = (ref_point - ray_origin).dot(self.Zp) / denom
-                raw_world_pos = ray_origin + ray_vector * t
-                m_2d = world_to_plane(raw_world_pos, self.Xp, self.Yp)
-        if m_2d is None: m_2d = world_to_plane(snap_point, self.Xp, self.Yp)
+        
+        # --- NEW: PRIORITIZE GEOMETRY SNAP ---
+        if self.state.get("geometry_snap", False) and snap_point:
+            raw_world_pos = snap_point
+        else:
+            ref_point = self.pivot if self.pivot else snap_point
+            if ref_point and self.Zp:
+                denom = ray_vector.dot(self.Zp)
+                if abs(denom) > 1e-6:
+                    t = (ref_point - ray_origin).dot(self.Zp) / denom
+                    raw_world_pos = ray_origin + ray_vector * t
+                else: raw_world_pos = snap_point
+            else: raw_world_pos = snap_point
+        
+        m_2d = world_to_plane(raw_world_pos, self.Xp, self.Yp)
         
         if self.stage == 0:
             best_dist = float('inf')
