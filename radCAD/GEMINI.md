@@ -1,5 +1,11 @@
 # radCAD - Blender Drawing Addon
 
+## Mandatory Behavioral Rules
+- **No Unauthorized Writing:** NEVER modify or write to any files without an explicit, direct instruction from the user to do so.
+- **No Unauthorized Pushing:** NEVER push code to a remote repository unless specifically instructed by the user, and only using the exact commit name provided.
+- **Inquiry vs. Directive:** Treat all questions strictly as inquiries for analysis or information. NEVER implement a fix or change based on a reported issue unless a clear directive to perform the task is given.
+- **Strict Adherence:** NEVER perform any actions, organizational changes, or "cleanups" that were not explicitly requested. Focus strictly on the task at hand.
+
 ## Project Overview
 radCAD is a Blender addon (4.2.0+) that provides a suite of CAD-style drawing tools for Edit Mode. It allows for precise creation of arcs, circles, ellipses, polygons, lines, and curves directly on mesh surfaces with advanced snapping and inference capabilities.
 

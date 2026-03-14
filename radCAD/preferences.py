@@ -48,6 +48,14 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
         description="Color for the Catmull-Rom spline preview in the Perpendicular Line tool"
     )
 
+    line_perp_width_catmull: bpy.props.FloatProperty(
+        name="Catmull Overlay Thickness",
+        description="Line thickness for the Catmull-Rom spline preview in the Perpendicular Line tool",
+        default=2.0,
+        min=0.5, max=10.0,
+        precision=1
+    )
+
     axis_color_dim: bpy.props.FloatProperty(
         name="Axis Color Dimmer",
         description="Controls how much the axis colors are dimmed when snapped. 1.0 is full brightness, 0.0 is black",
@@ -626,6 +634,13 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
             row_label.separator()
             row_label.label(text="Catmull Overlay Color:", icon='BLANK1')
             split.prop(self, "line_perp_col_catmull", text="")
+
+            # Thickness
+            split = col.split(factor=0.5, align=True)
+            row_label = split.row()
+            row_label.separator()
+            row_label.label(text="Catmull Overlay Thickness:", icon='BLANK1')
+            split.prop(self, "line_perp_width_catmull", text="")
             
             col.separator()
 

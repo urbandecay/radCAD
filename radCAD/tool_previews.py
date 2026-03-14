@@ -84,7 +84,8 @@ def get_render_settings(ctx):
         "USE_AXIS_COLORS": True,
         "AXIS_DIM": 1.0,
         "LINE_PERP_SHOW_CATMULL": True,
-        "LINE_PERP_COL_CATMULL": (0.0, 0.8, 1.0, 0.5)
+        "LINE_PERP_COL_CATMULL": (0.0, 0.8, 1.0, 0.5),
+        "LINE_PERP_WIDTH_CATMULL": 2.0
     }
 
     system_prefs = ctx.preferences.system
@@ -102,6 +103,7 @@ def get_render_settings(ctx):
         prefs["AXIS_DIM"] = getattr(addon_prefs, "axis_color_dim", 1.0)
         prefs["LINE_PERP_SHOW_CATMULL"] = getattr(addon_prefs, "line_perp_show_catmull", True)
         prefs["LINE_PERP_COL_CATMULL"] = getattr(addon_prefs, "line_perp_col_catmull", (0.0, 0.8, 1.0, 0.5))
+        prefs["LINE_PERP_WIDTH_CATMULL"] = getattr(addon_prefs, "line_perp_width_catmull", 2.0)
         prefs["LIFT_COMPASS"] = addon_prefs.lift_compass
         prefs["LIFT_ARC"] = addon_prefs.lift_arc
         prefs["LIFT_PERSP"] = addon_prefs.lift_perspective
@@ -758,10 +760,13 @@ def draw_cb_3d():
             if mode == "LINE_PERP_FROM_CURVE":
                 do_draw = settings.get("LINE_PERP_SHOW_CATMULL", True)
                 draw_col = settings.get("LINE_PERP_COL_CATMULL", (0.0, 0.8, 1.0, 0.5))
+                draw_width = settings.get("LINE_PERP_WIDTH_CATMULL", 2.0)
+            else:
+                draw_width = 2.0
 
             if do_draw:
                 for c_pts in catmull_outlines:
-                    draw_polyline(ctx, shaders, c_pts, draw_col, settings, custom_lift=settings["LIFT_ARC"] - 5.0, custom_width=2.0)
+                    draw_polyline(ctx, shaders, c_pts, draw_col, settings, custom_lift=settings["LIFT_ARC"] - 5.0, custom_width=draw_width)
         
         # --- REMOVED SPLINE OVERLAYS TO PRESERVE ORANGE SELECTION ---
 

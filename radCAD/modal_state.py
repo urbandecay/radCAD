@@ -37,6 +37,7 @@ state = {
 
     "line_perp_show_catmull": True,
     "line_perp_col_catmull": (0.0, 0.8, 1.0, 0.5),
+    "line_perp_width_catmull": 2.0,
     
     "color_arc_start": (0.8, 0.8, 0.2, 1.0),
     "color_arc_end": (0.2, 0.8, 0.2, 1.0),
@@ -119,6 +120,7 @@ def reset_state_from_context(ctx):
     col_start = (0.8, 0.8, 0.2, 1.0); col_end = (0.2, 0.8, 0.2, 1.0)
     fs_key = 12; fs_lbl = 10; pt_sz = 5
     line_perp_show = True; line_perp_col = (0.0, 0.8, 1.0, 0.5)
+    line_perp_width = 2.0
 
     if prefs:
         c_size = prefs.compass_size
@@ -146,6 +148,7 @@ def reset_state_from_context(ctx):
 
         line_perp_show = getattr(prefs, "line_perp_show_catmull", True)
         line_perp_col = tuple(getattr(prefs, "line_perp_col_catmull", (0.0, 0.8, 1.0, 0.5)))
+        line_perp_width = getattr(prefs, "line_perp_width_catmull", 2.0)
 
     try:
         theme = ctx.preferences.themes[0].view_3d
@@ -188,6 +191,7 @@ def reset_state_from_context(ctx):
         "use_radians": use_rad, "snap_strength": strength,
         "use_axis_colors": use_axis_cols, "axis_color_dim": axis_dim,
         "line_perp_show_catmull": line_perp_show, "line_perp_col_catmull": line_perp_col,
+        "line_perp_width_catmull": line_perp_width,
         "show_measure": getattr(scene, "arc_show_measurements", True),
         "color": tuple(getattr(scene, "arc_color", (1.0, 0.6, 0.0, 1.0))),
         "color_arc_start": col_start, "color_arc_end": col_end,
