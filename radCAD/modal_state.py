@@ -32,6 +32,8 @@ state = {
     "snap_px": 20.0,
     "show_measure": True,
     "color": (1.0, 0.6, 0.0, 1.0),
+    "use_axis_colors": True,
+    "axis_color_dim": 1.0,
     
     "color_arc_start": (0.8, 0.8, 0.2, 1.0),
     "color_arc_end": (0.2, 0.8, 0.2, 1.0),
@@ -125,6 +127,8 @@ def reset_state_from_context(ctx):
         off_y = getattr(prefs, "overlay_offset_y", 10)
         strength = getattr(prefs, "snap_strength", 6.0)
         precision = getattr(prefs, "display_precision", 3)
+        use_axis_cols = getattr(prefs, "use_axis_colors", True)
+        axis_dim = getattr(prefs, "axis_color_dim", 1.0)
         w_rad = getattr(prefs, "weld_radius", 0.001)
         w_faces = getattr(prefs, "weld_to_faces", True)
         show_keys = getattr(prefs, "show_hotkeys", True)
@@ -175,6 +179,7 @@ def reset_state_from_context(ctx):
         "auto_weld": keep_weld,
         
         "use_radians": use_rad, "snap_strength": strength,
+        "use_axis_colors": use_axis_cols, "axis_color_dim": axis_dim,
         "show_measure": getattr(scene, "arc_show_measurements", True),
         "color": tuple(getattr(scene, "arc_color", (1.0, 0.6, 0.0, 1.0))),
         "color_arc_start": col_start, "color_arc_end": col_end,

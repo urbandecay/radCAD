@@ -50,11 +50,13 @@ def get_axis_aligned_color(vec, default_col, settings=None):
     if settings and not settings.get("USE_AXIS_COLORS", True):
         return default_col
 
+    dim = settings.get("AXIS_DIM", 1.0) if settings else 1.0
+
     v_norm = vec.normalized()
     tol = 0.999999
-    if abs(v_norm.dot(Vector((1, 0, 0)))) > tol: return (0.85, 0.00, 0.00, 1.00) # Red
-    if abs(v_norm.dot(Vector((0, 1, 0)))) > tol: return (0.00, 0.60, 0.00, 1.00) # Green
-    if abs(v_norm.dot(Vector((0, 0, 1)))) > tol: return (0.149, 0.376, 1.0, 1.0) # Blue
+    if abs(v_norm.dot(Vector((1, 0, 0)))) > tol: return (0.85 * dim, 0.00 * dim, 0.00 * dim, 1.00) # Red
+    if abs(v_norm.dot(Vector((0, 1, 0)))) > tol: return (0.00 * dim, 0.60 * dim, 0.00 * dim, 1.00) # Green
+    if abs(v_norm.dot(Vector((0, 0, 1)))) > tol: return (0.149 * dim, 0.376 * dim, 1.0 * dim, 1.0) # Blue
     return default_col
 
 def get_render_settings(ctx):
@@ -65,7 +67,8 @@ def get_render_settings(ctx):
         "COL_START": (0.8, 0.8, 0.2, 1.0), "COL_END": (0.2, 0.8, 0.2, 1.0),
         "COL_CHORD": (0.2, 0.8, 0.2, 1.0), "COL_HEIGHT": (0.2, 0.8, 0.2, 1.0),
         "UI_SCALE": 1.0, "VIEWPORT_SIZE": (100.0, 100.0),
-        "USE_AXIS_COLORS": True
+        "USE_AXIS_COLORS": True,
+        "AXIS_DIM": 1.0
     }
     system_prefs = ctx.preferences.system
     prefs["UI_SCALE"] = system_prefs.ui_scale
@@ -77,6 +80,7 @@ def get_render_settings(ctx):
     try:
         addon_prefs = ctx.preferences.addons[pkg].preferences
         prefs["USE_AXIS_COLORS"] = addon_prefs.use_axis_colors
+        prefs["AXIS_DIM"] = getattr(addon_prefs, "axis_color_dim", 1.0)
         prefs["LIFT_COMPASS"] = addon_prefs.lift_compass
         prefs["LIFT_ARC"] = addon_prefs.lift_arc
         prefs["LIFT_PERSP"] = addon_prefs.lift_perspective

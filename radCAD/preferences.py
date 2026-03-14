@@ -31,6 +31,15 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
         default=True
     )
 
+    axis_color_dim: bpy.props.FloatProperty(
+        name="Axis Color Dimmer",
+        description="Controls how much the axis colors are dimmed when snapped. 1.0 is full brightness, 0.0 is black",
+        default=1.0,
+        min=0.0,
+        max=1.0,
+        precision=2
+    )
+
     compass_size: bpy.props.IntProperty(
         name="Compass Size",
         description="Controls the size of the visual compass circle is on your screen",
@@ -401,6 +410,17 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
             row_label.label(text="Snap Strength:", icon='BLANK1')
             split_geo.prop(self, "snap_strength", text="")
             
+            col_global.separator(factor=2.5)
+
+            # --- Axis Colors ---
+            col_global.label(text="Axis Snapping:", icon='COLOR')
+            
+            split_axis = col_global.split(factor=0.5, align=True)
+            row_label = split_axis.row()
+            row_label.separator()
+            row_label.label(text="Axis Color Dimmer:", icon='BLANK1')
+            split_axis.prop(self, "axis_color_dim", text="")
+
             col_global.separator(factor=2.5)
 
             # --- Z-Fighting Tweaks ---
