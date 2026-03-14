@@ -498,6 +498,21 @@ def solve_rhino_perp(s1, s2, seed_u1, seed_u2):
         p2 = s2.evalCatmull(bestU2)
         bestU1 = s1.find_perp_param_from_point(p2, bestU1, range_val)
         
+    # --- NEW: Strict Validation ---
+    p1 = s1.evalCatmull(bestU1)
+    p2 = s2.evalCatmull(bestU2)
+    line_vec = p2 - p1
+    if line_vec.length_squared < 1e-8: return None, None
+    
+    line_dir = line_vec.normalized()
+    t1 = s1.evalDeriv(bestU1).normalized()
+    t2 = s2.evalDeriv(bestU2).normalized()
+    
+    # If not perpendicular to both (dot product should be near 0)
+    tol = 0.01 # Roughly 0.5 degrees
+    if abs(line_dir.dot(t1)) > tol or abs(line_dir.dot(t2)) > tol:
+        return None, None
+
     return bestU1, bestU2
 
 class LineTool_Poly(SurfaceDrawTool):
@@ -1216,14 +1231,21 @@ class LineTool_PerpToTwoCurves(SurfaceDrawTool):
                     s2 = self.splines[best_idx2]
                     res_u1, res_u2 = solve_rhino_perp(s1, s2, best_u, best_u2)
                     
-                    # LOCK to the solved perpendicular points only
-                    p1_2d = s1.evalCatmull(res_u1)
-                    p2_2d = s2.evalCatmull(res_u2)
-                    
-                    start_3d = plane_to_world(p1_2d, self.Xp, self.Yp)
-                    end_3d = plane_to_world(p2_2d, self.Xp, self.Yp)
-                    self.preview_pts = [start_3d, end_3d]
-                    self.current = end_3d
+                    if res_u1 is not None:
+                        # LOCK to the solved perpendicular points only
+                        p1_2d = s1.evalCatmull(res_u1)
+                        p2_2d = s2.evalCatmull(res_u2)
+                        
+                        start_3d = plane_to_world(p1_2d, self.Xp, self.Yp)
+                        end_3d = plane_to_world(p2_2d, self.Xp, self.Yp)
+                        self.preview_pts = [start_3d, end_3d]
+                        self.current = end_3d
+                    else:
+                        # No valid perpendicular found between these two curves at this mouse pos
+                        p2d = self.splines[best_idx].evalCatmull(best_u)
+                        p3d = plane_to_world(p2d, self.Xp, self.Yp)
+                        self.preview_pts = [p3d]
+                        self.current = p3d
                 else:
                     p2d = self.splines[best_idx].evalCatmull(best_u)
                     p3d = plane_to_world(p2d, self.Xp, self.Yp)
@@ -1255,15 +1277,24 @@ class LineTool_PerpToTwoCurves(SurfaceDrawTool):
                 
                 res_u1, res_u2 = solve_rhino_perp(s1, s2, u1_seed, best_u)
                 
-                # LOCK to the solved perpendicular points only
-                p1_2d = s1.evalCatmull(res_u1)
-                p2_2d = s2.evalCatmull(res_u2)
-                
-                start_3d = plane_to_world(p1_2d, self.Xp, self.Yp)
-                end_3d = plane_to_world(p2_2d, self.Xp, self.Yp)
-                self.preview_pts = [start_3d, end_3d]
-                self.radius = (start_3d - end_3d).length
-                self.current = end_3d
+                if res_u1 is not None:
+                    # LOCK to the solved perpendicular points only
+                    p1_2d = s1.evalCatmull(res_u1)
+                    p2_2d = s2.evalCatmull(res_u2)
+                    
+                    start_3d = plane_to_world(p1_2d, self.Xp, self.Yp)
+                    end_3d = plane_to_world(p2_2d, self.Xp, self.Yp)
+                    self.preview_pts = [start_3d, end_3d]
+                    self.radius = (start_3d - end_3d).length
+                    self.current = end_3d
+                else:
+                    # No valid perpendicular found - show only clicked point and current mouse hover dot
+                    p1_2d = s1.evalCatmull(u1_seed)
+                    p2_2d = s2.evalCatmull(best_u)
+                    start_3d = plane_to_world(p1_2d, self.Xp, self.Yp)
+                    end_3d = plane_to_world(p2_2d, self.Xp, self.Yp)
+                    self.preview_pts = [start_3d] # Don't draw the line, just the clicked point
+                    self.current = end_3d # Hover dot handled by standard renderer
 
     def handle_click(self, context, event, snap_point, snap_normal, button_id=None):
         if self.stage == 0:
