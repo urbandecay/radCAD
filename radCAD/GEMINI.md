@@ -5,6 +5,7 @@
 - **No Unauthorized Pushing:** NEVER push code to a remote repository unless specifically instructed by the user, and only using the exact commit name provided.
 - **Inquiry vs. Directive:** Treat all questions strictly as inquiries for analysis or information. NEVER implement a fix or change based on a reported issue unless a clear directive to perform the task is given.
 - **Strict Adherence:** NEVER perform any actions, organizational changes, or "cleanups" that were not explicitly requested. Focus strictly on the task at hand.
+- **Minimalist & Non-Technical:** All replies must be as minimal as possible and strictly non-technical.
 
 ## Project Overview
 radCAD is a Blender addon (4.2.0+) that provides a suite of CAD-style drawing tools for Edit Mode. It allows for precise creation of arcs, circles, ellipses, polygons, lines, and curves directly on mesh surfaces with advanced snapping and inference capabilities.
@@ -51,3 +52,6 @@ As this is a Blender addon, there is no "build" step in the traditional sense.
 - `geometry_utils.py` / `tangent_math.py`: Core mathematical engines for shape calculation.
 - `hud_overlay.py` / `tool_previews.py`: Graphics code for viewport feedback.
 - `snapping_utils.py`: Logic for 3D snapping and axis inference.
+
+
+I will say md at the end my request to constantly remind you to follow these directions.  

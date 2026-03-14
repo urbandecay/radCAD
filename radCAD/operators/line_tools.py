@@ -747,94 +747,32 @@ class LineTool_PerpFromCurve(SurfaceDrawTool):
                     self.current_u = u
             if self.source_idx != -1:
                 s = self.splines[self.source_idx]
-                p = s.evalCatmull(self.current_u)
-                self.head_3d = plane_to_world(p, self.Xp, self.Yp)
+                minU = 0.0
+                maxU = float(len(s.points) - 1) if not s.is_cyclic else float(len(s.points))
                 
-                # Calculate perpendicular line preview even in stage 0
+                # --- NEW: Responsive Refinement (Perpendicular search) ---
+                self.current_u = s.solve_robust(m_2d, self.current_u, minU, maxU)
+                
+                h2 = s.evalCatmull(self.current_u)
+                self.head_3d = plane_to_world(h2, self.Xp, self.Yp)
+                
+                # Calculate perpendicular line preview
                 deriv = s.evalDeriv(self.current_u)
                 if deriv.length_squared == 0: norm = Vector((1,0))
                 else:
                     tan = deriv.normalized()
                     norm = Vector((-tan.y, tan.x))
                 
-                t2 = p + norm * (m_2d - p).dot(norm)
+                t2 = h2 + norm * (m_2d - h2).dot(norm)
                 self.tail_3d = plane_to_world(t2, self.Xp, self.Yp)
                 
                 self.preview_pts = [self.head_3d, self.tail_3d]
                 self.current = self.tail_3d
             return
-
-        # STAGE 1: SLIDE & SNAP
-        snap_threshold_px = CFG.SNAP_PX
-        snap_threshold_world = world_radius_for_pixel_size(context, self.head_3d, self.Xp, self.Yp, snap_threshold_px * 2.0)
-        
-        # Sticky Lock
-        if self.locked and self.snapped:
-            dist = (m_2d - self.snapped['targetPos']).length
-            if dist < snap_threshold_world * 1.5:
-                # LOCKED
-                self.current_u = self.snapped['anchorU']
-                h2, t2 = self.snapped['anchorPos'], self.snapped['targetPos']
-                self.head_3d, self.tail_3d = plane_to_world(h2, self.Xp, self.Yp), plane_to_world(t2, self.Xp, self.Yp)
-                self.preview_pts, self.radius = [self.head_3d, self.tail_3d], (self.head_3d - self.tail_3d).length
-                self.current, self.pivot = self.tail_3d, self.head_3d
-                return
-            else:
-                self.locked = False
-                self.snapped = None
-
-        sourceS = self.splines[self.source_idx]
-        minU = 0.0
-        maxU = float(len(sourceS.points) - 1) if not sourceS.is_cyclic else float(len(sourceS.points))
-        
-        # ROBUST SOLVER: Auto-detects endpoint traps
-        suggestedU = sourceS.solve_robust(m_2d, self.current_u, minU, maxU)
-        
-        best_snap = None
-        best_dist = float('inf')
-
-        for i, targetS in enumerate(self.splines):
-            if i == self.source_idx: continue
-            snaps = targetS.scanForSnaps(sourceS, suggestedU, minU, maxU)
-            for s in snaps:
-                d = (m_2d - s['targetPos']).length
-                if d < best_dist:
-                    best_dist = d
-                    best_snap = s
-
-        if best_snap and best_dist < snap_threshold_world:
-            self.current_u = best_snap['anchorU']
-            self.snapped = best_snap
-            self.locked = True
-            h2, t2 = best_snap['anchorPos'], best_snap['targetPos']
-            self.head_3d, self.tail_3d = plane_to_world(h2, self.Xp, self.Yp), plane_to_world(t2, self.Xp, self.Yp)
-            self.preview_pts, self.radius = [self.head_3d, self.tail_3d], (self.head_3d - self.tail_3d).length
-            self.current, self.pivot = self.tail_3d, self.head_3d
-        else:
-            self.current_u = suggestedU
-            self.snapped = None
-            self.locked = False
-            self.update_output_3d(m_2d)
-
-    def update_output_3d(self, m_2d):
-        sS = self.splines[self.source_idx]
-        h2 = sS.evalCatmull(self.current_u)
-        deriv = sS.evalDeriv(self.current_u)
-        if deriv.length_squared == 0: norm = Vector((1,0))
-        else:
-            tan = deriv.normalized()
-            norm = Vector((-tan.y, tan.x))
-        t2 = h2 + norm * (m_2d - h2).dot(norm)
-            
-        self.head_3d, self.tail_3d = plane_to_world(h2, self.Xp, self.Yp), plane_to_world(t2, self.Xp, self.Yp)
-        self.preview_pts, self.radius = [self.head_3d, self.tail_3d], (self.head_3d - self.tail_3d).length
-        self.current, self.pivot = self.tail_3d, self.head_3d
-
     def handle_click(self, context, event, snap_point, snap_normal, button_id=None):
         if self.stage == 0:
             if self.source_idx != -1:
-                self.stage = 1
-                return 'NEXT_STAGE'
+                return 'FINISHED'
             return None
         return 'FINISHED'
         
@@ -915,51 +853,29 @@ class LineTool_TangentFromCurve(SurfaceDrawTool):
                     self.current_u = u
             if self.source_idx != -1:
                 s = self.splines[self.source_idx]
-                p = s.evalCatmull(self.current_u)
-                self.head_3d = plane_to_world(p, self.Xp, self.Yp)
                 
-                # Calculate tangent line preview even in stage 0
+                # --- NEW: Responsive Refinement (Tangent search) ---
+                constraintRadius = 2.0 
+                self.current_u = s.solveRollingContact(m_2d, self.current_u, self.current_u, constraintRadius)
+                
+                h2 = s.evalCatmull(self.current_u)
+                self.head_3d = plane_to_world(h2, self.Xp, self.Yp)
+                
+                # Calculate tangent line preview
                 deriv = s.evalDeriv(self.current_u)
                 tan = deriv.normalized() if deriv.length_squared > 1e-8 else Vector((1,0))
-                toM = m_2d - p
+                toM = m_2d - h2
                 dist = toM.dot(tan)
-                t2 = p + tan * dist
+                t2 = h2 + tan * dist
                 self.tail_3d = plane_to_world(t2, self.Xp, self.Yp)
                 
                 self.preview_pts = [self.head_3d, self.tail_3d]
                 self.current = self.tail_3d
             return
-
-        # STAGE 1: SLIDE & SNAP (Tangent Logic)
-        sourceS = self.splines[self.source_idx]
-        
-        # Use ported solveRollingContact logic for finding tangent point on curve
-        constraintRadius = 2.0 # Adjust range
-        
-        suggestedU = sourceS.solveRollingContact(m_2d, self.current_u, self.current_u, constraintRadius)
-        
-        self.current_u = suggestedU
-        
-        # Calculate tangent line
-        h2 = sourceS.evalCatmull(self.current_u)
-        deriv = sourceS.evalDeriv(self.current_u)
-        tan = deriv.normalized() if deriv.length_squared > 1e-8 else Vector((1,0))
-        toM = m_2d - h2
-        dist = toM.dot(tan)
-        t2 = h2 + tan * dist
-        
-        self.head_3d = plane_to_world(h2, self.Xp, self.Yp)
-        self.tail_3d = plane_to_world(t2, self.Xp, self.Yp)
-        
-        self.preview_pts = [self.head_3d, self.tail_3d]
-        self.radius = (self.head_3d - self.tail_3d).length
-        self.current, self.pivot = self.tail_3d, self.head_3d
-
     def handle_click(self, context, event, snap_point, snap_normal, button_id=None):
         if self.stage == 0:
             if self.source_idx != -1:
-                self.stage = 1
-                return 'NEXT_STAGE'
+                return 'FINISHED'
             return None
         return 'FINISHED'
         
@@ -1077,53 +993,12 @@ class LineTool_TanTan(SurfaceDrawTool):
                     p3d = plane_to_world(p2d, self.Xp, self.Yp)
                     self.preview_pts = [p3d]
                     self.current = p3d
-                
-        elif self.stage == 1:
-            idx1 = self.first_click_info['idx']
-            u1_seed = self.first_click_info['u']
-            
-            best_dist = float('inf')
-            best_idx = -1
-            best_u = 0.0
-            
-            for i, s in enumerate(self.splines):
-                if i == idx1: continue 
-                
-                u = s.getClosestU_Global(m_2d)
-                p = s.evalCatmull(u)
-                dist = (p - m_2d).length
-                if dist < best_dist:
-                    best_dist = dist
-                    best_idx = i
-                    best_u = u
-            
-            if best_idx != -1:
-                s1 = self.splines[idx1]
-                s2 = self.splines[best_idx]
-                
-                res_u1, res_u2 = solve_rhino_tangent(s1, s2, u1_seed, best_u)
-                
-                p1_2d = s1.evalCatmull(res_u1)
-                p2_2d = s2.evalCatmull(res_u2)
-                
-                start_3d = plane_to_world(p1_2d, self.Xp, self.Yp)
-                end_3d = plane_to_world(p2_2d, self.Xp, self.Yp)
-                
-                self.preview_pts = [start_3d, end_3d]
-                self.radius = (start_3d - end_3d).length
-                self.current = end_3d
 
     def handle_click(self, context, event, snap_point, snap_normal, button_id=None):
         if self.stage == 0:
             if hasattr(self, 'current_candidate') and self.current_candidate:
-                self.first_click_info = self.current_candidate
-                self.stage = 1
-                return 'NEXT_STAGE'
+                return 'FINISHED'
             return None
-            
-        elif self.stage == 1:
-            return 'FINISHED'
-            
         return 'CANCELLED'
         
     def handle_input(self, context, event):
@@ -1255,65 +1130,12 @@ class LineTool_PerpToTwoCurves(SurfaceDrawTool):
                     p3d = plane_to_world(p2d, self.Xp, self.Yp)
                     self.preview_pts = [p3d]
                     self.current = p3d
-                
-        elif self.stage == 1:
-            idx1 = self.first_click_info['idx']
-            u1_seed = self.first_click_info['u']
-            
-            best_dist = float('inf')
-            best_idx = -1
-            best_u = 0.0
-            
-            for i, s in enumerate(self.splines):
-                if i == idx1: continue 
-                
-                u = s.getClosestU_Global(m_2d)
-                p = s.evalCatmull(u)
-                dist = (p - m_2d).length
-                if dist < best_dist:
-                    best_dist = dist
-                    best_idx = i
-                    best_u = u
-            
-            if best_idx != -1:
-                s1 = self.splines[idx1]
-                s2 = self.splines[best_idx]
-                
-                res_u1, res_u2 = solve_rhino_perp(s1, s2, u1_seed, best_u)
-                
-                if res_u1 is not None:
-                    # Valid solution found
-                    p1_2d = s1.evalCatmull(res_u1)
-                    p2_2d = s2.evalCatmull(res_u2)
-                    start_3d = plane_to_world(p1_2d, self.Xp, self.Yp)
-                    end_3d = plane_to_world(p2_2d, self.Xp, self.Yp)
-                    self.last_valid_perp = (start_3d, end_3d)
-                    self.preview_pts = [start_3d, end_3d]
-                    self.radius = (start_3d - end_3d).length
-                    self.current = end_3d
-                elif self.last_valid_perp:
-                    # Use last valid solution to prevent flickering
-                    self.preview_pts = list(self.last_valid_perp)
-                    self.radius = (self.last_valid_perp[0] - self.last_valid_perp[1]).length
-                    self.current = self.last_valid_perp[1]
-                else:
-                    # No valid perpendicular found - show only clicked point
-                    p1_2d = s1.evalCatmull(u1_seed)
-                    start_3d = plane_to_world(p1_2d, self.Xp, self.Yp)
-                    self.preview_pts = [start_3d]
-                    self.current = plane_to_world(s2.evalCatmull(best_u), self.Xp, self.Yp)
 
     def handle_click(self, context, event, snap_point, snap_normal, button_id=None):
         if self.stage == 0:
             if hasattr(self, 'current_candidate') and self.current_candidate:
-                self.first_click_info = self.current_candidate
-                self.stage = 1
-                return 'NEXT_STAGE'
+                return 'FINISHED'
             return None
-            
-        elif self.stage == 1:
-            return 'FINISHED'
-            
         return 'CANCELLED'
         
     def handle_input(self, context, event):
