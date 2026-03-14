@@ -22,6 +22,7 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
     show_line_settings: bpy.props.BoolProperty(name="Line Settings", default=True)
     show_line_perp_settings: bpy.props.BoolProperty(name="Line Perpendicular from Curve Settings", default=True)
     show_line_perp2_settings: bpy.props.BoolProperty(name="Line Perpendicular to Two Curves Settings", default=True)
+    show_line_tangent_settings: bpy.props.BoolProperty(name="Line Tangent from Curve Settings", default=True)
 
     # =========================================================================
     # SETTINGS PROPERTIES
@@ -54,7 +55,8 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
         description="Line thickness for the Catmull-Rom spline preview in the Perpendicular Line tool",
         default=2.0,
         min=0.5, max=10.0,
-        precision=1
+        precision=1,
+        step=10
     )
 
     # --- Line Perpendicular to Two Curves ---
@@ -78,7 +80,33 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
         description="Line thickness for the Catmull-Rom spline preview in the Perp to Two Curves tool",
         default=2.0,
         min=0.5, max=10.0,
-        precision=1
+        precision=1,
+        step=10
+    )
+
+    # --- Line Tangent from Curve ---
+    line_tangent_show_catmull: bpy.props.BoolProperty(
+        name="Show Catmull Overlay",
+        description="Toggle the visibility of the Catmull-Rom spline overlay for the Tangent tool",
+        default=True
+    )
+
+    line_tangent_col_catmull: bpy.props.FloatVectorProperty(
+        name="Catmull Overlay Color",
+        subtype='COLOR',
+        size=4,
+        min=0.0, max=1.0,
+        default=(0.0, 0.8, 1.0, 0.5), # Cyan-ish
+        description="Color for the Catmull-Rom spline preview in the Tangent tool"
+    )
+
+    line_tangent_width_catmull: bpy.props.FloatProperty(
+        name="Catmull Overlay Thickness",
+        description="Line thickness for the Catmull-Rom spline preview in the Tangent tool",
+        default=2.0,
+        min=0.5, max=10.0,
+        precision=1,
+        step=10
     )
 
     axis_color_dim: bpy.props.FloatProperty(
@@ -709,7 +737,46 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
             col.separator()
 
         # ==================================
-        # 6. 1 POINT ARC SETTINGS (Collapsible Wrapper)
+        # 6. LINE TANGENT FROM CURVE SETTINGS
+        # ==================================
+        box_tangent = layout.box()
+        row_header_tangent = box_tangent.row(align=True)
+        
+        is_expanded_tangent = self.show_line_tangent_settings
+        icon_state_tangent = "TRIA_DOWN" if is_expanded_tangent else "TRIA_RIGHT"
+        row_header_tangent.prop(self, "show_line_tangent_settings", icon=icon_state_tangent, text="", icon_only=True, emboss=False)
+        row_header_tangent.label(text="Line Tangent from Curve Settings", icon='CURVE_NCURVE')
+
+        if is_expanded_tangent:
+            split_main = box_tangent.split(factor=0.02)
+            split_main.label(text="") 
+            col = split_main.column(align=True)
+            
+            # Toggle
+            split = col.split(factor=0.5, align=True)
+            row_label = split.row()
+            row_label.separator()
+            row_label.label(text="Show Catmull Overlay:", icon='BLANK1')
+            split.prop(self, "line_tangent_show_catmull", text="Enable")
+            
+            # Color
+            split = col.split(factor=0.5, align=True)
+            row_label = split.row()
+            row_label.separator()
+            row_label.label(text="Catmull Overlay Color:", icon='BLANK1')
+            split.prop(self, "line_tangent_col_catmull", text="")
+
+            # Thickness
+            split = col.split(factor=0.5, align=True)
+            row_label = split.row()
+            row_label.separator()
+            row_label.label(text="Catmull Overlay Thickness:", icon='BLANK1')
+            split.prop(self, "line_tangent_width_catmull", text="")
+            
+            col.separator()
+
+        # ==================================
+        # 7. 1 POINT ARC SETTINGS (Collapsible Wrapper)
         # ==================================
         icon_val = 0
         try:
@@ -850,7 +917,7 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
             col.separator()
 
         # ==================================
-        # 7. 2 POINT ARC SETTINGS
+        # 8. 2 POINT ARC SETTINGS
         # ==================================
         icon_val_2pt = 0
         try:

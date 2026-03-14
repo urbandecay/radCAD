@@ -88,7 +88,10 @@ def get_render_settings(ctx):
         "LINE_PERP_WIDTH_CATMULL": 2.0,
         "LINE_PERP2_SHOW_CATMULL": True,
         "LINE_PERP2_COL_CATMULL": (0.0, 0.8, 1.0, 0.5),
-        "LINE_PERP2_WIDTH_CATMULL": 2.0
+        "LINE_PERP2_WIDTH_CATMULL": 2.0,
+        "LINE_TANGENT_SHOW_CATMULL": True,
+        "LINE_TANGENT_COL_CATMULL": (0.0, 0.8, 1.0, 0.5),
+        "LINE_TANGENT_WIDTH_CATMULL": 2.0
     }
 
     system_prefs = ctx.preferences.system
@@ -110,6 +113,11 @@ def get_render_settings(ctx):
         prefs["LINE_PERP2_SHOW_CATMULL"] = getattr(addon_prefs, "line_perp2_show_catmull", True)
         prefs["LINE_PERP2_COL_CATMULL"] = getattr(addon_prefs, "line_perp2_col_catmull", (0.0, 0.8, 1.0, 0.5))
         prefs["LINE_PERP2_WIDTH_CATMULL"] = getattr(addon_prefs, "line_perp2_width_catmull", 2.0)
+        
+        prefs["LINE_TANGENT_SHOW_CATMULL"] = getattr(addon_prefs, "line_tangent_show_catmull", True)
+        prefs["LINE_TANGENT_COL_CATMULL"] = getattr(addon_prefs, "line_tangent_col_catmull", (0.0, 0.8, 1.0, 0.5))
+        prefs["LINE_TANGENT_WIDTH_CATMULL"] = getattr(addon_prefs, "line_tangent_width_catmull", 2.0)
+        
         prefs["LIFT_COMPASS"] = addon_prefs.lift_compass
         prefs["LIFT_ARC"] = addon_prefs.lift_arc
         prefs["LIFT_PERSP"] = addon_prefs.lift_perspective
@@ -771,6 +779,10 @@ def draw_cb_3d():
                 do_draw = settings.get("LINE_PERP2_SHOW_CATMULL", True)
                 draw_col = settings.get("LINE_PERP2_COL_CATMULL", (0.0, 0.8, 1.0, 0.5))
                 draw_width = settings.get("LINE_PERP2_WIDTH_CATMULL", 2.0)
+            elif mode == "LINE_TANGENT_FROM_CURVE":
+                do_draw = settings.get("LINE_TANGENT_SHOW_CATMULL", True)
+                draw_col = settings.get("LINE_TANGENT_COL_CATMULL", (0.0, 0.8, 1.0, 0.5))
+                draw_width = settings.get("LINE_TANGENT_WIDTH_CATMULL", 2.0)
             else:
                 draw_width = 2.0
 
