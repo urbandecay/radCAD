@@ -178,6 +178,7 @@ def draw_ui_button(x, y, text, is_active, hitbox_id):
     # --- TOP RIGHT HOTKEYS ---
 def draw_hotkeys_panel():
     if not state.get("show_hotkeys", True): return
+    if state.get("tool_mode") == "LINE_TANGENT_FROM_CURVE": return
 
     perp_state = "ON" if state.get("is_perpendicular") else "OFF"
     perp_col = None 
@@ -641,6 +642,8 @@ def draw_hud_2d():
                          r_txt = "D: 0"
                          h1 = draw_ui_box_generic(px, current_y, r_txt)
                          current_y -= (h1 + 4)
+                elif tool_mode == "LINE_TANGENT_FROM_CURVE":
+                    pass
                 else:
                     label = "R: "
                     if tool_mode == "LINE_POLY": label = "" # --- REMOVED 'L' for Line Tool
