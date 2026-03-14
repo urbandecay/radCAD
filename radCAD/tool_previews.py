@@ -55,11 +55,11 @@ def apply_view_bias(points, ctx, amount=0.002, lift_mult=10.0, persp_percent=0.2
         cam_part = cam_pos * real_amount
         return [p * factor + cam_part for p in points]
 
-def get_axis_aligned_color(vec, default_col, settings=None):
+def get_axis_aligned_color(vec, default_col, settings=None, toggle_key="USE_AXIS_COLORS"):
     if vec.length_squared < 1e-6: return default_col
 
-    # --- FIX: Respect the "Use Axis Colors" toggle ---
-    if settings and not settings.get("USE_AXIS_COLORS", True):
+    # --- FIX: Respect the requested toggle ---
+    if settings and not settings.get(toggle_key, True):
         return default_col
 
     dim = settings.get("AXIS_DIM", 1.0) if settings else 1.0
@@ -131,8 +131,7 @@ def get_render_settings(ctx):
         prefs["LINE_COL"] = addon_prefs.snap_line_color
         prefs["COL_START"] = addon_prefs.color_arc_start
         prefs["COL_END"] = addon_prefs.color_arc_end
-        prefs["COL_CHORD"] = addon_prefs.color_arc_2pt_chord
-        prefs["COL_HEIGHT"] = addon_prefs.color_arc_2pt_height
+        prefs["ARC_2PT_USE_AXIS_COLORS"] = addon_prefs.arc_2pt_use_axis_colors
         prefs["PREVIEW_VERTEX_SIZE"] = addon_prefs.preview_vertex_size
         
         # --- NEW: Points by Arc Settings ---
@@ -425,7 +424,8 @@ def draw_preview_2point(ctx, shaders, prefs):
         draw_points(ctx, shaders, [state["current"]], (0,0,0,1), pt_size, prefs)
         
         diff = state["current"] - pv
-        col = get_axis_aligned_color(diff, (0.5, 0.5, 0.5, 0.5))
+        # Default to Black (0,0,0,1) like Line Tools
+        col = get_axis_aligned_color(diff, (0.0, 0.0, 0.0, 1.0), prefs, "ARC_2PT_USE_AXIS_COLORS")
         draw_line(ctx, shaders, pv, state["current"], col, prefs)
 
         if state.get("tool_mode") == "CIRCLE_2POINT":
@@ -444,14 +444,15 @@ def draw_preview_2point(ctx, shaders, prefs):
         
         if p1 and p2:
             chord_vec = p2 - p1
-            col_c = get_axis_aligned_color(chord_vec, (0.5, 0.5, 0.5, 0.5))
+            # Default to Black
+            col_c = get_axis_aligned_color(chord_vec, (0.0, 0.0, 0.0, 1.0), prefs, "ARC_2PT_USE_AXIS_COLORS")
             draw_line(ctx, shaders, p1, p2, col_c, prefs)
             
         if state["start"] is not None:
             peak = state["start"]
             height_vec = peak - pv
-            # --- FIX: Default to GREY (0.5, 0.5, 0.5, 1.0) if not axis-aligned ---
-            col_h = get_axis_aligned_color(height_vec, (0.5, 0.5, 0.5, 1.0))
+            # Default to Black
+            col_h = get_axis_aligned_color(height_vec, (0.0, 0.0, 0.0, 1.0), prefs, "ARC_2PT_USE_AXIS_COLORS")
             draw_line(ctx, shaders, pv, peak, col_h, prefs)
             
         pts = state.get("preview_pts", [])

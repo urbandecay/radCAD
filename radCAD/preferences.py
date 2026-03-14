@@ -197,22 +197,10 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
     )
 
     # VISUAL COLORS (2-Point)
-    color_arc_2pt_chord: bpy.props.FloatVectorProperty(
-        name="Chord Line Color",
-        subtype='COLOR',
-        size=4,
-        min=0.0, max=1.0,
-        default=(0.2, 0.8, 0.2, 1.0), # Green
-        description="This is straight line connecting your two start/end points"
-    )
-
-    color_arc_2pt_height: bpy.props.FloatVectorProperty(
-        name="Height Line Color",
-        subtype='COLOR',
-        size=4,
-        min=0.0, max=1.0,
-        default=(0.2, 0.8, 0.2, 1.0), # Green
-        description="This colors the line that shoots up from the middle to set the arc's height"
+    arc_2pt_use_axis_colors: bpy.props.BoolProperty(
+        name="Use Axis Colors",
+        description="When snapped to X, Y, or Z, the chord and height lines will turn the axis color. If off, they stay the default color",
+        default=True
     )
 
     # VISUAL COLORS (Points by Arc)
@@ -1035,23 +1023,14 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
 
             col.separator(factor=2.0)
             
-            col.label(text="Visuals (Preview Lines):", icon='COLOR')
+            col.label(text="Snapping Visuals:", icon='COLOR')
             
-            # Chord Line
+            # Use Axis Colors
             split = col.split(factor=0.5, align=True)
             row_label = split.row()
             row_label.separator()
-            row_label.label(text="Chord Line (P1-P2):", icon='BLANK1')
-            row_props = split.row(align=True)
-            row_props.prop(self, "color_arc_2pt_chord", text="")
-            
-            # Height Line
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Height Line (Mid-Peak):", icon='BLANK1')
-            row_props = split.row(align=True)
-            row_props.prop(self, "color_arc_2pt_height", text="")
+            row_label.label(text="Use Axis Colors:", icon='BLANK1')
+            split.prop(self, "arc_2pt_use_axis_colors", text="Enable")
             
             col.separator()
 
