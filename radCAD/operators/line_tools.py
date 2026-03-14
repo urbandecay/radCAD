@@ -248,29 +248,8 @@ class Spline:
                 bestU = u
             u += step
             
-        currU = bestU
-        for k in range(5):
-            p = self.evalCatmull(currU)
-            line_vec = p - origin
-            dist = line_vec.length
-            if dist < 0.001: break
-            dir_vec = line_vec / dist
-            deriv = self.evalDeriv(currU)
-            tan = deriv.normalized() if deriv.length_squared > 1e-8 else Vector((1,0))
-            score = abs(dir_vec.dot(tan))
-            nextU = currU + 0.005
-            pNext = self.evalCatmull(nextU)
-            lineNext = pNext - origin
-            distNext = lineNext.length
-            if distNext > 0.001:
-                dirNext = lineNext / distNext
-                derivNext = self.evalDeriv(nextU)
-                tanNext = derivNext.normalized() if derivNext.length_squared > 1e-8 else Vector((1,0))
-                scoreNext = abs(dirNext.dot(tanNext))
-                if scoreNext < score: # Minimize
-                    currU = nextU
-                else:
-                    currU -= 0.005 
+        # --- NEW: High-Precision Refinement using Newton's Method ---
+        currU = self.findLocalPerpendicularAnchor(origin, 0.0, float(len(self.points)), bestU)
         return currU
 
     # --- PORTED LOGIC FROM line_tangent_to_1_curve_optimized.html ---
@@ -509,7 +488,7 @@ def solve_rhino_perp(s1, s2, seed_u1, seed_u2):
     t2 = s2.evalDeriv(bestU2).normalized()
     
     # If not perpendicular to both (dot product should be near 0)
-    tol = 0.01 # Roughly 0.5 degrees
+    tol = 0.001 # Extremely strict: roughly 0.05 degrees
     if abs(line_dir.dot(t1)) > tol or abs(line_dir.dot(t2)) > tol:
         return None, None
 
@@ -1138,6 +1117,7 @@ class LineTool_PerpToTwoCurves(SurfaceDrawTool):
         self.splines = []
         self.first_click_info = None 
         self.spline_geom = []
+        self.last_valid_perp = None # Store to prevent flickering
         
         obj = bpy.context.edit_object
         if obj and obj.type == 'MESH':
@@ -1232,16 +1212,20 @@ class LineTool_PerpToTwoCurves(SurfaceDrawTool):
                     res_u1, res_u2 = solve_rhino_perp(s1, s2, best_u, best_u2)
                     
                     if res_u1 is not None:
-                        # LOCK to the solved perpendicular points only
+                        # Valid solution found
                         p1_2d = s1.evalCatmull(res_u1)
                         p2_2d = s2.evalCatmull(res_u2)
-                        
                         start_3d = plane_to_world(p1_2d, self.Xp, self.Yp)
                         end_3d = plane_to_world(p2_2d, self.Xp, self.Yp)
+                        self.last_valid_perp = (start_3d, end_3d)
                         self.preview_pts = [start_3d, end_3d]
                         self.current = end_3d
+                    elif self.last_valid_perp:
+                        # Use last valid solution to prevent flickering
+                        self.preview_pts = list(self.last_valid_perp)
+                        self.current = self.last_valid_perp[1]
                     else:
-                        # No valid perpendicular found between these two curves at this mouse pos
+                        # Fallback to single point
                         p2d = self.splines[best_idx].evalCatmull(best_u)
                         p3d = plane_to_world(p2d, self.Xp, self.Yp)
                         self.preview_pts = [p3d]
@@ -1278,23 +1262,26 @@ class LineTool_PerpToTwoCurves(SurfaceDrawTool):
                 res_u1, res_u2 = solve_rhino_perp(s1, s2, u1_seed, best_u)
                 
                 if res_u1 is not None:
-                    # LOCK to the solved perpendicular points only
+                    # Valid solution found
                     p1_2d = s1.evalCatmull(res_u1)
                     p2_2d = s2.evalCatmull(res_u2)
-                    
                     start_3d = plane_to_world(p1_2d, self.Xp, self.Yp)
                     end_3d = plane_to_world(p2_2d, self.Xp, self.Yp)
+                    self.last_valid_perp = (start_3d, end_3d)
                     self.preview_pts = [start_3d, end_3d]
                     self.radius = (start_3d - end_3d).length
                     self.current = end_3d
+                elif self.last_valid_perp:
+                    # Use last valid solution to prevent flickering
+                    self.preview_pts = list(self.last_valid_perp)
+                    self.radius = (self.last_valid_perp[0] - self.last_valid_perp[1]).length
+                    self.current = self.last_valid_perp[1]
                 else:
-                    # No valid perpendicular found - show only clicked point and current mouse hover dot
+                    # No valid perpendicular found - show only clicked point
                     p1_2d = s1.evalCatmull(u1_seed)
-                    p2_2d = s2.evalCatmull(best_u)
                     start_3d = plane_to_world(p1_2d, self.Xp, self.Yp)
-                    end_3d = plane_to_world(p2_2d, self.Xp, self.Yp)
-                    self.preview_pts = [start_3d] # Don't draw the line, just the clicked point
-                    self.current = end_3d # Hover dot handled by standard renderer
+                    self.preview_pts = [start_3d]
+                    self.current = plane_to_world(s2.evalCatmull(best_u), self.Xp, self.Yp)
 
     def handle_click(self, context, event, snap_point, snap_normal, button_id=None):
         if self.stage == 0:
