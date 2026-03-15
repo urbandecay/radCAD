@@ -17,6 +17,7 @@ class CircleTool_TanTan:
         self.preview_pts = []
         self.splines = []
         self.spline_samples = [[], []]
+        self.last_mouse = None  # NEW: Performance Tracker
         self.Xp, self.Yp, self.Zp = Vector((1,0,0)), Vector((0,1,0)), Vector((0,0,1))
         
         # STATE: Rail is gone, Lines/Dots remain
@@ -91,42 +92,62 @@ class CircleTool_TanTan:
                     state["pivot"] = self.pivot
 
     def update(self, context, event, snap_pt, snap_normal):
+        # Update segments from global state (mouse wheel support)
+        new_segs = state.get("segments", 32)
+        
+        # --- PERFORMANCE CHECK: Skip Solve if Mouse hasn't moved & Segments haven't changed ---
+        mouse_moved = (self.last_mouse is None or (snap_pt - self.last_mouse).length > 1e-4)
+        segs_changed = (self.segments != new_segs)
+        
+        if not mouse_moved and not segs_changed:
+            return # Skip all work
+            
+        self.segments = new_segs
+        
         # Stage 0: Fallback
         if self.stage == 0:
             self.current = snap_pt
+            self.last_mouse = snap_pt.copy()
             return
 
         # Stage 1: Live Solver
         if self.stage == 1:
-            mouse_pos = snap_pt
-            if self.pivot is None: self.pivot = mouse_pos
+            if mouse_moved:
+                self.last_mouse = snap_pt.copy()
+                mouse_pos = snap_pt
+                if self.pivot is None: self.pivot = mouse_pos
+                    
+                d = mouse_pos - self.pivot 
+                d_plane = d - self.Zp * d.dot(self.Zp)
+                mouse_on_plane = self.pivot + d_plane
                 
-            d = mouse_pos - self.pivot 
-            d_plane = d - self.Zp * d.dot(self.Zp)
-            mouse_on_plane = self.pivot + d_plane
-            
-            # Use Mouse as Seed for LIVE Solver
-            solved_c, solved_r = solve_medial_axis_point(mouse_on_plane, self.spline_1, self.spline_2, self.Zp)
-            
-            self.current = solved_c
-            self.radius = solved_r
-            self.pivot = solved_c
-            
-            # Visualization of the tangency
-            p1_v, _, _ = self.spline_1.project(self.current)
-            p2_v, _, _ = self.spline_2.project(self.current)
-            state["viz_tangent_line"] = (self.current, p1_v)
-            state["viz_diameter_line"] = (self.current, p2_v)
-            state["viz_opposite_dot"] = None
+                # 1. Run Solver (The heavy part) - Only on mouse move
+                solved_c, solved_r = solve_medial_axis_point(mouse_on_plane, self.spline_1, self.spline_2, self.Zp)
+                
+                self.current = solved_c
+                self.radius = solved_r
+                self.pivot = solved_c
+                
+                # 2. Visualization of the tangency
+                p1_v, _, _ = self.spline_1.project(self.current)
+                p2_v, _, _ = self.spline_2.project(self.current)
+                state["viz_tangent_line"] = (self.current, p1_v)
+                state["viz_diameter_line"] = (self.current, p2_v)
+                state["viz_opposite_dot"] = None
 
+                # 3. Update Visual Smooth Circle (The high-res blue one) - Only on mouse move
+                if self.radius > 1e-5:
+                    state["visual_pts"] = [self.current + self.Xp*math.cos(a)*self.radius + self.Yp*math.sin(a)*self.radius for a in [i*math.pi*2/128 for i in range(129)]]
+                else:
+                    state["visual_pts"] = []
+
+            # 4. Update Mesh Preview (The black one) - On mouse move OR segment change
             if self.radius > 1e-5:
                 self.preview_pts = [self.current + self.Xp*math.cos(a)*self.radius + self.Yp*math.sin(a)*self.radius for a in [i*math.pi*2/self.segments for i in range(self.segments+1)]]
                 state["preview_pts"] = self.preview_pts
-                state["visual_pts"] = [self.current + self.Xp*math.cos(a)*self.radius + self.Yp*math.sin(a)*self.radius for a in [i*math.pi*2/128 for i in range(129)]]
             else:
                 self.preview_pts = []
                 state["preview_pts"] = []
-                state["visual_pts"] = []
 
     def handle_click(self, context, event, snap_pt, snap_normal, button_id=None):
         if self.stage == 0:
