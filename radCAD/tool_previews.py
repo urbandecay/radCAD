@@ -132,6 +132,7 @@ def get_render_settings(ctx):
         prefs["COL_START"] = addon_prefs.color_arc_start
         prefs["COL_END"] = addon_prefs.color_arc_end
         prefs["ARC_2PT_USE_AXIS_COLORS"] = addon_prefs.arc_2pt_use_axis_colors
+        prefs["COL_OVERLAY_2PT"] = addon_prefs.color_arc_2pt_overlay
         prefs["PREVIEW_VERTEX_SIZE"] = addon_prefs.preview_vertex_size
         
         # --- NEW: Points by Arc Settings ---
@@ -424,8 +425,8 @@ def draw_preview_2point(ctx, shaders, prefs):
         draw_points(ctx, shaders, [state["current"]], (0,0,0,1), pt_size, prefs)
         
         diff = state["current"] - pv
-        # Default to Black (0,0,0,1) like Line Tools
-        col = get_axis_aligned_color(diff, (0.0, 0.0, 0.0, 1.0), prefs, "ARC_2PT_USE_AXIS_COLORS")
+        # Default to Custom Overlay Color (Defaults to Grey)
+        col = get_axis_aligned_color(diff, prefs["COL_OVERLAY_2PT"], prefs, "ARC_2PT_USE_AXIS_COLORS")
         draw_line(ctx, shaders, pv, state["current"], col, prefs)
 
         if state.get("tool_mode") == "CIRCLE_2POINT":
@@ -444,15 +445,15 @@ def draw_preview_2point(ctx, shaders, prefs):
         
         if p1 and p2:
             chord_vec = p2 - p1
-            # Default to Black
-            col_c = get_axis_aligned_color(chord_vec, (0.0, 0.0, 0.0, 1.0), prefs, "ARC_2PT_USE_AXIS_COLORS")
+            # Default to Custom Overlay Color
+            col_c = get_axis_aligned_color(chord_vec, prefs["COL_OVERLAY_2PT"], prefs, "ARC_2PT_USE_AXIS_COLORS")
             draw_line(ctx, shaders, p1, p2, col_c, prefs)
             
         if state["start"] is not None:
             peak = state["start"]
             height_vec = peak - pv
-            # Default to Black
-            col_h = get_axis_aligned_color(height_vec, (0.0, 0.0, 0.0, 1.0), prefs, "ARC_2PT_USE_AXIS_COLORS")
+            # Default to Custom Overlay Color
+            col_h = get_axis_aligned_color(height_vec, prefs["COL_OVERLAY_2PT"], prefs, "ARC_2PT_USE_AXIS_COLORS")
             draw_line(ctx, shaders, pv, peak, col_h, prefs)
             
         pts = state.get("preview_pts", [])

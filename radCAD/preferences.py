@@ -203,6 +203,15 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
         default=True
     )
 
+    color_arc_2pt_overlay: bpy.props.FloatVectorProperty(
+        name="Overlay Color",
+        subtype='COLOR',
+        size=4,
+        min=0.0, max=1.0,
+        default=(0.5, 0.5, 0.5, 1.0), # Grey
+        description="The color for the chord and height guide lines when not using axis colors"
+    )
+
     # VISUAL COLORS (Points by Arc)
     color_points_by_arc_1: bpy.props.FloatVectorProperty(
         name="Arc 1 Color",
@@ -1031,6 +1040,17 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
             row_label.separator()
             row_label.label(text="Use Axis Colors:", icon='BLANK1')
             split.prop(self, "arc_2pt_use_axis_colors", text="Enable")
+
+            # Custom Overlay Color
+            split = col.split(factor=0.5, align=True)
+            row_label = split.row()
+            row_label.separator()
+            row_label.enabled = not self.arc_2pt_use_axis_colors # Dim the label
+            row_label.label(text="Overlay Color:", icon='BLANK1')
+            
+            row_prop = split.row()
+            row_prop.enabled = not self.arc_2pt_use_axis_colors # Dim the property
+            row_prop.prop(self, "color_arc_2pt_overlay", text="")
             
             col.separator()
 

@@ -27,6 +27,7 @@ state = {
     "use_angle_snap": True,
     "use_axis_inference": True,
     "arc_2pt_use_axis_colors": True,
+    "arc_2pt_overlay_col": (0.5, 0.5, 0.5, 1.0),
     
     "snap_strength": 6.0,
     "use_radians": False,
@@ -201,6 +202,7 @@ def reset_state_from_context(ctx):
     keep_compass = state.get("use_angle_snap", True)
     keep_axis    = state.get("use_axis_inference", True)
     keep_axis_2pt = state.get("arc_2pt_use_axis_colors", True)
+    keep_overlay_2pt = state.get("arc_2pt_overlay_col", (0.5, 0.5, 0.5, 1.0))
     keep_weld    = state.get("auto_weld", True)
     
     current_mode = state.get("tool_mode", "1POINT")
@@ -219,6 +221,7 @@ def reset_state_from_context(ctx):
         "use_angle_snap": keep_compass,
         "use_axis_inference": keep_axis,
         "arc_2pt_use_axis_colors": keep_axis_2pt,
+        "arc_2pt_overlay_col": keep_overlay_2pt,
         "auto_weld": keep_weld,
         
         "use_radians": use_rad, "snap_strength": strength,
