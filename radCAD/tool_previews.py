@@ -133,6 +133,13 @@ def get_render_settings(ctx):
         prefs["COL_END"] = addon_prefs.color_arc_end
         prefs["ARC_2PT_USE_AXIS_COLORS"] = addon_prefs.arc_2pt_use_axis_colors
         prefs["COL_OVERLAY_2PT"] = addon_prefs.color_arc_2pt_overlay
+        
+        prefs["SNAP_MARKER_SIZE_3PT"] = addon_prefs.snap_marker_size_3pt
+        prefs["SNAP_MARKER_COL_3PT"] = addon_prefs.snap_marker_color_3pt
+        prefs["SNAP_LINE_COL_3PT"] = addon_prefs.snap_line_color_3pt
+        prefs["ARC_3PT_USE_AXIS_COLORS"] = addon_prefs.arc_3pt_use_axis_colors
+        prefs["COL_OVERLAY_3PT"] = addon_prefs.color_arc_3pt_overlay
+
         prefs["PREVIEW_VERTEX_SIZE"] = addon_prefs.preview_vertex_size
         
         # --- NEW: Points by Arc Settings ---
@@ -475,7 +482,7 @@ def draw_preview_3point(ctx, shaders, prefs):
     if state["stage"] == 1 and state["current"] is not None:
         draw_points(ctx, shaders, [pv], (0,0,0,1), pt_size, prefs)
         diff = state["current"] - pv
-        col = get_axis_aligned_color(diff, (0.5, 0.5, 0.5, 0.5))
+        col = get_axis_aligned_color(diff, prefs["COL_OVERLAY_3PT"], prefs, "ARC_3PT_USE_AXIS_COLORS")
         draw_line(ctx, shaders, pv, state["current"], col, prefs)
         
     elif state["stage"] == 2:
@@ -489,13 +496,13 @@ def draw_preview_3point(ctx, shaders, prefs):
         if p1 and p2:
             # Color chord by axis
             chord_vec = p2 - p1
-            col_c = get_axis_aligned_color(chord_vec, (0.5, 0.5, 0.5, 0.5))
+            col_c = get_axis_aligned_color(chord_vec, prefs["COL_OVERLAY_3PT"], prefs, "ARC_3PT_USE_AXIS_COLORS")
             draw_line(ctx, shaders, p1, p2, col_c, prefs)
             
         if p2 and p3:
             # Color curvature segment by axis
             curv_vec = p3 - p2
-            col_v = get_axis_aligned_color(curv_vec, (0.5, 0.5, 0.5, 0.5))
+            col_v = get_axis_aligned_color(curv_vec, prefs["COL_OVERLAY_3PT"], prefs, "ARC_3PT_USE_AXIS_COLORS")
             draw_line(ctx, shaders, p2, p3, col_v, prefs)
             
         pts = state.get("preview_pts", [])
