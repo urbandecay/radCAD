@@ -56,24 +56,48 @@ def apply_input_value(ctx):
                 state["stage"] += 1
 
         # === 2-POINT LOGIC ===
-        elif tool_mode == "2POINT":
+        elif tool_mode == "2POINT" or tool_mode == "CIRCLE_2POINT":
+            target = state.get("input_target", "RADIUS")
+            dist = abs(val_meters)
+            if target == 'DIAMETER' or tool_mode == "CIRCLE_2POINT":
+                # For CIRCLE_2POINT, we assume the input is diameter
+                dist = abs(val_meters)
+            
             if state["stage"] == 1:
-                d = state["current"] - state["pivot"]
+                pv = state["pivot"]
+                d = state["current"] - pv
                 if d.length > 1e-9: d.normalize()
                 else: d = Vector((1,0,0))
-                state["p2"] = state["pivot"] + (d * abs(val_meters))
+                
+                # Update p2 based on parsed distance
+                state["p2"] = pv + (d * dist)
                 state["current"] = state["p2"]
-                state["stage"] = 2
-                state["p1"] = state["pivot"]
+                state["p1"] = pv
                 state["midpoint"] = (state["p1"] + state["p2"]) * 0.5
-            elif state["stage"] == 2:
-                mid = state["midpoint"]
-                curr_peak = state["start"] 
+                
+                # For Arcs, move to stage 2. For Circles, finish if tool supports it (or wait for RET)
+                if tool_mode == "2POINT":
+                    state["stage"] = 2
+                else:
+                    # CIRCLE_2POINT: update radius for preview
+                    state["radius"] = dist * 0.5
+            
+            elif state["stage"] == 2 and tool_mode == "2POINT":
+                mid = state.get("midpoint")
+                curr_peak = state.get("start") or state.get("current")
                 if curr_peak and mid:
                     d = curr_peak - mid
                     if d.length > 1e-9: d.normalize()
-                    else: d = state["Zp"] if state["Zp"] else Vector((0,0,1))
+                    else: d = state.get("Zp") or Vector((0,0,1))
                     state["start"] = mid + (d * abs(val_meters))
+
+        # === 3-POINT LOGIC ===
+        elif tool_mode == "CIRCLE_3POINT":
+            # For 3-point circle, radius input is ambiguous unless we are in the final stage
+            if state["stage"] == 2:
+                # We can't easily "solve" for a 3rd point given a radius without more constraints,
+                # but we can at least store the radius and let the tool update if it can.
+                state["radius"] = abs(val_meters)
 
         # === ELLIPSE TOOLS LOGIC ===
         elif tool_mode == "ELLIPSE_RADIUS":

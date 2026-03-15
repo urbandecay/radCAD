@@ -35,6 +35,30 @@ class ArcTool_Common(SurfaceDrawTool):
         self.vertical_override_axis = None # None means 'Auto'
 
     def update(self, context, event, snap_point, snap_normal):
+        # 0. Check for numerical input override
+        if self.state.get("skip_mouse_update"):
+            self.state["skip_mouse_update"] = False
+            
+            # Sync internal state from shared state (populated by text_entry_utils)
+            if self.state.get("p2"): self.p2 = self.state["p2"].copy()
+            if self.state.get("current"): self.current = self.state["current"].copy()
+            if self.state.get("radius"): self.radius = self.state["radius"]
+            if self.state.get("start"): self.start = self.state["start"].copy()
+            if self.state.get("stage"): self.stage = self.state["stage"]
+            
+            # Re-establish coordinate basis if needed
+            if self.pivot and self.current:
+                bridge = self.current - self.pivot
+                if bridge.length_squared > 1e-8:
+                    b_vec = bridge.normalized()
+                    up = self.ref_normal
+                    if not self.Zp: self.Zp = up.copy()
+                    if not self.Xp: self.Xp = b_vec
+                    if not self.Yp: self.Yp = self.Zp.cross(self.Xp).normalized()
+            
+            self.refresh_preview()
+            return
+
         self.current = snap_point
         
         # --- STAGE 0: THE PREP CHEF ---

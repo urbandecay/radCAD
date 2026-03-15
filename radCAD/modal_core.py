@@ -725,7 +725,7 @@ def modal_arc_common(self, ctx, ev):
             elif tool_mode != "ELLIPSE_CORNERS":
                 target_mode = 'RADIUS' # Covers 2POINT Sagitta automatically as it's in Stage 2 but not an angle stage
                 if tool_mode == "2POINT" and state["stage"] == 2: state["input_target"] = 'SAGITTA'
-                elif tool_mode in ["ELLIPSE_RADIUS", "ELLIPSE_ENDPOINTS"] and state["stage"] == 1: state["input_target"] = 'DIAMETER'
+                elif tool_mode in ["CIRCLE_2POINT", "ELLIPSE_RADIUS", "ELLIPSE_ENDPOINTS"] and state["stage"] == 1: state["input_target"] = 'DIAMETER'
                 else: state["input_target"] = 'RADIUS'
             
         if target_mode:

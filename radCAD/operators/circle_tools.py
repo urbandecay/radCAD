@@ -172,6 +172,27 @@ class CircleTool_2Point(SurfaceDrawTool):
         self.vertical_override_axis = None 
 
     def update(self, context, event, snap_point, snap_normal):
+        # 0. Check for numerical input override
+        if self.state.get("skip_mouse_update"):
+            self.state["skip_mouse_update"] = False
+            if self.state.get("current"):
+                self.current = self.state["current"].copy()
+            if self.state.get("radius"):
+                self.radius = self.state["radius"]
+            
+            # Re-establish coordinate basis if needed
+            if self.current and self.pivot:
+                bridge = self.current - self.pivot
+                if bridge.length_squared > 1e-8:
+                    b_vec = bridge.normalized()
+                    up = self.ref_normal
+                    if not self.Zp: self.Zp = up.copy()
+                    if not self.Xp: self.Xp = b_vec
+                    if not self.Yp: self.Yp = self.Zp.cross(self.Xp).normalized()
+
+            self.refresh_preview()
+            return
+
         if self.stage==0: 
             self.update_initial_plane(context, event, snap_point, snap_normal)
             if self.Zp: self.ref_normal = self.Zp.copy()
@@ -258,11 +279,19 @@ class CircleTool_2Point(SurfaceDrawTool):
                             self.Yp = self.Zp.cross(self.Xp).normalized()
 
             self.current = target
-            c = (self.pivot + target) * 0.5
-            r = (target - self.pivot).length * 0.5
+            self.refresh_preview()
+
+    def refresh_preview(self):
+        if self.current and self.pivot:
+            c = (self.pivot + self.current) * 0.5
+            r = (self.current - self.pivot).length * 0.5
             self.radius = r
             self.segments = self.state["segments"]
-            self.preview_pts = arc_points_world(c, r, 0.0, 2*math.pi, self.segments, self.Xp, self.Yp) if r > 1e-6 else []
+            if self.Xp and self.Yp:
+                self.preview_pts = arc_points_world(c, r, 0.0, 2*math.pi, self.segments, self.Xp, self.Yp) if r > 1e-6 else []
+        
+        # Sync to shared state
+        self.state["preview_pts"] = self.preview_pts
 
     def handle_click(self, context, event, snap_point, snap_normal, button_id=None):
         if self.stage==0: 
