@@ -95,9 +95,12 @@ def get_render_settings(ctx):
         "LINE_TAN_TAN_SHOW_CATMULL": True,
         "LINE_TAN_TAN_COL_CATMULL": (0.0, 0.8, 1.0, 0.5),
         "LINE_TAN_TAN_WIDTH_CATMULL": 2.0,
-        "CIRCLE_TAN3_SHOW_CATMULL": True,
-        "CIRCLE_TAN3_COL_CATMULL": (0.0, 0.8, 1.0, 0.5),
-        "CIRCLE_TAN3_WIDTH_CATMULL": 2.0
+        "CIRCLE_TAN3_SHOW_CURVES": True,
+        "CIRCLE_TAN3_COL_CURVES": (0.0, 0.8, 1.0, 0.5),
+        "CIRCLE_TAN3_WIDTH_CURVES": 2.0,
+        "CIRCLE_TAN3_SHOW_TANGENT": True,
+        "CIRCLE_TAN3_COL_TANGENT": (0.0, 0.8, 1.0, 0.5),
+        "CIRCLE_TAN3_WIDTH_TANGENT": 2.0
     }
 
     system_prefs = ctx.preferences.system
@@ -128,9 +131,13 @@ def get_render_settings(ctx):
         prefs["LINE_TAN_TAN_COL_CATMULL"] = getattr(addon_prefs, "line_tan_tan_col_catmull", (0.0, 0.8, 1.0, 0.5))
         prefs["LINE_TAN_TAN_WIDTH_CATMULL"] = getattr(addon_prefs, "line_tan_tan_width_catmull", 2.0)
 
-        prefs["CIRCLE_TAN3_SHOW_CATMULL"] = getattr(addon_prefs, "circle_tan3_show_catmull", True)
-        prefs["CIRCLE_TAN3_COL_CATMULL"] = getattr(addon_prefs, "circle_tan3_col_catmull", (0.0, 0.8, 1.0, 0.5))
-        prefs["CIRCLE_TAN3_WIDTH_CATMULL"] = getattr(addon_prefs, "circle_tan3_width_catmull", 2.0)
+        prefs["CIRCLE_TAN3_SHOW_CURVES"] = getattr(addon_prefs, "circle_tan3_show_curves", True)
+        prefs["CIRCLE_TAN3_COL_CURVES"] = tuple(getattr(addon_prefs, "circle_tan3_col_curves", (0.0, 0.8, 1.0, 0.5)))
+        prefs["CIRCLE_TAN3_WIDTH_CURVES"] = getattr(addon_prefs, "circle_tan3_width_curves", 2.0)
+
+        prefs["CIRCLE_TAN3_SHOW_TANGENT"] = getattr(addon_prefs, "circle_tan3_show_tangent", True)
+        prefs["CIRCLE_TAN3_COL_TANGENT"] = tuple(getattr(addon_prefs, "circle_tan3_col_tangent", (0.0, 0.8, 1.0, 0.5)))
+        prefs["CIRCLE_TAN3_WIDTH_TANGENT"] = getattr(addon_prefs, "circle_tan3_width_tangent", 2.0)
         
         prefs["LIFT_COMPASS"] = addon_prefs.lift_compass
         prefs["LIFT_ARC"] = addon_prefs.lift_arc
@@ -765,17 +772,16 @@ def draw_preview_tan_tan(ctx, shaders, prefs):
         draw_line(ctx, shaders, viz_diam[0], viz_diam[1], (1, 0.8, 0, 1), prefs)
 
 def draw_preview_tan_tan_tan(ctx, shaders, prefs):
+    if not prefs.get("CIRCLE_TAN3_SHOW_TANGENT", True): return
+
     pt_size = prefs.get("PREVIEW_VERTEX_SIZE", 5)
-    
-    # 1. Background Math Circle (Grey)
-    v_pts = state.get("visual_pts", [])
-    if v_pts:
-        draw_polyline(ctx, shaders, v_pts, (0.5, 0.5, 0.5, 1.0), prefs)
-        
-    # 2. Foreground Mesh Geometry (Grey Circle)
+    t_col = prefs.get("CIRCLE_TAN3_COL_TANGENT", (0.5, 0.5, 0.5, 1.0))
+    t_width = prefs.get("CIRCLE_TAN3_WIDTH_TANGENT", 2.0)
+
+    # Only draw the foreground circle to prevent double-overlap/ghosting
     p_pts = state.get("preview_pts", [])
     if p_pts:
-        draw_polyline(ctx, shaders, p_pts, (0.5, 0.5, 0.5, 1.0), prefs, custom_lift=prefs["LIFT_ARC"] + 2.0)
+        draw_polyline(ctx, shaders, p_pts, t_col, prefs, custom_width=t_width, custom_lift=prefs["LIFT_ARC"] + 2.0)
         # NO DOTS ON CIRCLE FOR CLEAN PREVIEW
 
     # 3. Inscribed Polygon (Black Triangle or N-gon)
@@ -786,11 +792,10 @@ def draw_preview_tan_tan_tan(ctx, shaders, prefs):
         for i in range(len(tan_poly_pts)):
             poly_draw_pts.append(tan_poly_pts[i])
             poly_draw_pts.append(tan_poly_pts[(i + 1) % len(tan_poly_pts)])
-            
+
         draw_polyline(ctx, shaders, poly_draw_pts, (0, 0, 0, 1), prefs, custom_lift=prefs["LIFT_ARC"] + 5.0)
         # Orange Dots at vertices
         draw_points(ctx, shaders, tan_poly_pts, (1.0, 0.5, 0.0, 1.0), pt_size + 2, prefs)
-
 
 def draw_cb_3d():
     if not state["active"]: return
@@ -835,9 +840,9 @@ def draw_cb_3d():
                 draw_col = settings.get("LINE_TAN_TAN_COL_CATMULL", (0.0, 0.8, 1.0, 0.5))
                 draw_width = settings.get("LINE_TAN_TAN_WIDTH_CATMULL", 2.0)
             elif mode == "CIRCLE_TAN_TAN_TAN":
-                do_draw = settings.get("CIRCLE_TAN3_SHOW_CATMULL", True)
-                draw_col = settings.get("CIRCLE_TAN3_COL_CATMULL", (0.0, 0.8, 1.0, 0.5))
-                draw_width = settings.get("CIRCLE_TAN3_WIDTH_CATMULL", 2.0)
+                do_draw = settings.get("CIRCLE_TAN3_SHOW_CURVES", True)
+                draw_col = settings.get("CIRCLE_TAN3_COL_CURVES", (0.0, 0.8, 1.0, 0.5))
+                draw_width = settings.get("CIRCLE_TAN3_WIDTH_CURVES", 2.0)
             else:
                 draw_width = 2.0
 

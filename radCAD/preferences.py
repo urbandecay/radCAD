@@ -144,24 +144,48 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
     )
 
     # --- Circle Tangent to Three Curves ---
-    circle_tan3_show_catmull: bpy.props.BoolProperty(
-        name="Show Catmull Overlay",
-        description="Toggle the visibility of the Catmull-Rom spline overlay for the Tangent to Three Curves tool",
+    circle_tan3_show_curves: bpy.props.BoolProperty(
+        name="Show Curve Overlays",
+        description="Toggle the visibility of the Catmull-Rom spline overlays for the 3 source curves",
         default=True
     )
 
-    circle_tan3_col_catmull: bpy.props.FloatVectorProperty(
-        name="Catmull Overlay Color",
+    circle_tan3_col_curves: bpy.props.FloatVectorProperty(
+        name="Curve Overlay Color",
         subtype='COLOR',
         size=4,
         min=0.0, max=1.0,
         default=(0.0, 0.8, 1.0, 0.5),
-        description="Color for the Catmull-Rom spline preview in the Tangent to Three Curves tool"
+        description="Color for the Catmull-Rom spline overlays"
     )
 
-    circle_tan3_width_catmull: bpy.props.FloatProperty(
-        name="Catmull Overlay Thickness",
-        description="Line thickness for the Catmull-Rom spline preview in the Tangent to Three Curves tool",
+    circle_tan3_width_curves: bpy.props.FloatProperty(
+        name="Curve Overlay Thickness",
+        description="Line thickness for the Catmull-Rom spline overlays",
+        default=2.0,
+        min=0.5, max=10.0,
+        precision=1,
+        step=10
+    )
+
+    circle_tan3_show_tangent: bpy.props.BoolProperty(
+        name="Show Tangent Circle",
+        description="Toggle the visibility of the calculated tangent circle",
+        default=True
+    )
+
+    circle_tan3_col_tangent: bpy.props.FloatVectorProperty(
+        name="Tangent Circle Color",
+        subtype='COLOR',
+        size=4,
+        min=0.0, max=1.0,
+        default=(0.0, 0.8, 1.0, 0.5),
+        description="Color for the tangent circle preview"
+    )
+
+    circle_tan3_width_tangent: bpy.props.FloatProperty(
+        name="Tangent Circle Thickness",
+        description="Line thickness for the tangent circle preview",
         default=2.0,
         min=0.5, max=10.0,
         precision=1,
@@ -627,13 +651,12 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
             self.draw_group_label(col, "Snapping Visuals:", icon='COLOR')
             self.draw_property_row(col, "Use Axis Colors:", "use_axis_colors")
 
-        # 4-8. Curve based tools
+        # 4-7. Curve based tools (excluding tan3)
         tools = [
             ("perp", "Line Perpendicular from Curve Settings", "show_line_perp_settings", "line_perpendicular_from_curve", "line_perp"),
             ("perp2", "Line Perpendicular to Two Curves Settings", "show_line_perp2_settings", "line_perpendicular_to_two_curves", "line_perp2"),
             ("tangent", "Line Tangent from Curve Settings", "show_line_tangent_settings", "line_tangent_from_curve", "line_tangent"),
-            ("tan_tan", "Line Tangent to Two Curves Settings", "show_line_tan_tan_settings", "line_tangent_to_two_curves", "line_tan_tan"),
-            ("tan3", "Circle Tangent to Three Curves Settings", "show_circle_tan3_settings", "circle_tangent_to_three_curves", "circle_tan3")
+            ("tan_tan", "Line Tangent to Two Curves Settings", "show_line_tan_tan_settings", "line_tangent_to_two_curves", "line_tan_tan")
         ]
         for key, title, show_prop, tool_key, prop_prefix in tools:
             col = self.draw_section_header(layout, title, show_prop, icon='CURVE_NCURVE', tool_key=tool_key)
@@ -643,7 +666,7 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
                 self.draw_property_row(col, "Overlay Color:", f"{prop_prefix}_col_catmull")
                 self.draw_property_row(col, "Overlay Thickness:", f"{prop_prefix}_width_catmull")
 
-        # 9. 1 POINT ARC
+        # 8. 1 POINT ARC
         col = self.draw_section_header(layout, "1 Point Arc Settings", "show_arc_settings", icon='CURVE_DATA', tool_key='arc_1_point')
         if col:
             self.draw_group_label(col, "Display & Fonts:", icon='FONT_DATA')
@@ -680,7 +703,7 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
             self.draw_property_row(col, "Start Line Color:", "color_arc_start")
             self.draw_property_row(col, "End Line Color:", "color_arc_end")
 
-        # 10-13. 2/3 Point Arcs and Circles
+        # 9-12. 2/3 Point Arcs and Circles
         arc_circle_tools = [
             ("2pt", "2 Point Arc Settings", "show_arc_2pt_settings", "arc_2_point", "arc_2pt"),
             ("3pt", "3 Point Arc Settings", "show_arc_3pt_settings", "arc_3_point", "arc_3pt"),
@@ -703,6 +726,20 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
                 self.draw_group_label(col, "Snapping Visuals:", icon='COLOR')
                 self.draw_property_row(col, "Use Axis Colors:", f"{prefix}_use_axis_colors")
                 self.draw_property_row(col, "Overlay Color:", f"color_{prefix}_overlay", enabled=not getattr(self, f"{prefix}_use_axis_colors"))
+
+        # 13. CIRCLE TANGENT TO THREE CURVES (Moved under 3 Point Circle)
+        col = self.draw_section_header(layout, "Circle Tangent to Three Curves Settings", "show_circle_tan3_settings", icon='CURVE_NCURVE', tool_key='circle_tangent_to_three_curves')
+        if col:
+            self.draw_group_label(col, "Curve Overlays:", icon='COLOR')
+            self.draw_property_row(col, "Show Curves:", "circle_tan3_show_curves")
+            self.draw_property_row(col, "Curve Overlay Color:", "circle_tan3_col_curves")
+            self.draw_property_row(col, "Curve Overlay Thickness:", "circle_tan3_width_curves")
+            
+            col.separator(factor=2.0)
+            self.draw_group_label(col, "Tangent Circle:", icon='MESH_CIRCLE')
+            self.draw_property_row(col, "Show Tangent:", "circle_tan3_show_tangent")
+            self.draw_property_row(col, "Tangent Circle Color:", "circle_tan3_col_tangent")
+            self.draw_property_row(col, "Tangent Circle Thickness:", "circle_tan3_width_tangent")
 
         # 14-17. Shapes and Curves
         shape_tools = [
