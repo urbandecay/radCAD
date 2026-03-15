@@ -817,7 +817,7 @@ def draw_preview_tan_tan_tan(ctx, shaders, prefs):
 
         draw_polyline(ctx, shaders, poly_draw_pts, (0, 0, 0, 1), prefs, custom_lift=prefs["LIFT_ARC"] + 5.0)
         # Black Dots at vertices
-        draw_points(ctx, shaders, tan_poly_pts, (0, 0, 0, 1), pt_size + 2, prefs)
+        draw_points(ctx, shaders, tan_poly_pts, (0, 0, 0, 1), pt_size, prefs)
 
 def draw_cb_3d():
     if not state["active"]: return
