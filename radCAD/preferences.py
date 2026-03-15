@@ -28,6 +28,7 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
     show_line_tangent_settings: bpy.props.BoolProperty(name="Line Tangent from Curve Settings", default=True)
     show_line_tan_tan_settings: bpy.props.BoolProperty(name="Line Tangent to Two Curves Settings", default=True)
     show_circle_tan3_settings: bpy.props.BoolProperty(name="Circle Tangent to Three Curves Settings", default=True)
+    show_circle_tan2_settings: bpy.props.BoolProperty(name="Circle Tangent to Two Curves Settings", default=True)
     show_ellipse_settings: bpy.props.BoolProperty(name="Ellipse Settings", default=True)
     show_polygon_settings: bpy.props.BoolProperty(name="Polygon Settings", default=True)
     show_rectangle_settings: bpy.props.BoolProperty(name="Rectangle Settings", default=True)
@@ -184,6 +185,55 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
     )
 
     circle_tan3_width_tangent: bpy.props.FloatProperty(
+        name="Tangent Circle Thickness",
+        description="Line thickness for the tangent circle preview",
+        default=2.0,
+        min=0.5, max=10.0,
+        precision=1,
+        step=10
+    )
+
+    # --- Circle Tangent to Two Curves ---
+    circle_tan2_show_curves: bpy.props.BoolProperty(
+        name="Show Curve Overlays",
+        description="Toggle the visibility of the Catmull-Rom spline overlays for the 2 source curves",
+        default=True
+    )
+
+    circle_tan2_col_curves: bpy.props.FloatVectorProperty(
+        name="Curve Overlay Color",
+        subtype='COLOR',
+        size=4,
+        min=0.0, max=1.0,
+        default=(0.0, 0.8, 1.0, 0.5),
+        description="Color for the Catmull-Rom spline overlays"
+    )
+
+    circle_tan2_width_curves: bpy.props.FloatProperty(
+        name="Curve Overlay Thickness",
+        description="Line thickness for the Catmull-Rom spline overlays",
+        default=2.0,
+        min=0.5, max=10.0,
+        precision=1,
+        step=10
+    )
+
+    circle_tan2_show_tangent: bpy.props.BoolProperty(
+        name="Show Tangent Circle",
+        description="Toggle the visibility of the calculated tangent circle",
+        default=True
+    )
+
+    circle_tan2_col_tangent: bpy.props.FloatVectorProperty(
+        name="Tangent Circle Color",
+        subtype='COLOR',
+        size=4,
+        min=0.0, max=1.0,
+        default=(0.0, 0.8, 1.0, 0.5),
+        description="Color for the tangent circle preview"
+    )
+
+    circle_tan2_width_tangent: bpy.props.FloatProperty(
         name="Tangent Circle Thickness",
         description="Line thickness for the tangent circle preview",
         default=2.0,
@@ -741,7 +791,21 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
             self.draw_property_row(col, "Tangent Circle Color:", "circle_tan3_col_tangent")
             self.draw_property_row(col, "Tangent Circle Thickness:", "circle_tan3_width_tangent")
 
-        # 14-17. Shapes and Curves
+        # 14. CIRCLE TANGENT TO TWO CURVES (Moved under Tan 3)
+        col = self.draw_section_header(layout, "Circle Tangent to Two Curves Settings", "show_circle_tan2_settings", icon='CURVE_NCURVE', tool_key='circle_tangent_to_two_curves')
+        if col:
+            self.draw_group_label(col, "Curve Overlays:", icon='COLOR')
+            self.draw_property_row(col, "Show Curves:", "circle_tan2_show_curves")
+            self.draw_property_row(col, "Curve Overlay Color:", "circle_tan2_col_curves")
+            self.draw_property_row(col, "Curve Overlay Thickness:", "circle_tan2_width_curves")
+            
+            col.separator(factor=2.0)
+            self.draw_group_label(col, "Tangent Circle:", icon='MESH_CIRCLE')
+            self.draw_property_row(col, "Show Tangent:", "circle_tan2_show_tangent")
+            self.draw_property_row(col, "Tangent Circle Color:", "circle_tan2_col_tangent")
+            self.draw_property_row(col, "Tangent Circle Thickness:", "circle_tan2_width_tangent")
+
+        # 15-18. Shapes and Curves
         shape_tools = [
             ("ellipse", "Ellipse Settings", "show_ellipse_settings", "ellipse_from_radius", "CURVE_EE"),
             ("poly", "Polygon Settings", "show_polygon_settings", "polygon_cen_cor", "MESH_CIRCLE"),

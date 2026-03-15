@@ -65,6 +65,13 @@ state = {
     "circle_tan3_show_tangent": True,
     "circle_tan3_col_tangent": (0.0, 0.8, 1.0, 0.5),
     "circle_tan3_width_tangent": 2.0,
+
+    "circle_tan2_show_curves": True,
+    "circle_tan2_col_curves": (0.0, 0.8, 1.0, 0.5),
+    "circle_tan2_width_curves": 2.0,
+    "circle_tan2_show_tangent": True,
+    "circle_tan2_col_tangent": (0.0, 0.8, 1.0, 0.5),
+    "circle_tan2_width_tangent": 2.0,
     
     "color_arc_start": (0.8, 0.8, 0.2, 1.0),
     "color_arc_end": (0.2, 0.8, 0.2, 1.0),
@@ -156,6 +163,8 @@ def reset_state_from_context(ctx):
     line_tan_tan_width = 2.0
     circle_tan3_show_c = True; circle_tan3_col_c = (0.0, 0.8, 1.0, 0.5); circle_tan3_width_c = 2.0
     circle_tan3_show_t = True; circle_tan3_col_t = (0.0, 0.8, 1.0, 0.5); circle_tan3_width_t = 2.0
+    circle_tan2_show_c = True; circle_tan2_col_c = (0.0, 0.8, 1.0, 0.5); circle_tan2_width_c = 2.0
+    circle_tan2_show_t = True; circle_tan2_col_t = (0.0, 0.8, 1.0, 0.5); circle_tan2_width_t = 2.0
 
     if prefs:
         c_size = prefs.compass_size
@@ -204,6 +213,14 @@ def reset_state_from_context(ctx):
         circle_tan3_show_t = getattr(prefs, "circle_tan3_show_tangent", True)
         circle_tan3_col_t = tuple(getattr(prefs, "circle_tan3_col_tangent", (0.0, 0.8, 1.0, 0.5)))
         circle_tan3_width_t = getattr(prefs, "circle_tan3_width_tangent", 2.0)
+
+        circle_tan2_show_c = getattr(prefs, "circle_tan2_show_curves", True)
+        circle_tan2_col_c = tuple(getattr(prefs, "circle_tan2_col_curves", (0.0, 0.8, 1.0, 0.5)))
+        circle_tan2_width_c = getattr(prefs, "circle_tan2_width_curves", 2.0)
+
+        circle_tan2_show_t = getattr(prefs, "circle_tan2_show_tangent", True)
+        circle_tan2_col_t = tuple(getattr(prefs, "circle_tan2_col_tangent", (0.0, 0.8, 1.0, 0.5)))
+        circle_tan2_width_t = getattr(prefs, "circle_tan2_width_tangent", 2.0)
 
     try:
         theme = ctx.preferences.themes[0].view_3d
@@ -273,6 +290,10 @@ def reset_state_from_context(ctx):
         "circle_tan3_width_curves": circle_tan3_width_c,
         "circle_tan3_show_tangent": circle_tan3_show_t, "circle_tan3_col_tangent": circle_tan3_col_t,
         "circle_tan3_width_tangent": circle_tan3_width_t,
+        "circle_tan2_show_curves": circle_tan2_show_c, "circle_tan2_col_curves": circle_tan2_col_c,
+        "circle_tan2_width_curves": circle_tan2_width_c,
+        "circle_tan2_show_tangent": circle_tan2_show_t, "circle_tan2_col_tangent": circle_tan2_col_t,
+        "circle_tan2_width_tangent": circle_tan2_width_t,
         "show_measure": getattr(scene, "arc_show_measurements", True),
         "color": tuple(getattr(scene, "arc_color", (1.0, 0.6, 0.0, 1.0))),
         "color_arc_start": col_start, "color_arc_end": col_end,
