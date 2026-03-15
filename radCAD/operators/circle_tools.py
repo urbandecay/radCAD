@@ -583,6 +583,7 @@ class CircleTool_TanTan(SurfaceDrawTool):
 
         # Stage 1: Live Solver
         if self.stage == 1:
+            self.segments = self.state.get("segments", 64)
             mouse_pos = snap_point
             if self.pivot is None: self.pivot = mouse_pos
                 
