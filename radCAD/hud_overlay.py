@@ -481,6 +481,19 @@ def draw_hud_2d():
             px, py = 0, 0
             if state["input_mode"] is not None and state["input_screen_pos"]:
                 px, py = state["input_screen_pos"]
+            elif state.get("current") is not None:
+                # Prefer anchoring to the mouse (current) for stability
+                curr_2d = location_3d_to_region_2d(reg, rv3d, state["current"])
+                if curr_2d:
+                    px = curr_2d.x + state.get("overlay_offset_x", 75)
+                    py = curr_2d.y + state.get("overlay_offset_y", 0)
+                else:
+                    # Fallback to pivot if mouse projection fails
+                    pivot_2d = location_3d_to_region_2d(reg, rv3d, state["pivot"]) if state["pivot"] is not None else None
+                    if pivot_2d:
+                        px = pivot_2d.x + state.get("overlay_offset_x", 75)
+                        py = pivot_2d.y + state.get("overlay_offset_y", 0)
+                    else: return
             elif state["pivot"] is not None:
                 pivot_2d = location_3d_to_region_2d(reg, rv3d, state["pivot"])
                 if pivot_2d:
