@@ -125,7 +125,6 @@ class CircleTool_TanTanTan:
             "visual_pts": [],
             "tan_solutions": [],
             "tan_solution_active": False,
-            "catmull_spline_previews": [], # Store sampled spline points
         })
         
         obj = bpy.context.edit_object
@@ -134,25 +133,14 @@ class CircleTool_TanTanTan:
         if len(chains) == 3:
             self.splines = chains 
             
-            # --- NEW: Sample Catmull Splines for Grey Outline ---
-            from .circle_tools import CatmullRomSpline
-            for pts_raw, is_closed in chains:
-                spline = CatmullRomSpline(pts_raw, is_closed=is_closed)
-                if spline.segments:
-                    samples = []
-                    for seg in spline.segments:
-                        for i in range(11): # 10 samples per segment
-                            t = seg.t_start + (seg.dt * (i / 10.0))
-                            samples.append(seg.eval(t))
-                    state["catmull_spline_previews"].append(samples)
-                v1 = chains[0][0][1] - chains[0][0][0]
-                v2 = chains[0][0][-1] - chains[0][0][0]
-                cross = v1.cross(v2)
-                if cross.length > 1e-4:
-                    self.Zp = cross.normalized()
-                    basis = orthonormal_basis_from_normal(self.Zp)
-                    self.Xp, self.Yp = basis[0], basis[1]
-                    self.pivot = chains[0][0][0]
+            v1 = chains[0][0][1] - chains[0][0][0]
+            v2 = chains[0][0][-1] - chains[0][0][0]
+            cross = v1.cross(v2)
+            if cross.length > 1e-4:
+                self.Zp = cross.normalized()
+                basis = orthonormal_basis_from_normal(self.Zp)
+                self.Xp, self.Yp = basis[0], basis[1]
+                self.pivot = chains[0][0][0]
             if not self.pivot: self.pivot = chains[0][0][0] 
             
             min_x, max_x = 1e9, -1e9
@@ -346,7 +334,6 @@ class CircleTool_TanTanTan:
     def refresh_preview(self):
         state["visual_pts"] = []
         state["preview_pts"] = []
-        state["tan_points_poly"] = [] # New: Store points for the adjustable polygon
         
         if not state["tan_solutions"]: 
             state["tan_solution_active"] = False
@@ -361,21 +348,6 @@ class CircleTool_TanTanTan:
         self.preview_pts = [c + self.Xp*math.cos(a)*r + self.Yp*math.sin(a)*r for a in [i*math.pi*2/self.segments for i in range(self.segments + 1)]]
         state["preview_pts"] = self.preview_pts
         state["tan_solution_active"] = True
-
-        # 3. Inscribed Polygon Points
-        sides = self.segments
-        if sides == 3:
-            # Special Tangency Triangle
-            state["tan_points_poly"] = state.get("tan_points", [])
-        else:
-            # Regular Inscribed Polygon (N-gon)
-            poly_pts = []
-            step = (2 * math.pi) / sides
-            for i in range(sides):
-                angle = i * step
-                pt = c + (self.Xp * math.cos(angle) * r) + (self.Yp * math.sin(angle) * r)
-                poly_pts.append(pt)
-            state["tan_points_poly"] = poly_pts
 
     def handle_click(self, context, event, snap_pt, snap_normal, button_id=None):
         return 'FINISHED'

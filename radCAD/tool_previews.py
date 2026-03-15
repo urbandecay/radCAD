@@ -766,58 +766,38 @@ def draw_preview_tan_tan(ctx, shaders, prefs):
     if not prefs.get("CIRCLE_TAN2_SHOW_TANGENT", True): return
 
     pt_size = prefs.get("PREVIEW_VERTEX_SIZE", 5)
-    t_col = prefs.get("CIRCLE_TAN2_COL_TANGENT", (0.5, 0.5, 0.5, 0.5))
+    t_col = prefs.get("CIRCLE_TAN2_COL_TANGENT", (0.0, 0.8, 1.0, 0.5))
     t_width = prefs.get("CIRCLE_TAN2_WIDTH_TANGENT", 2.0)
 
-    # 1. Background Math Circle (Custom Color & Width) - This is the "Catmull" preview
+    # 1. Smooth Math Circle (Catmull) - Uses Preference Color (Blue)
     v_pts = state.get("visual_pts", [])
     if v_pts:
         draw_polyline(ctx, shaders, v_pts, t_col, prefs, custom_width=t_width)
 
-    # 2. Foreground Mesh Geometry (Always Black, 1.0 Width)
+    # 2. Mesh Geometry (Always Black)
     p_pts = state.get("preview_pts", [])
     if p_pts:
-        draw_polyline(ctx, shaders, p_pts, (0,0,0,1), prefs, custom_lift=prefs["LIFT_ARC"] + 2.0)
-        draw_points(ctx, shaders, p_pts, (0,0,0,1), pt_size, prefs)        
-    # 3. Tangency Viz
-    viz_tan = state.get("viz_tangent_line")
-    if viz_tan and len(viz_tan) == 2:
-        draw_line(ctx, shaders, viz_tan[0], viz_tan[1], (1, 0.8, 0, 1), prefs)
-        
-    viz_diam = state.get("viz_diameter_line")
-    if viz_diam and len(viz_diam) == 2:
-        draw_line(ctx, shaders, viz_diam[0], viz_diam[1], (1, 0.8, 0, 1), prefs)
+        draw_polyline(ctx, shaders, p_pts, (0, 0, 0, 1), prefs, custom_lift=prefs["LIFT_ARC"] + 2.0)
+        draw_points(ctx, shaders, p_pts, (0, 0, 0, 1), pt_size, prefs)        
 
 def draw_preview_tan_tan_tan(ctx, shaders, prefs):
     if not prefs.get("CIRCLE_TAN3_SHOW_TANGENT", True): return
 
     pt_size = prefs.get("PREVIEW_VERTEX_SIZE", 5)
-    t_col = prefs.get("CIRCLE_TAN3_COL_TANGENT", (0.5, 0.5, 0.5, 1.0))
+    t_col = prefs.get("CIRCLE_TAN3_COL_TANGENT", (0.0, 0.8, 1.0, 0.5))
     t_width = prefs.get("CIRCLE_TAN3_WIDTH_TANGENT", 2.0)
 
-    # 1. Background Math Circle (Custom Color & Width) - This is the "Catmull" preview
+    # 1. Smooth Math Circle (Catmull) - Uses Preference Color (Blue)
     v_pts = state.get("visual_pts", [])
     if v_pts:
         draw_polyline(ctx, shaders, v_pts, t_col, prefs, custom_width=t_width)
 
-    # 2. Foreground Mesh Geometry (Always Black, 1.0 Width)
+    # 2. Mesh Geometry (Always Black)
     p_pts = state.get("preview_pts", [])
     if p_pts:
         draw_polyline(ctx, shaders, p_pts, (0, 0, 0, 1), prefs, custom_lift=prefs["LIFT_ARC"] + 2.0)
-        # NO DOTS ON CIRCLE FOR CLEAN PREVIEW
-
-    # 3. Inscribed Polygon (Always Black Triangle or N-gon)
-    tan_poly_pts = state.get("tan_points_poly", [])
-    if tan_poly_pts and len(tan_poly_pts) >= 3:
-        # Create poly segments (closed loop)
-        poly_draw_pts = []
-        for i in range(len(tan_poly_pts)):
-            poly_draw_pts.append(tan_poly_pts[i])
-            poly_draw_pts.append(tan_poly_pts[(i + 1) % len(tan_poly_pts)])
-
-        draw_polyline(ctx, shaders, poly_draw_pts, (0, 0, 0, 1), prefs, custom_lift=prefs["LIFT_ARC"] + 5.0)
-        # Black Dots at vertices
-        draw_points(ctx, shaders, tan_poly_pts, (0, 0, 0, 1), pt_size, prefs)
+        # Match 2-curve behavior: draw points at every mesh vertex
+        draw_points(ctx, shaders, p_pts, (0, 0, 0, 1), pt_size, prefs)
 
 def draw_cb_3d():
     if not state["active"]: return
