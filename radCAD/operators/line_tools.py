@@ -897,9 +897,10 @@ class LineTool_TanTan(SurfaceDrawTool):
     def __init__(self, core):
         super().__init__(core)
         self.mode = "LINE_TAN_TAN"
-        self.stage = 0 
+        self.stage = 0
         self.splines = []
-        self.first_click_info = None 
+        self.current, self.pivot = None, None
+        self.first_click_info = None
         self.spline_geom = []
         
         obj = bpy.context.edit_object
@@ -1019,9 +1020,10 @@ class LineTool_PerpToTwoCurves(SurfaceDrawTool):
     def __init__(self, core):
         super().__init__(core)
         self.mode = "LINE_PERP_TO_TWO_CURVES"
-        self.stage = 0 
+        self.stage = 0
         self.splines = []
-        self.first_click_info = None 
+        self.current, self.pivot = None, None
+        self.first_click_info = None
         self.spline_geom = []
         self.last_valid_perp = None # Store to prevent flickering
         

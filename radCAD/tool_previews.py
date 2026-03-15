@@ -94,7 +94,10 @@ def get_render_settings(ctx):
         "LINE_TANGENT_WIDTH_CATMULL": 2.0,
         "LINE_TAN_TAN_SHOW_CATMULL": True,
         "LINE_TAN_TAN_COL_CATMULL": (0.0, 0.8, 1.0, 0.5),
-        "LINE_TAN_TAN_WIDTH_CATMULL": 2.0
+        "LINE_TAN_TAN_WIDTH_CATMULL": 2.0,
+        "CIRCLE_TAN3_SHOW_CATMULL": True,
+        "CIRCLE_TAN3_COL_CATMULL": (0.0, 0.8, 1.0, 0.5),
+        "CIRCLE_TAN3_WIDTH_CATMULL": 2.0
     }
 
     system_prefs = ctx.preferences.system
@@ -124,6 +127,10 @@ def get_render_settings(ctx):
         prefs["LINE_TAN_TAN_SHOW_CATMULL"] = getattr(addon_prefs, "line_tan_tan_show_catmull", True)
         prefs["LINE_TAN_TAN_COL_CATMULL"] = getattr(addon_prefs, "line_tan_tan_col_catmull", (0.0, 0.8, 1.0, 0.5))
         prefs["LINE_TAN_TAN_WIDTH_CATMULL"] = getattr(addon_prefs, "line_tan_tan_width_catmull", 2.0)
+
+        prefs["CIRCLE_TAN3_SHOW_CATMULL"] = getattr(addon_prefs, "circle_tan3_show_catmull", True)
+        prefs["CIRCLE_TAN3_COL_CATMULL"] = getattr(addon_prefs, "circle_tan3_col_catmull", (0.0, 0.8, 1.0, 0.5))
+        prefs["CIRCLE_TAN3_WIDTH_CATMULL"] = getattr(addon_prefs, "circle_tan3_width_catmull", 2.0)
         
         prefs["LIFT_COMPASS"] = addon_prefs.lift_compass
         prefs["LIFT_ARC"] = addon_prefs.lift_arc
@@ -827,6 +834,10 @@ def draw_cb_3d():
                 do_draw = settings.get("LINE_TAN_TAN_SHOW_CATMULL", True)
                 draw_col = settings.get("LINE_TAN_TAN_COL_CATMULL", (0.0, 0.8, 1.0, 0.5))
                 draw_width = settings.get("LINE_TAN_TAN_WIDTH_CATMULL", 2.0)
+            elif mode == "CIRCLE_TAN_TAN_TAN":
+                do_draw = settings.get("CIRCLE_TAN3_SHOW_CATMULL", True)
+                draw_col = settings.get("CIRCLE_TAN3_COL_CATMULL", (0.0, 0.8, 1.0, 0.5))
+                draw_width = settings.get("CIRCLE_TAN3_WIDTH_CATMULL", 2.0)
             else:
                 draw_width = 2.0
 

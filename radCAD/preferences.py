@@ -27,6 +27,7 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
     show_line_perp2_settings: bpy.props.BoolProperty(name="Line Perpendicular to Two Curves Settings", default=True)
     show_line_tangent_settings: bpy.props.BoolProperty(name="Line Tangent from Curve Settings", default=True)
     show_line_tan_tan_settings: bpy.props.BoolProperty(name="Line Tangent to Two Curves Settings", default=True)
+    show_circle_tan3_settings: bpy.props.BoolProperty(name="Circle Tangent to Three Curves Settings", default=True)
 
     # =========================================================================
     # SETTINGS PROPERTIES
@@ -132,6 +133,31 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
     line_tan_tan_width_catmull: bpy.props.FloatProperty(
         name="Catmull Overlay Thickness",
         description="Line thickness for the Catmull-Rom spline preview in the Tangent to Two Curves tool",
+        default=2.0,
+        min=0.5, max=10.0,
+        precision=1,
+        step=10
+    )
+
+    # --- Circle Tangent to Three Curves ---
+    circle_tan3_show_catmull: bpy.props.BoolProperty(
+        name="Show Catmull Overlay",
+        description="Toggle the visibility of the Catmull-Rom spline overlay for the Tangent to Three Curves tool",
+        default=True
+    )
+
+    circle_tan3_col_catmull: bpy.props.FloatVectorProperty(
+        name="Catmull Overlay Color",
+        subtype='COLOR',
+        size=4,
+        min=0.0, max=1.0,
+        default=(0.0, 0.8, 1.0, 0.5),
+        description="Color for the Catmull-Rom spline preview in the Tangent to Three Curves tool"
+    )
+
+    circle_tan3_width_catmull: bpy.props.FloatProperty(
+        name="Catmull Overlay Thickness",
+        description="Line thickness for the Catmull-Rom spline preview in the Tangent to Three Curves tool",
         default=2.0,
         min=0.5, max=10.0,
         precision=1,
@@ -907,7 +933,46 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
             col.separator()
 
         # ==================================
-        # 8. 1 POINT ARC SETTINGS (Collapsible Wrapper)
+        # 8. CIRCLE TANGENT TO THREE CURVES SETTINGS
+        # ==================================
+        box_tan3 = layout.box()
+        row_header_tan3 = box_tan3.row(align=True)
+        
+        is_expanded_tan3 = self.show_circle_tan3_settings
+        icon_state_tan3 = "TRIA_DOWN" if is_expanded_tan3 else "TRIA_RIGHT"
+        row_header_tan3.prop(self, "show_circle_tan3_settings", icon=icon_state_tan3, text="", icon_only=True, emboss=False)
+        row_header_tan3.label(text="Circle Tangent to Three Curves Settings", icon='CURVE_NCURVE')
+
+        if is_expanded_tan3:
+            split_main = box_tan3.split(factor=0.02)
+            split_main.label(text="") 
+            col = split_main.column(align=True)
+            
+            # Toggle
+            split = col.split(factor=0.5, align=True)
+            row_label = split.row()
+            row_label.separator()
+            row_label.label(text="Show Catmull Overlay:", icon='BLANK1')
+            split.prop(self, "circle_tan3_show_catmull", text="Enable")
+            
+            # Color
+            split = col.split(factor=0.5, align=True)
+            row_label = split.row()
+            row_label.separator()
+            row_label.label(text="Catmull Overlay Color:", icon='BLANK1')
+            split.prop(self, "circle_tan3_col_catmull", text="")
+
+            # Thickness
+            split = col.split(factor=0.5, align=True)
+            row_label = split.row()
+            row_label.separator()
+            row_label.label(text="Catmull Overlay Thickness:", icon='BLANK1')
+            split.prop(self, "circle_tan3_width_catmull", text="")
+            
+            col.separator()
+
+        # ==================================
+        # 9. 1 POINT ARC SETTINGS (Collapsible Wrapper)
         # ==================================
         icon_val = 0
         try:
