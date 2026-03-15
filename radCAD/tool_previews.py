@@ -774,11 +774,19 @@ def draw_preview_tan_tan(ctx, shaders, prefs):
     if v_pts:
         draw_polyline(ctx, shaders, v_pts, t_col, prefs, custom_width=t_width)
 
-    # 2. Mesh Geometry (Always Black)
+    # 2. Mesh Geometry (Always Black, 1.0 Width)
     p_pts = state.get("preview_pts", [])
     if p_pts:
-        draw_polyline(ctx, shaders, p_pts, (0, 0, 0, 1), prefs, custom_lift=prefs["LIFT_ARC"] + 2.0)
+        draw_polyline(ctx, shaders, p_pts, (0, 0, 0, 1), prefs, custom_width=1.0, custom_lift=prefs["LIFT_ARC"] + 2.0)
         draw_points(ctx, shaders, p_pts, (0, 0, 0, 1), pt_size, prefs)        
+    # 3. Tangency Viz
+    viz_tan = state.get("viz_tangent_line")
+    if viz_tan and len(viz_tan) == 2:
+        draw_line(ctx, shaders, viz_tan[0], viz_tan[1], (1, 0.8, 0, 1), prefs)
+        
+    viz_diam = state.get("viz_diameter_line")
+    if viz_diam and len(viz_diam) == 2:
+        draw_line(ctx, shaders, viz_diam[0], viz_diam[1], (1, 0.8, 0, 1), prefs)
 
 def draw_preview_tan_tan_tan(ctx, shaders, prefs):
     if not prefs.get("CIRCLE_TAN3_SHOW_TANGENT", True): return
@@ -792,12 +800,21 @@ def draw_preview_tan_tan_tan(ctx, shaders, prefs):
     if v_pts:
         draw_polyline(ctx, shaders, v_pts, t_col, prefs, custom_width=t_width)
 
-    # 2. Mesh Geometry (Always Black)
+    # 2. Mesh Geometry (Always Black, 1.0 Width)
     p_pts = state.get("preview_pts", [])
     if p_pts:
-        draw_polyline(ctx, shaders, p_pts, (0, 0, 0, 1), prefs, custom_lift=prefs["LIFT_ARC"] + 2.0)
+        draw_polyline(ctx, shaders, p_pts, (0, 0, 0, 1), prefs, custom_width=1.0, custom_lift=prefs["LIFT_ARC"] + 2.0)
         # Match 2-curve behavior: draw points at every mesh vertex
         draw_points(ctx, shaders, p_pts, (0, 0, 0, 1), pt_size, prefs)
+
+    # 3. Tangency Viz
+    viz_tan = state.get("viz_tangent_line")
+    if viz_tan and len(viz_tan) == 2:
+        draw_line(ctx, shaders, viz_tan[0], viz_tan[1], (1, 0.8, 0, 1), prefs)
+        
+    viz_diam = state.get("viz_diameter_line")
+    if viz_diam and len(viz_diam) == 2:
+        draw_line(ctx, shaders, viz_diam[0], viz_diam[1], (1, 0.8, 0, 1), prefs)
 
 def draw_cb_3d():
     if not state["active"]: return

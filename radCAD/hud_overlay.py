@@ -434,50 +434,26 @@ def draw_hud_2d():
             sh = get_2d_shader()
             gpu.state.blend_set("ALPHA")
             
-            # --- Tan-Tan-Tan Special Case ---
-            if state.get("tool_mode") == "CIRCLE_TAN_TAN_TAN":
-                # ONLY draw the Grey Phantom Inputs (Stage 0).
-                # We skip drawing if "choosing_solution" is True (Stage 1), removing the pink overlay.
-                if not state.get("choosing_solution"):
-                    col = (0.5, 0.5, 0.5, 0.8) # Grey for Phantom Inputs
-                    gpu.state.line_width_set(1.0)
-                    
+            # --- Standard Arc Fill (TRI_FAN) ---
+            if state.get("tool_mode") != "POINT_BY_ARCS":
+                base_pt = style.get("point_px", 4)
+                final_pt = max(1, base_pt - 1) if bpy.app.version >= (5, 0, 0) else base_pt
+                r = final_pt / 2.0
+                col = (0.0, 0.0, 0.0, 1.0)
+                steps = 16
+                for p in state["preview_pts"]:
+                    p2d = location_3d_to_region_2d(reg, rv3d, p)
+                    if not p2d: continue
+                    cx, cy = p2d
+                    verts = [(cx, cy)]
+                    for i in range(steps + 1):
+                        a = (i / steps) * 2.0 * math.pi
+                        verts.append((cx + r * math.cos(a), cy + r * math.sin(a)))
+                    batch = batch_for_shader(sh, "TRI_FAN", {"pos": verts})
                     sh.bind()
                     sh.uniform_float("color", col)
-                    
-                    # Convert all 3D points to 2D
-                    pts_2d = []
-                    for p in state["preview_pts"]:
-                        p2 = location_3d_to_region_2d(reg, rv3d, p)
-                        if p2: pts_2d.append(p2)
-                    
-                    # Draw as Line Strip (points are usually ordered in a loop)
-                    if pts_2d:
-                        batch_for_shader(sh, 'LINE_STRIP', {"pos": pts_2d}).draw(sh)
-                    
-                gpu.state.line_width_set(1.0)
-                
-            else:
-                # --- Standard Arc Fill (TRI_FAN) ---
-                if state.get("tool_mode") != "POINT_BY_ARCS":
-                    base_pt = style.get("point_px", 4)
-                    final_pt = max(1, base_pt - 1) if bpy.app.version >= (5, 0, 0) else base_pt
-                    r = final_pt / 2.0
-                    col = (0.0, 0.0, 0.0, 1.0)
-                    steps = 16
-                    for p in state["preview_pts"]:
-                        p2d = location_3d_to_region_2d(reg, rv3d, p)
-                        if not p2d: continue
-                        cx, cy = p2d
-                        verts = [(cx, cy)]
-                        for i in range(steps + 1):
-                            a = (i / steps) * 2.0 * math.pi
-                            verts.append((cx + r * math.cos(a), cy + r * math.sin(a)))
-                        batch = batch_for_shader(sh, "TRI_FAN", {"pos": verts})
-                        sh.bind()
-                        sh.uniform_float("color", col)
-                        batch.draw(sh)
-                    
+                    batch.draw(sh)
+            
             gpu.state.blend_set("NONE")
         
         # 2. Draw Menus

@@ -122,7 +122,7 @@ class CircleTool_TanTanTan:
         state.update({
             "stage": 0,
             "preview_pts": [],
-            "visual_pts": [],
+            "visual_pts": [], # Explicitly reset to kill old ghost data
             "tan_solutions": [],
             "tan_solution_active": False,
         })
