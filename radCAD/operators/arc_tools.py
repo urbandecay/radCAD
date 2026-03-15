@@ -366,14 +366,25 @@ class ArcTool_Common(SurfaceDrawTool):
                     ang1 = math.atan2(v1_2d.y, v1_2d.x)
                     ang2 = math.atan2(v2_2d.y, v2_2d.x)
                     ang3 = math.atan2(v3_2d.y, v3_2d.x)
-                    ang3_u, _ = unwrap(ang1, ang3, ang1)
-                    ang2_u, _ = unwrap(ang3, ang2, ang3_u)
                     
-                    self.a0 = ang1
-                    self.a1 = ang2_u
-                    self.accum_angle = ang2_u - ang1
+                    # --- ROBUST 3-POINT ARC WINDING ---
+                    # Find the arc segment from ang1 to ang2 that contains ang3
+                    two_pi = 2 * math.pi
+                    da3 = (ang3 - ang1) % two_pi
+                    da2 = (ang2 - ang1) % two_pi
+                    
+                    if da3 < da2:
+                        # Path P1 -> P3 -> P2 is CCW
+                        self.a0 = ang1
+                        self.a1 = ang1 + da2
+                    else:
+                        # Path P1 -> P3 -> P2 is CW
+                        self.a0 = ang1
+                        self.a1 = ang1 - (two_pi - da2)
+
+                    self.accum_angle = self.a1 - self.a0
                     self.segments = self.state["segments"]
-                    self.preview_pts = arc_points_world(center, radius, ang1, ang2_u, self.segments, X_arc, Y_arc)
+                    self.preview_pts = arc_points_world(center, radius, self.a0, self.a1, self.segments, X_arc, Y_arc)
                     self.pivot = center
                     self.start = p1
 
