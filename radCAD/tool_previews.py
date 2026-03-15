@@ -140,6 +140,12 @@ def get_render_settings(ctx):
         prefs["ARC_3PT_USE_AXIS_COLORS"] = addon_prefs.arc_3pt_use_axis_colors
         prefs["COL_OVERLAY_3PT"] = addon_prefs.color_arc_3pt_overlay
 
+        prefs["SNAP_MARKER_SIZE_C2PT"] = addon_prefs.snap_marker_size_c2pt
+        prefs["SNAP_MARKER_COL_C2PT"] = addon_prefs.snap_marker_color_c2pt
+        prefs["SNAP_LINE_COL_C2PT"] = addon_prefs.snap_line_color_c2pt
+        prefs["CIRCLE_2PT_USE_AXIS_COLORS"] = addon_prefs.circle_2pt_use_axis_colors
+        prefs["COL_OVERLAY_C2PT"] = addon_prefs.color_circle_2pt_overlay
+
         prefs["PREVIEW_VERTEX_SIZE"] = addon_prefs.preview_vertex_size
         
         # --- NEW: Points by Arc Settings ---
@@ -432,15 +438,18 @@ def draw_preview_2point(ctx, shaders, prefs):
         draw_points(ctx, shaders, [state["current"]], (0,0,0,1), pt_size, prefs)
         
         diff = state["current"] - pv
-        # Default to Custom Overlay Color (Defaults to Grey)
-        col = get_axis_aligned_color(diff, prefs["COL_OVERLAY_2PT"], prefs, "ARC_2PT_USE_AXIS_COLORS")
-        draw_line(ctx, shaders, pv, state["current"], col, prefs)
-
+        # Handle Circle 2 Point separately
         if state.get("tool_mode") == "CIRCLE_2POINT":
+            col = get_axis_aligned_color(diff, prefs["COL_OVERLAY_C2PT"], prefs, "CIRCLE_2PT_USE_AXIS_COLORS")
+            draw_line(ctx, shaders, pv, state["current"], col, prefs)
             pts = state.get("preview_pts", [])
             if pts:
                 draw_polyline(ctx, shaders, pts, (0,0,0,1), prefs)
                 draw_points(ctx, shaders, pts, (0,0,0,1), pt_size, prefs)
+        else:
+            # Default to Custom Overlay Color (Defaults to Grey)
+            col = get_axis_aligned_color(diff, prefs["COL_OVERLAY_2PT"], prefs, "ARC_2PT_USE_AXIS_COLORS")
+            draw_line(ctx, shaders, pv, state["current"], col, prefs)
 
     # --- STAGE 2: Dragging Height (Arcs Only) ---
     elif state["stage"] == 2:
