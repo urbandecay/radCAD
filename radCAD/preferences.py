@@ -28,6 +28,10 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
     show_line_tangent_settings: bpy.props.BoolProperty(name="Line Tangent from Curve Settings", default=True)
     show_line_tan_tan_settings: bpy.props.BoolProperty(name="Line Tangent to Two Curves Settings", default=True)
     show_circle_tan3_settings: bpy.props.BoolProperty(name="Circle Tangent to Three Curves Settings", default=True)
+    show_ellipse_settings: bpy.props.BoolProperty(name="Ellipse Settings", default=True)
+    show_polygon_settings: bpy.props.BoolProperty(name="Polygon Settings", default=True)
+    show_rectangle_settings: bpy.props.BoolProperty(name="Rectangle Settings", default=True)
+    show_curve_settings: bpy.props.BoolProperty(name="Curve Settings", default=True)
 
     # =========================================================================
     # SETTINGS PROPERTIES
@@ -361,8 +365,6 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
     )
 
     # --- SNAP MARKER SETTINGS (1-POINT) ---
-    # Removed snap_marker_type (Hardcoded to 'X')
-    
     snap_marker_size: bpy.props.IntProperty(
         name="Marker Size",
         description="Customize the little target thingy that shows up where you are snapping",
@@ -380,19 +382,16 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
         description="Customize the little target thingy that shows up where you are snapping"
     )
 
-    # Removed snap_line_width (Defaults to 1.0 in logic)
     snap_line_color: bpy.props.FloatVectorProperty(
         name="Snap Pointer Line Color",
         subtype='COLOR',
         size=4,
         min=0.0, max=1.0,
         default=(1.0, 1.0, 0.0, 0.7),
-        description="Colors the little leash connecting your mouse to the pivot. Make it bright so you never lose track of it"
+        description="Colors the little leash connecting your mouse to the pivot."
     )
     
     # --- SNAP MARKER SETTINGS (2-POINT) ---
-    # Removed snap_marker_type_2pt (Hardcoded to 'X')
-    
     snap_marker_size_2pt: bpy.props.IntProperty(
         name="Marker Size",
         description="Customize the little target thingy that shows up where you are snapping",
@@ -410,14 +409,13 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
         description="Customize the little target thingy that shows up where you are snapping"
     )
 
-    # Removed snap_line_width_2pt
     snap_line_color_2pt: bpy.props.FloatVectorProperty(
         name="Snap Pointer Line Color",
         subtype='COLOR',
         size=4,
         min=0.0, max=1.0,
         default=(1.0, 1.0, 0.0, 0.7),
-        description="Colors the little leash connecting your mouse to the pivot. Make it bright so you never lose track of it"
+        description="Colors the little leash connecting your mouse to the pivot."
     )
     
     # PARAMETER OVERLAY OFFSETS
@@ -464,38 +462,23 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
     angle_snap_type: bpy.props.EnumProperty(
         name="Angle Snap Increment",
         items=[
-            ('1', "1 Degree", ""),
-            ('2', "2 Degrees", ""),
-            ('3', "3 Degrees", ""),
-            ('5', "5 Degrees", ""),
-            ('10', "10 Degrees", ""),
-            ('15', "15 Degrees", ""),
-            ('22.5', "22.5 Degrees", ""),
-            ('30', "30 Degrees", ""),
-            ('45', "45 Degrees", ""),
+            ('1', "1 Degree", ""), ('2', "2 Degrees", ""), ('3', "3 Degrees", ""),
+            ('5', "5 Degrees", ""), ('10', "10 Degrees", ""), ('15', "15 Degrees", ""),
+            ('22.5', "22.5 Degrees", ""), ('30', "30 Degrees", ""), ('45', "45 Degrees", ""),
             ('90', "90 Degrees", ""),
         ],
-        default='15',
-        description="This sets the step size for the angle snapping of the compass"
+        default='15'
     )
 
     angle_snap_type_rad: bpy.props.EnumProperty(
         name="Radian Snap Increment",
         items=[
-            ('1', "Pi/180 (1°)", ""),
-            ('2', "Pi/90 (2°)", ""),
-            ('3', "Pi/60 (3°)", ""),
-            ('5', "Pi/36 (5°)", ""),
-            ('10', "Pi/18 (10°)", ""),
-            ('15', "Pi/12 (15°)", ""),
-            ('22.5', "Pi/8 (22.5°)", ""),
-            ('30', "Pi/6 (30°)", ""),
-            ('45', "Pi/4 (45°)", ""),
-            ('60', "Pi/3 (60°)", ""),
-            ('90', "Pi/2 (90°)", ""),
+            ('1', "Pi/180 (1°)", ""), ('2', "Pi/90 (2°)", ""), ('3', "Pi/60 (3°)", ""),
+            ('5', "Pi/36 (5°)", ""), ('10', "Pi/18 (10°)", ""), ('15', "Pi/12 (15°)", ""),
+            ('22.5', "Pi/8 (22.5°)", ""), ('30', "Pi/6 (30°)", ""), ('45', "Pi/4 (45°)", ""),
+            ('60', "Pi/3 (60°)", ""), ('90', "Pi/2 (90°)", ""),
         ],
-        default='15',
-        description="This sets the step size for the angle snapping of the compass"
+        default='15'
     )
 
     use_angle_snap: bpy.props.BoolProperty(name="Use Angle Snap", default=True)
@@ -503,9 +486,7 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
     
     snap_strength: bpy.props.FloatProperty(
         name="Snap Strength", 
-        default=6.0, 
-        min=0.1, 
-        max=45.0,
+        default=6.0, min=0.1, max=45.0,
         description="Think of this as how 'sticky' the angle snapping feels"
     )
 
@@ -514,49 +495,23 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
     snap_to_faces: bpy.props.BoolProperty(name="Faces", default=True)
 
     display_precision: bpy.props.IntProperty(
-        name="Display Precision", 
-        default=3, 
-        min=0, 
-        max=9,
-        description="Sets the number of decimal places for metric values"
+        name="Display Precision", default=3, min=0, max=9
     )
 
     weld_radius: bpy.props.FloatProperty(
-        name="Weld Radius", 
-        default=0.001, 
-        precision=5, 
-        min=0.00001, 
-        max=1.0,
-        description="This is basically the magnet strength for auto-welding"
+        name="Weld Radius", default=0.001, precision=5, min=0.00001, max=1.0
     )
     weld_to_faces: bpy.props.BoolProperty(name="Cut Faces (Knife Project)", default=True)
 
-    # --- DEBUG / Z-FIGHTING PROPS ---
-    lift_compass: bpy.props.FloatProperty(
-        name="Compass Lift (Ortho)",
-        description="Glitch fix for flat views. If your compass looks glitched out on surfaces, this pulls it up so it sits on top",
-        default=4.0,
-        min=0.0, max=500.0
-    )
-    lift_arc: bpy.props.FloatProperty(
-        name="Arc Line Lift (Ortho)",
-        description="Glitch fix for flat views. If your drawing lines look glitched out on surfaces, this pulls them up so they sit on top",
-        default=20.0,
-        min=0.0, max=5000.0
-    )
-    lift_perspective: bpy.props.FloatProperty(
-        name="Perspective Bias (%)",
-        description="Glitch fix for 3D views. If your compass looks glitched out on surfaces, this pulls it up so it sits on top",
-        default=0.2,
-        min=0.0, max=10.0,
-        precision=3
-    )
+    lift_compass: bpy.props.FloatProperty(name="Compass Lift (Ortho)", default=4.0, min=0.0, max=500.0)
+    lift_arc: bpy.props.FloatProperty(name="Arc Line Lift (Ortho)", default=20.0, min=0.0, max=5000.0)
+    lift_perspective: bpy.props.FloatProperty(name="Perspective Bias (%)", default=0.2, min=0.0, max=10.0, precision=3)
 
     # =========================================================================
     # DRAWING HELPERS
     # =========================================================================
-    def draw_section_header(self, layout, title, prop_name, icon='NONE'):
-        """Draws a collapsible box header."""
+    def draw_section_header(self, layout, title, prop_name, icon='NONE', tool_key=None):
+        """Draws a collapsible box header with optional SVG icon support."""
         box = layout.box()
         row = box.row(align=True)
         
@@ -564,858 +519,201 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
         icon_state = "TRIA_DOWN" if is_expanded else "TRIA_RIGHT"
         
         row.prop(self, prop_name, icon=icon_state, text="", icon_only=True, emboss=False)
-        row.label(text=title, icon=icon)
+        
+        # Try to get SVG icon from panel
+        icon_val = 0
+        if tool_key:
+            try:
+                from . import panel
+                pcoll = getattr(panel, "preview_collection", None)
+                if pcoll and tool_key in pcoll:
+                    icon_val = pcoll[tool_key].icon_id
+            except ImportError:
+                pass
+        
+        if icon_val:
+            row.label(text=title, icon_value=icon_val)
+        else:
+            row.label(text=title, icon=icon)
         
         if is_expanded:
             return box.column(align=True)
         return None
 
+    def draw_group_label(self, col, text, icon='NONE'):
+        """Indented once group label."""
+        row = col.row()
+        row.separator(factor=2.0)
+        row.label(text=text, icon=icon)
+
+    def draw_property_row(self, col, label, prop_name, icon='BLANK1', enabled=True):
+        """Twice indented property row."""
+        split = col.split(factor=0.5, align=True)
+        row_l = split.row()
+        row_l.separator(factor=4.0)
+        row_l.enabled = enabled
+        row_l.label(text=label, icon=icon)
+        row_p = split.row()
+        row_p.enabled = enabled
+        row_p.prop(self, prop_name, text="")
+
     def draw(self, context):
         layout = self.layout
         
-        # ==================================
-        # 1. GLOBAL SETTINGS (Collapsible)
-        # ==================================
-        col_global = self.draw_section_header(layout, "Global Settings", "show_global_settings", icon='PREFERENCES')
-        
-        if col_global:
-            # Save Button
-            row_save = col_global.row()
+        # 1. GLOBAL SETTINGS
+        col = self.draw_section_header(layout, "Global Settings", "show_global_settings", icon='PREFERENCES')
+        if col:
+            row_save = col.row()
             row_save.scale_y = 1.5
             row_save.operator("wm.save_userpref", text="Save Preferences", icon='FILE_TICK')
             
-            col_global.separator()
-
-            # --- Weld Parameters ---
-            col_global.label(text="Weld / Auto-Connect:", icon='AUTOMERGE_ON')
-            
-            split_weld = col_global.split(factor=0.5, align=True)
-            row_label = split_weld.row()
-            row_label.separator()
-            row_label.label(text="Search Radius (Magnet):", icon='BLANK1')
-            split_weld.prop(self, "weld_radius", text="")
-            
-            col_global.separator(factor=2.5)
-
-            # --- Geometry Snaps ---
-            col_global.label(text="Geometry Snaps:", icon='SNAP_PEEL_OBJECT')
-            
-            split_geo = col_global.split(factor=0.5, align=True)
-            row_label = split_geo.row()
-            row_label.separator()
-            row_label.label(text="Snap Strength:", icon='BLANK1')
-            split_geo.prop(self, "snap_strength", text="")
-            
-            col_global.separator(factor=2.5)
-
-            # --- Axis Colors ---
-            col_global.label(text="Axis Snapping:", icon='COLOR')
-            
-            split_axis = col_global.split(factor=0.5, align=True)
-            row_label = split_axis.row()
-            row_label.separator()
-            row_label.label(text="Axis Color Dimmer:", icon='BLANK1')
-            split_axis.prop(self, "axis_color_dim", text="")
-
-            col_global.separator(factor=2.5)
-
-            # --- Z-Fighting Tweaks ---
-            col_global.label(text="Z-Fighting Tweaks", icon='OPTIONS')
-            
-            split_z1 = col_global.split(factor=0.5, align=True)
-            row_z1 = split_z1.row()
-            row_z1.separator()
-            row_z1.label(text="Ortho Lifts (Compass/Arc):", icon='BLANK1')
-            row_props1 = split_z1.row(align=True)
-            row_props1.prop(self, "lift_compass", text="Compass")
-            row_props1.prop(self, "lift_arc", text="Arc")
-            
-            split_z2 = col_global.split(factor=0.5, align=True)
-            row_z2 = split_z2.row()
-            row_z2.separator()
-            row_z2.label(text="Perspective Lift %:", icon='BLANK1')
-            split_z2.prop(self, "lift_perspective", text="")
-            
-            col_global.separator(factor=2.5)
-
-            # --- Hotkeys Helper ---
-            col_global.label(text="Hotkeys Helper:", icon='HELP')
-            
-            split_keys = col_global.split(factor=0.5, align=True)
-            row_label = split_keys.row()
-            row_label.separator()
-            row_label.label(text="Show Panel:", icon='BLANK1')
-            split_keys.prop(self, "show_hotkeys", text="Enable")
-            
-            if self.show_hotkeys:
-                split_pos = col_global.split(factor=0.5, align=True)
-                row_label = split_pos.row()
-                row_label.separator()
-                row_label.label(text="Screen Position:", icon='BLANK1')
-                
-                row_xy = split_pos.row(align=True)
-                row_xy.prop(self, "hotkeys_offset_x", text="X (Right)")
-                row_xy.prop(self, "hotkeys_offset_y", text="Y (Top)")
-
-            col_global.separator(factor=2.5)
-
-            # --- Metric Display (MOVED HERE) ---
-            col_global.label(text="Metric Display:", icon='DOT')
-            
-            split_metric = col_global.split(factor=0.5, align=True)
-            row_label = split_metric.row()
-            row_label.separator()
-            row_label.label(text="Decimal Precision:", icon='BLANK1')
-            split_metric.prop(self, "display_precision", text="")
-
-            col_global.separator()
-
-        # ==================================
-        # 2. POINTS BY ARC SETTINGS
-        # ==================================
-        icon_val_points = 0
-        try:
-            from . import panel
-            pcoll = getattr(panel, "preview_collection", None)
-            if pcoll and "point_by_arcs" in pcoll:
-                icon_val_points = pcoll["point_by_arcs"].icon_id
-        except ImportError:
-            pass
-
-        box_points = layout.box()
-        row_header_points = box_points.row(align=True)
-        
-        is_expanded_points = self.show_points_by_arc_settings
-        icon_state_points = "TRIA_DOWN" if is_expanded_points else "TRIA_RIGHT"
-        row_header_points.prop(self, "show_points_by_arc_settings", icon=icon_state_points, text="", icon_only=True, emboss=False)
-        
-        if icon_val_points:
-            row_header_points.label(text="Points by Arc Settings", icon_value=icon_val_points)
-        else:
-            row_header_points.label(text="Points by Arc Settings", icon='GP_SELECT_POINTS')
-
-        if is_expanded_points:
-            split_main = box_points.split(factor=0.02)
-            split_main.label(text="") 
-            col = split_main.column(align=True)
-            
-            # --- Visual Colors ---
-            col.label(text="Visuals (Reference Arcs):", icon='COLOR')
-            
-            # Arc 1
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Arc 1 Color:", icon='BLANK1')
-            split.prop(self, "color_points_by_arc_1", text="")
-            
-            # Arc 2
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Arc 2 Color:", icon='BLANK1')
-            split.prop(self, "color_points_by_arc_2", text="")
-            
-            # Start Line
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Start Line Color:", icon='BLANK1')
-            split.prop(self, "color_points_by_arc_start", text="")
-            
-            # End Line
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="End Line Color:", icon='BLANK1')
-            split.prop(self, "color_points_by_arc_end", text="")
+            col.separator()
+            self.draw_group_label(col, "Weld / Auto-Connect:", icon='AUTOMERGE_ON')
+            self.draw_property_row(col, "Search Radius (Magnet):", "weld_radius")
             
             col.separator(factor=2.0)
-
-            # --- Marker Sizes ---
-            col.label(text="Marker Sizes:", icon='SNAP_ON')
-            
-            # Crosshair
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Crosshair Size (Setup):", icon='BLANK1')
-            split.prop(self, "points_by_arc_crosshair_size", text="")
-            
-            # Square
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Intersection Square (Final):", icon='BLANK1')
-            split.prop(self, "points_by_arc_square_size", text="")
-            
-            col.separator()
-
-        # ==================================
-        # 3. LINE SETTINGS
-        # ==================================
-        box_line = layout.box()
-        row_header_line = box_line.row(align=True)
-        
-        is_expanded_line = self.show_line_settings
-        icon_state_line = "TRIA_DOWN" if is_expanded_line else "TRIA_RIGHT"
-        row_header_line.prop(self, "show_line_settings", icon=icon_state_line, text="", icon_only=True, emboss=False)
-        row_header_line.label(text="Line Settings", icon='LINCURVE')
-
-        if is_expanded_line:
-            split_main = box_line.split(factor=0.02)
-            split_main.label(text="") 
-            col = split_main.column(align=True)
-            
-            # --- Axis Snap ---
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Snapping Visuals:", icon='BLANK1')
-            split.prop(self, "use_axis_colors", text="Use Axis Colors")
-            
-            col.separator()
-
-        # ==================================
-        # 4. LINE PERPENDICULAR FROM CURVE SETTINGS
-        # ==================================
-        box_perp = layout.box()
-        row_header_perp = box_perp.row(align=True)
-        
-        is_expanded_perp = self.show_line_perp_settings
-        icon_state_perp = "TRIA_DOWN" if is_expanded_perp else "TRIA_RIGHT"
-        row_header_perp.prop(self, "show_line_perp_settings", icon=icon_state_perp, text="", icon_only=True, emboss=False)
-        row_header_perp.label(text="Line Perpendicular from Curve Settings", icon='CURVE_NCURVE')
-
-        if is_expanded_perp:
-            split_main = box_perp.split(factor=0.02)
-            split_main.label(text="") 
-            col = split_main.column(align=True)
-            
-            # Toggle
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Show Catmull Overlay:", icon='BLANK1')
-            split.prop(self, "line_perp_show_catmull", text="Enable")
-            
-            # Color
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Catmull Overlay Color:", icon='BLANK1')
-            split.prop(self, "line_perp_col_catmull", text="")
-
-            # Thickness
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Catmull Overlay Thickness:", icon='BLANK1')
-            split.prop(self, "line_perp_width_catmull", text="")
-            
-            col.separator()
-
-        # ==================================
-        # 5. LINE PERPENDICULAR TO TWO CURVES SETTINGS
-        # ==================================
-        box_perp2 = layout.box()
-        row_header_perp2 = box_perp2.row(align=True)
-        
-        is_expanded_perp2 = self.show_line_perp2_settings
-        icon_state_perp2 = "TRIA_DOWN" if is_expanded_perp2 else "TRIA_RIGHT"
-        row_header_perp2.prop(self, "show_line_perp2_settings", icon=icon_state_perp2, text="", icon_only=True, emboss=False)
-        row_header_perp2.label(text="Line Perpendicular to Two Curves Settings", icon='CURVE_NCURVE')
-
-        if is_expanded_perp2:
-            split_main = box_perp2.split(factor=0.02)
-            split_main.label(text="") 
-            col = split_main.column(align=True)
-            
-            # Toggle
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Show Catmull Overlay:", icon='BLANK1')
-            split.prop(self, "line_perp2_show_catmull", text="Enable")
-            
-            # Color
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Catmull Overlay Color:", icon='BLANK1')
-            split.prop(self, "line_perp2_col_catmull", text="")
-
-            # Thickness
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Catmull Overlay Thickness:", icon='BLANK1')
-            split.prop(self, "line_perp2_width_catmull", text="")
-            
-            col.separator()
-
-        # ==================================
-        # 6. LINE TANGENT FROM CURVE SETTINGS
-        # ==================================
-        box_tangent = layout.box()
-        row_header_tangent = box_tangent.row(align=True)
-        
-        is_expanded_tangent = self.show_line_tangent_settings
-        icon_state_tangent = "TRIA_DOWN" if is_expanded_tangent else "TRIA_RIGHT"
-        row_header_tangent.prop(self, "show_line_tangent_settings", icon=icon_state_tangent, text="", icon_only=True, emboss=False)
-        row_header_tangent.label(text="Line Tangent from Curve Settings", icon='CURVE_NCURVE')
-
-        if is_expanded_tangent:
-            split_main = box_tangent.split(factor=0.02)
-            split_main.label(text="") 
-            col = split_main.column(align=True)
-            
-            # Toggle
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Show Catmull Overlay:", icon='BLANK1')
-            split.prop(self, "line_tangent_show_catmull", text="Enable")
-            
-            # Color
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Catmull Overlay Color:", icon='BLANK1')
-            split.prop(self, "line_tangent_col_catmull", text="")
-
-            # Thickness
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Catmull Overlay Thickness:", icon='BLANK1')
-            split.prop(self, "line_tangent_width_catmull", text="")
-            
-            col.separator()
-
-        # ==================================
-        # 7. LINE TANGENT TO TWO CURVES SETTINGS
-        # ==================================
-        box_tan_tan = layout.box()
-        row_header_tan_tan = box_tan_tan.row(align=True)
-        
-        is_expanded_tan_tan = self.show_line_tan_tan_settings
-        icon_state_tan_tan = "TRIA_DOWN" if is_expanded_tan_tan else "TRIA_RIGHT"
-        row_header_tan_tan.prop(self, "show_line_tan_tan_settings", icon=icon_state_tan_tan, text="", icon_only=True, emboss=False)
-        row_header_tan_tan.label(text="Line Tangent to Two Curves Settings", icon='CURVE_NCURVE')
-
-        if is_expanded_tan_tan:
-            split_main = box_tan_tan.split(factor=0.02)
-            split_main.label(text="") 
-            col = split_main.column(align=True)
-            
-            # Toggle
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Show Catmull Overlay:", icon='BLANK1')
-            split.prop(self, "line_tan_tan_show_catmull", text="Enable")
-            
-            # Color
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Catmull Overlay Color:", icon='BLANK1')
-            split.prop(self, "line_tan_tan_col_catmull", text="")
-
-            # Thickness
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Catmull Overlay Thickness:", icon='BLANK1')
-            split.prop(self, "line_tan_tan_width_catmull", text="")
-            
-            col.separator()
-
-        # ==================================
-        # 8. CIRCLE TANGENT TO THREE CURVES SETTINGS
-        # ==================================
-        box_tan3 = layout.box()
-        row_header_tan3 = box_tan3.row(align=True)
-        
-        is_expanded_tan3 = self.show_circle_tan3_settings
-        icon_state_tan3 = "TRIA_DOWN" if is_expanded_tan3 else "TRIA_RIGHT"
-        row_header_tan3.prop(self, "show_circle_tan3_settings", icon=icon_state_tan3, text="", icon_only=True, emboss=False)
-        row_header_tan3.label(text="Circle Tangent to Three Curves Settings", icon='CURVE_NCURVE')
-
-        if is_expanded_tan3:
-            split_main = box_tan3.split(factor=0.02)
-            split_main.label(text="") 
-            col = split_main.column(align=True)
-            
-            # Toggle
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Show Catmull Overlay:", icon='BLANK1')
-            split.prop(self, "circle_tan3_show_catmull", text="Enable")
-            
-            # Color
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Catmull Overlay Color:", icon='BLANK1')
-            split.prop(self, "circle_tan3_col_catmull", text="")
-
-            # Thickness
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Catmull Overlay Thickness:", icon='BLANK1')
-            split.prop(self, "circle_tan3_width_catmull", text="")
-            
-            col.separator()
-
-        # ==================================
-        # 9. 1 POINT ARC SETTINGS (Collapsible Wrapper)
-        # ==================================
-        icon_val = 0
-        try:
-            from . import panel
-            pcoll = getattr(panel, "preview_collection", None)
-            if pcoll and "arc_1_point" in pcoll:
-                icon_val = pcoll["arc_1_point"].icon_id
-        except ImportError:
-            pass
-            
-        box_arc = layout.box()
-        row_header = box_arc.row(align=True)
-        
-        is_expanded = self.show_arc_settings
-        icon_state = "TRIA_DOWN" if is_expanded else "TRIA_RIGHT"
-        row_header.prop(self, "show_arc_settings", icon=icon_state, text="", icon_only=True, emboss=False)
-        
-        if icon_val:
-            row_header.label(text="1 Point Arc Settings", icon_value=icon_val)
-        else:
-            row_header.label(text="1 Point Arc Settings", icon='CURVE_DATA')
-
-        if is_expanded:
-            split_main = box_arc.split(factor=0.02)
-            split_main.label(text="") 
-            col = split_main.column(align=True)
-            
-            # --- A. Compass & Fonts ---
-            col.label(text="Display & Fonts:", icon='FONT_DATA')
-            
-            # Compass Size
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Display Compass Size:", icon='BLANK1')
-            split.prop(self, "compass_size", text="")
-            
-            col.separator()
-            
-            # Font Hotkey
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Hotkey Font Size:", icon='BLANK1')
-            split.prop(self, "font_size_hotkey", text="")
-            
-            # Font Label
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Label/Param Font Size:", icon='BLANK1')
-            split.prop(self, "font_size_label", text="")
-
-            # Preview Vertex Size
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Preview Vertex Size:", icon='BLANK1')
-            split.prop(self, "preview_vertex_size", text="")
+            self.draw_group_label(col, "Geometry Snaps:", icon='SNAP_PEEL_OBJECT')
+            self.draw_property_row(col, "Snap Strength:", "snap_strength")
             
             col.separator(factor=2.0)
-
-            # --- B. Angle Snap ---
-            col.label(text="Angle Snap:", icon='DRIVER_ROTATIONAL_DIFFERENCE')
-            
-            # Increment
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Increment:", icon='BLANK1')
-            if self.use_radians:
-                split.prop(self, "angle_snap_type_rad", text="")
-            else:
-                split.prop(self, "angle_snap_type", text="")
-
-            # Radians Checkbox
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Angle Units:", icon='BLANK1')
-            split.prop(self, "use_radians", text="Show Angle in Radians")
+            self.draw_group_label(col, "Axis Snapping:", icon='COLOR')
+            self.draw_property_row(col, "Axis Color Dimmer:", "axis_color_dim")
 
             col.separator(factor=2.0)
-
-            # --- C. Snap Guides ---
-            col.label(text="Snap Guides:", icon='SNAP_ON')
-            
-            # Marker
+            self.draw_group_label(col, "Z-Fighting Tweaks", icon='OPTIONS')
+            # Custom split for multiple props in one row
             split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Marker (Size/Color):", icon='BLANK1') # Renamed label
-            
-            row_props = split.row(align=True)
-            # REMOVED SHAPE SELECTOR UI
-            row_props.prop(self, "snap_marker_size", text="")
-            row_props.prop(self, "snap_marker_color", text="")
-
-            # Line
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Pointer Line Color:", icon='BLANK1')
-            split.prop(self, "snap_line_color", text="")
-
-            col.separator(factor=2.0)
-            
-            # --- D. Overlay Position ---
-            col.label(text="Overlay Position:", icon='OVERLAY')
-            
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Offset (Compass):", icon='BLANK1')
+            row_l = split.row()
+            row_l.separator(factor=4.0)
+            row_l.label(text="Ortho Lifts (Compass/Arc):", icon='BLANK1')
             sub = split.row(align=True)
-            sub.prop(self, "overlay_offset_x", text="X")
-            sub.prop(self, "overlay_offset_y", text="Y")
+            sub.prop(self, "lift_compass", text="Compass")
+            sub.prop(self, "lift_arc", text="Arc")
+            self.draw_property_row(col, "Perspective Lift %:", "lift_perspective")
+            
+            col.separator(factor=2.0)
+            self.draw_group_label(col, "Hotkeys Helper:", icon='HELP')
+            self.draw_property_row(col, "Show Panel:", "show_hotkeys")
+            if self.show_hotkeys:
+                split = col.split(factor=0.5, align=True)
+                row_l = split.row()
+                row_l.separator(factor=4.0)
+                row_l.label(text="Screen Position:", icon='BLANK1')
+                sub = split.row(align=True)
+                sub.prop(self, "hotkeys_offset_x", text="X")
+                sub.prop(self, "hotkeys_offset_y", text="Y")
+
+            col.separator(factor=2.0)
+            self.draw_group_label(col, "Metric Display:", icon='DOT')
+            self.draw_property_row(col, "Decimal Precision:", "display_precision")
+
+        # 2. POINTS BY ARC
+        col = self.draw_section_header(layout, "Points by Arc Settings", "show_points_by_arc_settings", icon='GP_SELECT_POINTS', tool_key='point_by_arcs')
+        if col:
+            self.draw_group_label(col, "Visual Colors:", icon='COLOR')
+            self.draw_property_row(col, "Arc 1 Color:", "color_points_by_arc_1")
+            self.draw_property_row(col, "Arc 2 Color:", "color_points_by_arc_2")
+            self.draw_property_row(col, "Start Line Color:", "color_points_by_arc_start")
+            self.draw_property_row(col, "End Line Color:", "color_points_by_arc_end")
+            
+            col.separator(factor=2.0)
+            self.draw_group_label(col, "Marker Sizes:", icon='SNAP_ON')
+            self.draw_property_row(col, "Crosshair Size (Setup):", "points_by_arc_crosshair_size")
+            self.draw_property_row(col, "Intersection Square (Final):", "points_by_arc_square_size")
+
+        # 3. LINE
+        col = self.draw_section_header(layout, "Line Settings", "show_line_settings", icon='LINCURVE', tool_key='line')
+        if col:
+            self.draw_group_label(col, "Snapping Visuals:", icon='COLOR')
+            self.draw_property_row(col, "Use Axis Colors:", "use_axis_colors")
+
+        # 4-8. Curve based tools
+        tools = [
+            ("perp", "Line Perpendicular from Curve Settings", "show_line_perp_settings", "line_perpendicular_from_curve", "line_perp"),
+            ("perp2", "Line Perpendicular to Two Curves Settings", "show_line_perp2_settings", "line_perpendicular_to_two_curves", "line_perp2"),
+            ("tangent", "Line Tangent from Curve Settings", "show_line_tangent_settings", "line_tangent_from_curve", "line_tangent"),
+            ("tan_tan", "Line Tangent to Two Curves Settings", "show_line_tan_tan_settings", "line_tangent_to_two_curves", "line_tan_tan"),
+            ("tan3", "Circle Tangent to Three Curves Settings", "show_circle_tan3_settings", "circle_tangent_to_three_curves", "circle_tan3")
+        ]
+        for key, title, show_prop, tool_key, prop_prefix in tools:
+            col = self.draw_section_header(layout, title, show_prop, icon='CURVE_NCURVE', tool_key=tool_key)
+            if col:
+                self.draw_group_label(col, "Catmull Overlay Settings:", icon='COLOR')
+                self.draw_property_row(col, "Show Overlay:", f"{prop_prefix}_show_catmull")
+                self.draw_property_row(col, "Overlay Color:", f"{prop_prefix}_col_catmull")
+                self.draw_property_row(col, "Overlay Thickness:", f"{prop_prefix}_width_catmull")
+
+        # 9. 1 POINT ARC
+        col = self.draw_section_header(layout, "1 Point Arc Settings", "show_arc_settings", icon='CURVE_DATA', tool_key='arc_1_point')
+        if col:
+            self.draw_group_label(col, "Display & Fonts:", icon='FONT_DATA')
+            self.draw_property_row(col, "Display Compass Size:", "compass_size")
+            self.draw_property_row(col, "Hotkey Font Size:", "font_size_hotkey")
+            self.draw_property_row(col, "Label/Param Font Size:", "font_size_label")
+            self.draw_property_row(col, "Preview Vertex Size:", "preview_vertex_size")
+            
+            col.separator(factor=2.0)
+            self.draw_group_label(col, "Angle Snap:", icon='DRIVER_ROTATIONAL_DIFFERENCE')
+            self.draw_property_row(col, "Increment:", "angle_snap_type_rad" if self.use_radians else "angle_snap_type")
+            self.draw_property_row(col, "Angle Units:", "use_radians")
+            
+            col.separator(factor=2.0)
+            self.draw_group_label(col, "Snap Guides:", icon='SNAP_ON')
+            split = col.split(factor=0.5, align=True)
+            row_l = split.row(); row_l.separator(factor=4.0)
+            row_l.label(text="Marker (Size/Color):", icon='BLANK1')
+            sub = split.row(align=True)
+            sub.prop(self, "snap_marker_size", text="")
+            sub.prop(self, "snap_marker_color", text="")
+            self.draw_property_row(col, "Pointer Line Color:", "snap_line_color")
+            
+            col.separator(factor=2.0)
+            self.draw_group_label(col, "Overlay Position:", icon='OVERLAY')
+            split = col.split(factor=0.5, align=True)
+            row_l = split.row(); row_l.separator(factor=4.0)
+            row_l.label(text="Offset (Compass):", icon='BLANK1')
+            sub = split.row(align=True)
+            sub.prop(self, "overlay_offset_x", text="X"); sub.prop(self, "overlay_offset_y", text="Y")
             
             col.separator(factor=2.0) 
+            self.draw_group_label(col, "Visuals (Preview Lines):", icon='COLOR')
+            self.draw_property_row(col, "Start Line Color:", "color_arc_start")
+            self.draw_property_row(col, "End Line Color:", "color_arc_end")
 
-            # --- I. Visuals ---
-            col.label(text="Visuals (Preview Lines):", icon='COLOR')
-            
-            # Start Line
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Start Line Color:", icon='BLANK1')
-            split.prop(self, "color_arc_start", text="")
-            
-            # End Line
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="End Line Color:", icon='BLANK1')
-            split.prop(self, "color_arc_end", text="")
-            
-            col.separator()
+        # 10-13. 2/3 Point Arcs and Circles
+        arc_circle_tools = [
+            ("2pt", "2 Point Arc Settings", "show_arc_2pt_settings", "arc_2_point", "arc_2pt"),
+            ("3pt", "3 Point Arc Settings", "show_arc_3pt_settings", "arc_3_point", "arc_3pt"),
+            ("c2pt", "2 Point Circle Settings", "show_circle_2pt_settings", "circle_2_points", "circle_2pt"),
+            ("c3pt", "3 Point Circle Settings", "show_circle_3pt_settings", "circle_3_points", "circle_3pt")
+        ]
+        for key, title, show_prop, tool_key, prefix in arc_circle_tools:
+            col = self.draw_section_header(layout, title, show_prop, icon='CURVE_DATA' if 'Arc' in title else 'MESH_CIRCLE', tool_key=tool_key)
+            if col:
+                self.draw_group_label(col, "Snap Guides:", icon='SNAP_ON')
+                split = col.split(factor=0.5, align=True)
+                row_l = split.row(); row_l.separator(factor=4.0)
+                row_l.label(text="Marker (Size/Color):", icon='BLANK1')
+                sub = split.row(align=True)
+                sub.prop(self, f"snap_marker_size_{key}", text="")
+                sub.prop(self, f"snap_marker_color_{key}", text="")
+                self.draw_property_row(col, "Pointer Line Color:", f"snap_line_color_{key}")
+                
+                col.separator(factor=2.0)
+                self.draw_group_label(col, "Snapping Visuals:", icon='COLOR')
+                self.draw_property_row(col, "Use Axis Colors:", f"{prefix}_use_axis_colors")
+                self.draw_property_row(col, "Overlay Color:", f"color_{prefix}_overlay", enabled=not getattr(self, f"{prefix}_use_axis_colors"))
 
-        # ==================================
-        # 8. 2 POINT ARC SETTINGS
-        # ==================================
-        icon_val_2pt = 0
-        try:
-            from . import panel
-            pcoll = getattr(panel, "preview_collection", None)
-            if pcoll and "arc_2_point" in pcoll:
-                icon_val_2pt = pcoll["arc_2_point"].icon_id
-        except ImportError:
-            pass
+        # 14-17. Shapes and Curves
+        shape_tools = [
+            ("ellipse", "Ellipse Settings", "show_ellipse_settings", "ellipse_from_radius", "CURVE_EE"),
+            ("poly", "Polygon Settings", "show_polygon_settings", "polygon_cen_cor", "MESH_CIRCLE"),
+            ("rect", "Rectangle Settings", "show_rectangle_settings", "rectangle_from_center", "MESH_PLANE"),
+            ("curve", "Curve Settings", "show_curve_settings", "curve_interpolate_points", "CURVE_BEZCURVE")
+        ]
+        for key, title, show_prop, tool_key, fallback_icon in shape_tools:
+            self.draw_section_header(layout, title, show_prop, icon=fallback_icon, tool_key=tool_key)
 
-        box_2pt = layout.box()
-        row_header_2pt = box_2pt.row(align=True)
-        
-        is_expanded_2pt = self.show_arc_2pt_settings
-        icon_state_2pt = "TRIA_DOWN" if is_expanded_2pt else "TRIA_RIGHT"
-        row_header_2pt.prop(self, "show_arc_2pt_settings", icon=icon_state_2pt, text="", icon_only=True, emboss=False)
-        
-        if icon_val_2pt:
-            row_header_2pt.label(text="2 Point Arc Settings", icon_value=icon_val_2pt)
-        else:
-            row_header_2pt.label(text="2 Point Arc Settings", icon='CURVE_DATA')
-
-        if is_expanded_2pt:
-            split_main = box_2pt.split(factor=0.02)
-            split_main.label(text="") 
-            col = split_main.column(align=True)
-            
-            # --- C. Snap Guides (2-Point) ---
-            col.label(text="Snap Guides:", icon='SNAP_ON')
-            
-            # Marker
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Marker (Size/Color):", icon='BLANK1') 
-            
-            row_props = split.row(align=True)
-            # REMOVED SHAPE SELECTOR UI
-            row_props.prop(self, "snap_marker_size_2pt", text="")
-            row_props.prop(self, "snap_marker_color_2pt", text="")
-
-            # Line
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Pointer Line Color:", icon='BLANK1')
-            
-            row_props = split.row(align=True)
-            row_props.prop(self, "snap_line_color_2pt", text="")
-
-            col.separator(factor=2.0)
-            
-            col.label(text="Snapping Visuals:", icon='COLOR')
-            
-            # Use Axis Colors
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Use Axis Colors:", icon='BLANK1')
-            split.prop(self, "arc_2pt_use_axis_colors", text="Enable")
-
-            # Custom Overlay Color
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.enabled = not self.arc_2pt_use_axis_colors # Dim the label
-            row_label.label(text="Overlay Color:", icon='BLANK1')
-            
-            row_prop = split.row()
-            row_prop.enabled = not self.arc_2pt_use_axis_colors # Dim the property
-            row_prop.prop(self, "color_arc_2pt_overlay", text="")
-            
-            col.separator()
-
-        # ==================================
-        # 9. 3 POINT ARC SETTINGS
-        # ==================================
-        icon_val_3pt = 0
-        try:
-            from . import panel
-            pcoll = getattr(panel, "preview_collection", None)
-            if pcoll and "arc_3_point" in pcoll:
-                icon_val_3pt = pcoll["arc_3_point"].icon_id
-        except ImportError:
-            pass
-
-        box_3pt = layout.box()
-        row_header_3pt = box_3pt.row(align=True)
-        
-        is_expanded_3pt = self.show_arc_3pt_settings
-        icon_state_3pt = "TRIA_DOWN" if is_expanded_3pt else "TRIA_RIGHT"
-        row_header_3pt.prop(self, "show_arc_3pt_settings", icon=icon_state_3pt, text="", icon_only=True, emboss=False)
-        
-        if icon_val_3pt:
-            row_header_3pt.label(text="3 Point Arc Settings", icon_value=icon_val_3pt)
-        else:
-            row_header_3pt.label(text="3 Point Arc Settings", icon='CURVE_DATA')
-
-        if is_expanded_3pt:
-            split_main = box_3pt.split(factor=0.02)
-            split_main.label(text="") 
-            col = split_main.column(align=True)
-            
-            # --- C. Snap Guides (3-Point) ---
-            col.label(text="Snap Guides:", icon='SNAP_ON')
-            
-            # Marker
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Marker (Size/Color):", icon='BLANK1') 
-            
-            row_props = split.row(align=True)
-            row_props.prop(self, "snap_marker_size_3pt", text="")
-            row_props.prop(self, "snap_marker_color_3pt", text="")
-
-            # Line
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Pointer Line Color:", icon='BLANK1')
-            
-            row_props = split.row(align=True)
-            row_props.prop(self, "snap_line_color_3pt", text="")
-
-            col.separator(factor=2.0)
-            
-            col.label(text="Snapping Visuals:", icon='COLOR')
-            
-            # Use Axis Colors
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Use Axis Colors:", icon='BLANK1')
-            split.prop(self, "arc_3pt_use_axis_colors", text="Enable")
-
-            # Custom Overlay Color
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.enabled = not self.arc_3pt_use_axis_colors # Dim the label
-            row_label.label(text="Overlay Color:", icon='BLANK1')
-            
-            row_prop = split.row()
-            row_prop.enabled = not self.arc_3pt_use_axis_colors # Dim the property
-            row_prop.prop(self, "color_arc_3pt_overlay", text="")
-            
-            col.separator()
-
-        # ==================================
-        # 10. 2 POINT CIRCLE SETTINGS
-        # ==================================
-        icon_val_c2pt = 0
-        try:
-            from . import panel
-            pcoll = getattr(panel, "preview_collection", None)
-            if pcoll and "circle_2_point" in pcoll:
-                icon_val_c2pt = pcoll["circle_2_point"].icon_id
-        except ImportError:
-            pass
-
-        box_c2pt = layout.box()
-        row_header_c2pt = box_c2pt.row(align=True)
-        
-        is_expanded_c2pt = self.show_circle_2pt_settings
-        icon_state_c2pt = "TRIA_DOWN" if is_expanded_c2pt else "TRIA_RIGHT"
-        row_header_c2pt.prop(self, "show_circle_2pt_settings", icon=icon_state_c2pt, text="", icon_only=True, emboss=False)
-        
-        if icon_val_c2pt:
-            row_header_c2pt.label(text="2 Point Circle Settings", icon_value=icon_val_c2pt)
-        else:
-            row_header_c2pt.label(text="2 Point Circle Settings", icon='MESH_CIRCLE')
-
-        if is_expanded_c2pt:
-            split_main = box_c2pt.split(factor=0.02)
-            split_main.label(text="") 
-            col = split_main.column(align=True)
-            
-            # --- C. Snap Guides (2-Point Circle) ---
-            col.label(text="Snap Guides:", icon='SNAP_ON')
-            
-            # Marker
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Marker (Size/Color):", icon='BLANK1') 
-            
-            row_props = split.row(align=True)
-            row_props.prop(self, "snap_marker_size_c2pt", text="")
-            row_props.prop(self, "snap_marker_color_c2pt", text="")
-
-            # Line
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Pointer Line Color:", icon='BLANK1')
-            
-            row_props = split.row(align=True)
-            row_props.prop(self, "snap_line_color_c2pt", text="")
-
-            col.separator(factor=2.0)
-            
-            col.label(text="Snapping Visuals:", icon='COLOR')
-            
-            # Use Axis Colors
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Use Axis Colors:", icon='BLANK1')
-            split.prop(self, "circle_2pt_use_axis_colors", text="Enable")
-
-            # Custom Overlay Color
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.enabled = not self.circle_2pt_use_axis_colors # Dim the label
-            row_label.label(text="Overlay Color:", icon='BLANK1')
-            
-            row_prop = split.row()
-            row_prop.enabled = not self.circle_2pt_use_axis_colors # Dim the property
-            row_prop.prop(self, "color_circle_2pt_overlay", text="")
-            
-            col.separator()
-
-        # ==================================
-        # 11. 3 POINT CIRCLE SETTINGS
-        # ==================================
-        icon_val_c3pt = 0
-        try:
-            from . import panel
-            pcoll = getattr(panel, "preview_collection", None)
-            if pcoll and "circle_3_point" in pcoll:
-                icon_val_c3pt = pcoll["circle_3_point"].icon_id
-        except ImportError:
-            pass
-
-        box_c3pt = layout.box()
-        row_header_c3pt = box_c3pt.row(align=True)
-        
-        is_expanded_c3pt = self.show_circle_3pt_settings
-        icon_state_c3pt = "TRIA_DOWN" if is_expanded_c3pt else "TRIA_RIGHT"
-        row_header_c3pt.prop(self, "show_circle_3pt_settings", icon=icon_state_c3pt, text="", icon_only=True, emboss=False)
-        
-        if icon_val_c3pt:
-            row_header_c3pt.label(text="3 Point Circle Settings", icon_value=icon_val_c3pt)
-        else:
-            row_header_c3pt.label(text="3 Point Circle Settings", icon='MESH_CIRCLE')
-
-        if is_expanded_c3pt:
-            split_main = box_c3pt.split(factor=0.02)
-            split_main.label(text="") 
-            col = split_main.column(align=True)
-            
-            # --- C. Snap Guides (3-Point Circle) ---
-            col.label(text="Snap Guides:", icon='SNAP_ON')
-            
-            # Marker
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Marker (Size/Color):", icon='BLANK1') 
-            
-            row_props = split.row(align=True)
-            row_props.prop(self, "snap_marker_size_c3pt", text="")
-            row_props.prop(self, "snap_marker_color_c3pt", text="")
-
-            # Line
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Pointer Line Color:", icon='BLANK1')
-            
-            row_props = split.row(align=True)
-            row_props.prop(self, "snap_line_color_c3pt", text="")
-
-            col.separator(factor=2.0)
-            
-            col.label(text="Snapping Visuals:", icon='COLOR')
-            
-            # Use Axis Colors
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.label(text="Use Axis Colors:", icon='BLANK1')
-            split.prop(self, "circle_3pt_use_axis_colors", text="Enable")
-
-            # Custom Overlay Color
-            split = col.split(factor=0.5, align=True)
-            row_label = split.row()
-            row_label.separator()
-            row_label.enabled = not self.circle_3pt_use_axis_colors # Dim the label
-            row_label.label(text="Overlay Color:", icon='BLANK1')
-            
-            row_prop = split.row()
-            row_prop.enabled = not self.circle_3pt_use_axis_colors # Dim the property
-            row_prop.prop(self, "color_circle_3pt_overlay", text="")
-            
-            col.separator()
-
-# =========================================================================
-# REGISTRATION
-# =========================================================================
 def register():
     bpy.utils.register_class(RADCAD_Preferences)
 
