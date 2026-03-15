@@ -379,6 +379,10 @@ def draw_hud_2d():
                     snap_sz = getattr(prefs, "snap_marker_size_c2pt", 6)
                     snap_col = getattr(prefs, "snap_marker_color_c2pt", (1.0, 0.8, 0.0, 1.0))
                     snap_type = 'X'
+                elif mode == "CIRCLE_3POINT":
+                    snap_sz = getattr(prefs, "snap_marker_size_c3pt", 6)
+                    snap_col = getattr(prefs, "snap_marker_color_c3pt", (1.0, 0.8, 0.0, 1.0))
+                    snap_type = 'X'
                 else:
                     snap_sz = getattr(prefs, "snap_marker_size", 6)
                     snap_col = getattr(prefs, "snap_marker_color", (1.0, 0.8, 0.0, 1.0))

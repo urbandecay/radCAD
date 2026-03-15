@@ -32,6 +32,8 @@ state = {
     "arc_3pt_overlay_col": (0.2, 0.2, 0.2, 1.0),
     "circle_2pt_use_axis_colors": True,
     "circle_2pt_overlay_col": (0.2, 0.2, 0.2, 1.0),
+    "circle_3pt_use_axis_colors": True,
+    "circle_3pt_overlay_col": (0.2, 0.2, 0.2, 1.0),
     
     "snap_strength": 6.0,
     "use_radians": False,
@@ -211,6 +213,8 @@ def reset_state_from_context(ctx):
     keep_overlay_3pt = state.get("arc_3pt_overlay_col", (0.2, 0.2, 0.2, 1.0))
     keep_axis_c2pt = state.get("circle_2pt_use_axis_colors", True)
     keep_overlay_c2pt = state.get("circle_2pt_overlay_col", (0.2, 0.2, 0.2, 1.0))
+    keep_axis_c3pt = state.get("circle_3pt_use_axis_colors", True)
+    keep_overlay_c3pt = state.get("circle_3pt_overlay_col", (0.2, 0.2, 0.2, 1.0))
     keep_weld    = state.get("auto_weld", True)
     
     current_mode = state.get("tool_mode", "1POINT")
@@ -234,6 +238,8 @@ def reset_state_from_context(ctx):
         "arc_3pt_overlay_col": keep_overlay_3pt,
         "circle_2pt_use_axis_colors": keep_axis_c2pt,
         "circle_2pt_overlay_col": keep_overlay_c2pt,
+        "circle_3pt_use_axis_colors": keep_axis_c3pt,
+        "circle_3pt_overlay_col": keep_overlay_c3pt,
         "auto_weld": keep_weld,
         
         "use_radians": use_rad, "snap_strength": strength,

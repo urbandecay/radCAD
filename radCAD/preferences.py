@@ -21,6 +21,7 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
     show_arc_2pt_settings: bpy.props.BoolProperty(name="2 Point Arc Settings", default=True)
     show_arc_3pt_settings: bpy.props.BoolProperty(name="3 Point Arc Settings", default=True)
     show_circle_2pt_settings: bpy.props.BoolProperty(name="2 Point Circle Settings", default=True)
+    show_circle_3pt_settings: bpy.props.BoolProperty(name="3 Point Circle Settings", default=True)
     show_line_settings: bpy.props.BoolProperty(name="Line Settings", default=True)
     show_line_perp_settings: bpy.props.BoolProperty(name="Line Perpendicular from Curve Settings", default=True)
     show_line_perp2_settings: bpy.props.BoolProperty(name="Line Perpendicular to Two Curves Settings", default=True)
@@ -250,6 +251,28 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
         default=True
     )
     color_circle_2pt_overlay: bpy.props.FloatVectorProperty(
+        name="Overlay Color",
+        subtype='COLOR',
+        size=4,
+        min=0.0, max=1.0,
+        default=(0.2, 0.2, 0.2, 1.0), # Dark Grey
+        description="The color for the guide lines when not using axis colors"
+    )
+
+    # --- 3 Point Circle ---
+    snap_marker_size_c3pt: bpy.props.IntProperty(name="Marker Size", default=6, min=2, max=20)
+    snap_marker_color_c3pt: bpy.props.FloatVectorProperty(
+        name="Marker Color", subtype='COLOR', size=4, min=0.0, max=1.0, default=(1.0, 1.0, 0.0, 1.0)
+    )
+    snap_line_color_c3pt: bpy.props.FloatVectorProperty(
+        name="Line Color", subtype='COLOR', size=4, min=0.0, max=1.0, default=(1.0, 1.0, 0.0, 0.7)
+    )
+    circle_3pt_use_axis_colors: bpy.props.BoolProperty(
+        name="Use Axis Colors",
+        description="When snapped to X, Y, or Z, the guide lines will turn the axis color. If off, they stay the default color",
+        default=True
+    )
+    color_circle_3pt_overlay: bpy.props.FloatVectorProperty(
         name="Overlay Color",
         subtype='COLOR',
         size=4,
@@ -1247,6 +1270,81 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
             row_prop = split.row()
             row_prop.enabled = not self.circle_2pt_use_axis_colors # Dim the property
             row_prop.prop(self, "color_circle_2pt_overlay", text="")
+            
+            col.separator()
+
+        # ==================================
+        # 11. 3 POINT CIRCLE SETTINGS
+        # ==================================
+        icon_val_c3pt = 0
+        try:
+            from . import panel
+            pcoll = getattr(panel, "preview_collection", None)
+            if pcoll and "circle_3_point" in pcoll:
+                icon_val_c3pt = pcoll["circle_3_point"].icon_id
+        except ImportError:
+            pass
+
+        box_c3pt = layout.box()
+        row_header_c3pt = box_c3pt.row(align=True)
+        
+        is_expanded_c3pt = self.show_circle_3pt_settings
+        icon_state_c3pt = "TRIA_DOWN" if is_expanded_c3pt else "TRIA_RIGHT"
+        row_header_c3pt.prop(self, "show_circle_3pt_settings", icon=icon_state_c3pt, text="", icon_only=True, emboss=False)
+        
+        if icon_val_c3pt:
+            row_header_c3pt.label(text="3 Point Circle Settings", icon_value=icon_val_c3pt)
+        else:
+            row_header_c3pt.label(text="3 Point Circle Settings", icon='MESH_CIRCLE')
+
+        if is_expanded_c3pt:
+            split_main = box_c3pt.split(factor=0.02)
+            split_main.label(text="") 
+            col = split_main.column(align=True)
+            
+            # --- C. Snap Guides (3-Point Circle) ---
+            col.label(text="Snap Guides:", icon='SNAP_ON')
+            
+            # Marker
+            split = col.split(factor=0.5, align=True)
+            row_label = split.row()
+            row_label.separator()
+            row_label.label(text="Marker (Size/Color):", icon='BLANK1') 
+            
+            row_props = split.row(align=True)
+            row_props.prop(self, "snap_marker_size_c3pt", text="")
+            row_props.prop(self, "snap_marker_color_c3pt", text="")
+
+            # Line
+            split = col.split(factor=0.5, align=True)
+            row_label = split.row()
+            row_label.separator()
+            row_label.label(text="Pointer Line Color:", icon='BLANK1')
+            
+            row_props = split.row(align=True)
+            row_props.prop(self, "snap_line_color_c3pt", text="")
+
+            col.separator(factor=2.0)
+            
+            col.label(text="Snapping Visuals:", icon='COLOR')
+            
+            # Use Axis Colors
+            split = col.split(factor=0.5, align=True)
+            row_label = split.row()
+            row_label.separator()
+            row_label.label(text="Use Axis Colors:", icon='BLANK1')
+            split.prop(self, "circle_3pt_use_axis_colors", text="Enable")
+
+            # Custom Overlay Color
+            split = col.split(factor=0.5, align=True)
+            row_label = split.row()
+            row_label.separator()
+            row_label.enabled = not self.circle_3pt_use_axis_colors # Dim the label
+            row_label.label(text="Overlay Color:", icon='BLANK1')
+            
+            row_prop = split.row()
+            row_prop.enabled = not self.circle_3pt_use_axis_colors # Dim the property
+            row_prop.prop(self, "color_circle_3pt_overlay", text="")
             
             col.separator()
 

@@ -403,8 +403,9 @@ def get_or_create_grey_material():
         nodes = mat.node_tree.nodes
         bsdf = nodes.get("Principled BSDF")
         if bsdf:
-            bsdf.inputs[0].default_value = (0.5, 0.5, 0.5, 1)
-            if len(bsdf.inputs) > 9: bsdf.inputs[9].default_value = 1.0
+            # Use name-based access for Blender 4.0+ compatibility
+            if "Base Color" in bsdf.inputs: bsdf.inputs["Base Color"].default_value = (0.5, 0.5, 0.5, 1)
+            if "Roughness" in bsdf.inputs: bsdf.inputs["Roughness"].default_value = 1.0
     return mat
 
 def get_or_create_black_material():
@@ -416,8 +417,9 @@ def get_or_create_black_material():
         nodes = mat.node_tree.nodes
         bsdf = nodes.get("Principled BSDF")
         if bsdf:
-            bsdf.inputs[0].default_value = (0, 0, 0, 1)
-            if len(bsdf.inputs) > 9: bsdf.inputs[9].default_value = 1.0
+            if "Base Color" in bsdf.inputs: bsdf.inputs["Base Color"].default_value = (0, 0, 0, 1)
+            if "Roughness" in bsdf.inputs: bsdf.inputs["Roughness"].default_value = 1.0
+    return mat
     return mat
 
 def commit_arc_to_mesh(ctx):

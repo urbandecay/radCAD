@@ -400,15 +400,46 @@ class CircleTool_3Point(SurfaceDrawTool):
             return
 
         if self.stage==2:
+            # --- FIX: Stay on established drawing plane (self.Zp) or stabilize based on chord ---
+            plane_n = self.Zp if self.Zp else Vector((0,0,1))
+            
+            # --- SCREEN-SPACE ANCHOR STABILIZATION FOR 3-POINT ---
+            chord_vec = self.p2 - self.p1
+            if chord_vec.length > 1e-6:
+                chord_dir = chord_vec.normalized()
+                rv3d = context.region_data
+                view_fwd = rv3d.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
+
+                # Detect Verticality with Hysteresis
+                dot_v = abs(chord_dir.dot(self.ref_normal))
+                was_vertical = getattr(self, "_is_vert_last_3pt", False)
+                threshold = 0.98 if was_vertical else 0.995 
+                is_vertical = dot_v > threshold
+                self._is_vert_last_3pt = is_vertical
+
+                if is_vertical:
+                    # Case A: Snap is vertical. Use View-Aligned or Manual Override.
+                    ax_x, ax_y, _ = orthonormal_basis_from_normal(self.ref_normal)
+                    if self.vertical_override_axis is None:
+                        view_dir = rv3d.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
+                        plane_n = ax_x if abs(view_dir.dot(ax_x)) > abs(view_dir.dot(ax_y)) else ax_y
+                    else:
+                        plane_n = ax_x if self.vertical_override_axis == 'X' else ax_y
+                else:
+                    # Case B: Standard orientation. Stabilize normal to face camera.
+                    p1, p2, p3 = self.p1, self.p2, snap_point
+                    v1 = p2 - p1
+                    v2 = p3 - p1
+                    if v1.length > 1e-6 and v2.length > 1e-6 and abs(v1.normalized().dot(v2.normalized())) < 0.999:
+                        plane_n = v1.cross(v2).normalized()
+                    
+                    if plane_n.dot(view_fwd) > 0: plane_n = -plane_n
+                
+                self.Zp = plane_n
+
+            # Project mouse point onto the established plane
             self.current = snap_point
             p1, p2, p3 = self.p1, self.p2, snap_point
-            
-            v1 = p2 - p1
-            v2 = p3 - p1
-            if v1.length < 1e-6 or v2.length < 1e-6 or abs(v1.normalized().dot(v2.normalized())) > 0.999:
-                 plane_n = self.Zp if self.Zp else Vector((0,0,1))
-            else:
-                 plane_n = v1.cross(v2).normalized()
             
             d_p3 = p3 - p1
             d_plane = d_p3 - plane_n * d_p3.dot(plane_n)
