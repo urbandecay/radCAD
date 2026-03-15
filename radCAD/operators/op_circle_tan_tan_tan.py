@@ -125,6 +125,8 @@ class CircleTool_TanTanTan:
             "visual_pts": [], # Explicitly reset to kill old ghost data
             "tan_solutions": [],
             "tan_solution_active": False,
+            "viz_tangent_line": [],
+            "viz_diameter_line": [],
         })
         
         obj = bpy.context.edit_object

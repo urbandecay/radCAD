@@ -318,6 +318,8 @@ def reset_state_from_context(ctx):
         "tan_2_p1": None,
         "tan_2_p2": None,
         "tan_solution_active": False,
+        "viz_tangent_line": [],
+        "viz_diameter_line": [],
         
         "handles": [], "compass_rot": 0.0,
         "locked": False, "locked_normal": None, "locked_plane_point": None,
