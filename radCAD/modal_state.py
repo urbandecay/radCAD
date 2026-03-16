@@ -129,7 +129,7 @@ state = {
 
 style = {
     "line_width": 1.0,
-    "point_px": 3,
+    "point_px": 5,
     "font_size": 14,
     "font_color": (0.9, 0.9, 0.9, 1.0),
     "bg_color": (0.1, 0.1, 0.1, 0.75),        

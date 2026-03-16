@@ -83,7 +83,7 @@ def get_render_settings(ctx):
         "LINE_COL": (1.0, 1.0, 0.0, 0.7),
         "COL_START": (0.8, 0.8, 0.2, 1.0), "COL_END": (0.2, 0.8, 0.2, 1.0),
         "COL_CHORD": (0.2, 0.8, 0.2, 1.0), "COL_HEIGHT": (0.2, 0.8, 0.2, 1.0),
-        "PREVIEW_VERTEX_SIZE": 3,
+        "PREVIEW_VERTEX_SIZE": 5,
         "UI_SCALE": 1.0,
         "VIEWPORT_SIZE": (100.0, 100.0),
         "USE_AXIS_COLORS": True,
@@ -105,11 +105,11 @@ def get_render_settings(ctx):
         "CIRCLE_TAN3_WIDTH_CURVES": 2.0,
         "CIRCLE_TAN3_SHOW_TANGENT": True,
         "CIRCLE_TAN3_COL_TANGENT": (0.0, 0.8, 1.0, 0.5),
-        "CIRCLE_TAN3_COL_PREVIEW": (1.0, 0.4745, 0.0, 1.0),
+        "CIRCLE_TAN3_COL_PREVIEW": (0.0, 0.0, 0.0, 1.0),
         "CIRCLE_TAN3_WIDTH_TANGENT": 2.0,
         "CIRCLE_TAN2_SHOW_CURVES": True,
         "CIRCLE_TAN2_COL_CURVES": (0.0, 0.8, 1.0, 0.5),
-        "CIRCLE_TAN2_COL_PREVIEW": (1.0, 0.4745, 0.0, 1.0),
+        "CIRCLE_TAN2_COL_PREVIEW": (0.0, 0.0, 0.0, 1.0),
         "CIRCLE_TAN2_WIDTH_CURVES": 2.0,
         "CIRCLE_TAN2_SHOW_TANGENT": True,
         "CIRCLE_TAN2_COL_TANGENT": (0.0, 0.8, 1.0, 0.5),
@@ -150,12 +150,12 @@ def get_render_settings(ctx):
 
         prefs["CIRCLE_TAN3_SHOW_TANGENT"] = getattr(addon_prefs, "circle_tan3_show_tangent", True)
         prefs["CIRCLE_TAN3_COL_TANGENT"] = tuple(getattr(addon_prefs, "circle_tan3_col_tangent", (0.0, 0.8, 1.0, 0.5)))
-        prefs["CIRCLE_TAN3_COL_PREVIEW"] = tuple(getattr(addon_prefs, "circle_tan3_col_preview", (1.0, 0.4745, 0.0, 1.0)))
+        prefs["CIRCLE_TAN3_COL_PREVIEW"] = tuple(getattr(addon_prefs, "circle_tan3_col_preview", (0.0, 0.0, 0.0, 1.0)))
         prefs["CIRCLE_TAN3_WIDTH_TANGENT"] = getattr(addon_prefs, "circle_tan3_width_tangent", 2.0)
 
         prefs["CIRCLE_TAN2_SHOW_CURVES"] = getattr(addon_prefs, "circle_tan2_show_curves", True)
         prefs["CIRCLE_TAN2_COL_CURVES"] = tuple(getattr(addon_prefs, "circle_tan2_col_curves", (0.0, 0.8, 1.0, 0.5)))
-        prefs["CIRCLE_TAN2_COL_PREVIEW"] = tuple(getattr(addon_prefs, "circle_tan2_col_preview", (1.0, 0.4745, 0.0, 1.0)))
+        prefs["CIRCLE_TAN2_COL_PREVIEW"] = tuple(getattr(addon_prefs, "circle_tan2_col_preview", (0.0, 0.0, 0.0, 1.0)))
         prefs["CIRCLE_TAN2_WIDTH_CURVES"] = getattr(addon_prefs, "circle_tan2_width_curves", 2.0)
 
         prefs["CIRCLE_TAN2_SHOW_TANGENT"] = getattr(addon_prefs, "circle_tan2_show_tangent", True)
@@ -760,7 +760,7 @@ def draw_preview_tan_tan(ctx, shaders, prefs):
 
     pt_size = prefs.get("PREVIEW_VERTEX_SIZE", 5)
     t_col = prefs.get("CIRCLE_TAN2_COL_TANGENT", (0.0, 0.8, 1.0, 0.5))
-    p_col = prefs.get("CIRCLE_TAN2_COL_PREVIEW", (1.0, 0.4745, 0.0, 1.0))
+    p_col = prefs.get("CIRCLE_TAN2_COL_PREVIEW", (0.0, 0.0, 0.0, 1.0))
     t_width = prefs.get("CIRCLE_TAN2_WIDTH_TANGENT", 2.0)
 
     # 1. Smooth Math Circle (Catmull) - Uses Preference Color (Blue)
@@ -787,7 +787,7 @@ def draw_preview_tan_tan_tan(ctx, shaders, prefs):
 
     pt_size = prefs.get("PREVIEW_VERTEX_SIZE", 5)
     t_col = prefs.get("CIRCLE_TAN3_COL_TANGENT", (0.0, 0.8, 1.0, 0.5))
-    p_col = prefs.get("CIRCLE_TAN3_COL_PREVIEW", (1.0, 0.4745, 0.0, 1.0))
+    p_col = prefs.get("CIRCLE_TAN3_COL_PREVIEW", (0.0, 0.0, 0.0, 1.0))
     t_width = prefs.get("CIRCLE_TAN3_WIDTH_TANGENT", 2.0)
 
     # 1. Smooth Math Circle (Catmull) - Uses Preference Color (Blue)

@@ -189,8 +189,8 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
         subtype='COLOR',
         size=4,
         min=0.0, max=1.0,
-        default=(1.0, 0.4745, 0.0, 1.0),
-        description="Color for the mesh geometry preview (Default: 255, 121, 0)"
+        default=(0.0, 0.0, 0.0, 1.0),
+        description="Color for the mesh geometry preview (Default: 0, 0, 0)"
     )
 
     circle_tan3_width_tangent: bpy.props.FloatProperty(
@@ -247,8 +247,8 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
         subtype='COLOR',
         size=4,
         min=0.0, max=1.0,
-        default=(1.0, 0.4745, 0.0, 1.0),
-        description="Color for the mesh geometry preview (Default: 255, 121, 0)"
+        default=(0.0, 0.0, 0.0, 1.0),
+        description="Color for the mesh geometry preview (Default: 0, 0, 0)"
     )
 
     circle_tan2_width_tangent: bpy.props.FloatProperty(
@@ -297,7 +297,7 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
     preview_vertex_size: bpy.props.IntProperty(
         name="Preview Vertex Size",
         description="Customize the size of the points shown during drawing",
-        default=3,
+        default=5,
         min=1,
         max=50
     )

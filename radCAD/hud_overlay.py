@@ -437,7 +437,7 @@ def draw_hud_2d():
             
             # --- Standard Arc Fill (TRI_FAN) ---
             if state.get("tool_mode") != "POINT_BY_ARCS":
-                base_pt = style.get("point_px", 4)
+                base_pt = style.get("point_px", 5)
                 final_pt = max(1, base_pt - 1) if bpy.app.version >= (5, 0, 0) else base_pt
                 r = final_pt / 2.0
                 col = (0.0, 0.0, 0.0, 1.0)
