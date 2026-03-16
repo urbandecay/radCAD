@@ -403,8 +403,8 @@ def draw_points(ctx, shaders, points, color, size, settings, Xp=None, Yp=None, c
     sh_fill.uniform_float("color", color)
     batch_for_shader(sh_fill, 'TRIS', {"pos": tris}).draw(sh_fill)
     
-    # 2. Draw Wireframe Outline (Same color to ensure it looks solid)
-    setup_polyline_shader(sh_line, color, 1.0, settings)
+    # 2. Draw Wireframe Outline (Slightly thicker for visibility)
+    setup_polyline_shader(sh_line, color, 1.5, settings)
     batch_for_shader(sh_line, 'LINES', {"pos": lines}).draw(sh_line)
 # =========================================================================
 #  TOOL SPECIALISTS
@@ -782,7 +782,7 @@ def draw_preview_tan_tan(ctx, shaders, prefs):
     p_pts = state.get("preview_pts", [])
     if p_pts:
         draw_polyline(ctx, shaders, p_pts, p_col, prefs, custom_width=1.0, custom_lift=prefs["LIFT_ARC"] + 2.0)
-        draw_points(ctx, shaders, p_pts, p_col, pt_size, prefs)        
+        draw_points(ctx, shaders, p_pts, p_col, pt_size, prefs, custom_lift=prefs["LIFT_ARC"] + 5.0)        
     # 3. Tangency Viz
     viz_tan = state.get("viz_tangent_line")
     if viz_tan and len(viz_tan) == 2:
@@ -810,7 +810,7 @@ def draw_preview_tan_tan_tan(ctx, shaders, prefs):
     if p_pts:
         draw_polyline(ctx, shaders, p_pts, p_col, prefs, custom_width=1.0, custom_lift=prefs["LIFT_ARC"] + 2.0)
         # Match 2-curve behavior: draw points at every mesh vertex
-        draw_points(ctx, shaders, p_pts, p_col, pt_size, prefs)
+        draw_points(ctx, shaders, p_pts, p_col, pt_size, prefs, custom_lift=prefs["LIFT_ARC"] + 5.0)
 
     # 3. Tangency Viz
     viz_tan = state.get("viz_tangent_line")
