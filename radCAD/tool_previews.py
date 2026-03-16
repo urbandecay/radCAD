@@ -22,14 +22,14 @@ def get_shaders():
         shaders["POLYLINE"] = gpu.shader.from_builtin('POLYLINE_UNIFORM_COLOR')
     except Exception:
         try:
-            shaders["POLYLINE"] = gpu.shader.from_builtin('3D_UNIFORM_COLOR')
-        except:
             shaders["POLYLINE"] = gpu.shader.from_builtin('UNIFORM_COLOR')
+        except:
+            shaders["POLYLINE"] = gpu.shader.from_builtin('3D_UNIFORM_COLOR')
 
     try:
-        shaders["UNIFORM"] = gpu.shader.from_builtin('3D_UNIFORM_COLOR')
-    except Exception:
         shaders["UNIFORM"] = gpu.shader.from_builtin('UNIFORM_COLOR')
+    except Exception:
+        shaders["UNIFORM"] = gpu.shader.from_builtin('3D_UNIFORM_COLOR')
         
     return shaders
 
@@ -399,6 +399,7 @@ def draw_points(ctx, shaders, points, color, size, settings, Xp=None, Yp=None, c
         ])
 
     # 1. Draw Solid Faces
+    gpu.state.face_culling_set('NONE')
     sh_fill.bind()
     sh_fill.uniform_float("color", color)
     batch_for_shader(sh_fill, 'TRIS', {"pos": tris}).draw(sh_fill)
