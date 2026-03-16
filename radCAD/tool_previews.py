@@ -351,74 +351,33 @@ def draw_crosshair(ctx, shaders, points, color, size, settings, Xp, Yp, custom_l
     batch_for_shader(sh, 'LINES', {"pos": segs}).draw(sh)
 
 def draw_points(ctx, shaders, points, color, size, settings, Xp=None, Yp=None, custom_lift=None):
-    """Draws points as 3D cubes that are stabilized to always appear as 4px squares on screen."""
+    """Draws points using the GPU 'POINTS' primitive for maximum robustness in Blender 4.2/5.0 (EEVEE-Next)."""
     if not points: return
     
+    sh = shaders["UNIFORM"]
+    sh.bind()
+    
+    # Configure GPU state for solid point rendering
+    gpu.state.blend_set('ALPHA')
+    gpu.state.depth_test_set('LESS_EQUAL')
+    gpu.state.depth_mask_set(True)
+    
+    # Apply view bias to ensure points are on top of mesh/edges
     lift = custom_lift if custom_lift is not None else settings.get("LIFT_ARC", 20.0)
-    pts = apply_view_bias(points, ctx, lift_mult=lift, persp_percent=settings.get("LIFT_PERSP", 0.2))
+    pts = apply_view_bias(points, ctx, lift_mult=lift + 1.0, persp_percent=settings.get("LIFT_PERSP", 0.2))
     
-    # Use Camera Basis so cubes always face the viewer (looking "squared")
-    rv3d = ctx.region_data
-    view_inv = rv3d.view_matrix.inverted()
-    X = view_inv.to_3x3() @ Vector((1, 0, 0))
-    Y = view_inv.to_3x3() @ Vector((0, 1, 0))
-    Z = view_inv.to_3x3() @ Vector((0, 0, 1))
+    # 1. Draw Black Outline (Slightly larger square behind)
+    gpu.state.point_size_set((size + 2.0) * settings.get("UI_SCALE", 1.0))
+    sh.uniform_float("color", (0.0, 0.0, 0.0, 1.0))
+    batch_bg = batch_for_shader(sh, 'POINTS', {"pos": pts})
+    batch_bg.draw(sh)
     
-    sh_flat = shaders.get("FLAT", shaders["UNIFORM"])
-    sh_line = shaders["POLYLINE"]
-    
-    tris = []
-    lines = []
-    
-    for p in pts:
-        # Calculate world-space radius for this specific point's depth
-        # Passing 'size' directly ensures the total width (2 * offset) equals 'size' pixels
-        offset = world_radius_for_pixel_size(ctx, p, X, Y, size)
-        if offset <= 0: offset = 0.02
-        
-        # Define 8 corners of the cube (Camera Aligned)
-        c1 = p + X*offset + Y*offset + Z*offset
-        c2 = p + X*offset - Y*offset + Z*offset
-        c3 = p - X*offset - Y*offset + Z*offset
-        c4 = p - X*offset + Y*offset + Z*offset
-        c5 = p + X*offset + Y*offset - Z*offset
-        c6 = p + X*offset - Y*offset - Z*offset
-        c7 = p - X*offset - Y*offset - Z*offset
-        c8 = p - X*offset + Y*offset - Z*offset
-        
-        # 12 Triangles for solid faces
-        tris.extend([
-            c1,c2,c3, c1,c3,c4, # Front
-            c5,c6,c7, c5,c7,c8, # Back
-            c1,c2,c6, c1,c6,c5, # Top
-            c4,c3,c7, c4,c7,c8, # Bottom
-            c1,c4,c8, c1,c8,c5, # Right
-            c2,c3,c7, c2,c7,c6  # Left
-        ])
-        
-        # 12 Edges for the outline
-        lines.extend([
-            c1,c2, c2,c3, c3,c4, c4,c1, # Front Face
-            c5,c6, c6,c7, c7,c8, c8,c5, # Back Face
-            c1,c5, c2,c6, c3,c7, c4,c8  # Connecting Pillars
-        ])
-
-    # 1. Draw Solid Faces (Using FLAT_COLOR per-vertex attributes to bypass EEVEE-Next uniform bug)
-    gpu.state.face_culling_set('NONE')
-    sh_flat.bind()
-    
-    # Check if the shader has the 'color' uniform vs attribute
-    if "FLAT" in shaders:
-        vertex_colors = [color for _ in range(len(tris))]
-        batch_for_shader(sh_flat, 'TRIS', {"pos": tris, "color": vertex_colors}).draw(sh_flat)
-    else:
-        # Fallback if FLAT_COLOR couldn't be loaded
-        sh_flat.uniform_float("color", color)
-        batch_for_shader(sh_flat, 'TRIS', {"pos": tris}).draw(sh_flat)
-    
-    # 2. Draw Wireframe Outline (Slightly thicker for visibility)
-    setup_polyline_shader(sh_line, color, 1.5, settings)
-    batch_for_shader(sh_line, 'LINES', {"pos": lines}).draw(sh_line)
+    # 2. Draw Solid Color Foreground (Actual vertex square)
+    gpu.state.point_size_set(size * settings.get("UI_SCALE", 1.0))
+    final_color = (float(color[0]), float(color[1]), float(color[2]), float(color[3]))
+    sh.uniform_float("color", final_color)
+    batch_fg = batch_for_shader(sh, 'POINTS', {"pos": pts})
+    batch_fg.draw(sh)
 # =========================================================================
 #  TOOL SPECIALISTS
 # =========================================================================
