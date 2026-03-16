@@ -350,33 +350,52 @@ def draw_crosshair(ctx, shaders, points, color, size, settings, Xp, Yp, custom_l
     setup_polyline_shader(sh, color, 1.0, settings)
     batch_for_shader(sh, 'LINES', {"pos": segs}).draw(sh)
 
+from bpy_extras import view3d_utils
+
 def draw_points(ctx, shaders, points, color, size, settings, Xp=None, Yp=None, custom_lift=None):
-    """Draws points using the GPU 'POINTS' primitive with FLAT_COLOR for Blender 5.0 compatibility."""
+    """Draws points as solid screen-space squares to bypass Blender 5.0 EEVEE-Next 3D rendering bugs."""
     if not points: return
     
-    # Use FLAT shader to bypass uniform color bugs in Blender 5.0
-    sh = shaders.get("FLAT", shaders["UNIFORM"])
+    # 1. Project 3D points to 2D screen coordinates
+    region = ctx.region
+    rv3d = ctx.region_data
+    pts_2d = []
+    for p in points:
+        # Apply a small lift in 3D first to ensure they stay on top
+        lift_val = (custom_lift if custom_lift is not None else settings.get("LIFT_ARC", 20.0)) * 0.001
+        p_lifted = p.copy()
+        
+        # Simple camera-facing lift
+        view_inv = rv3d.view_matrix.inverted()
+        cam_z = Vector((view_inv[0][2], view_inv[1][2], view_inv[2][2]))
+        p_lifted += cam_z * lift_val
+        
+        p2d = view3d_utils.location_3d_to_region_2d(region, rv3d, p_lifted)
+        if p2d: pts_2d.append(p2d)
+        
+    if not pts_2d: return
+
+    # 2. Draw using 2D UI shader (completely robust in EEVEE-Next)
+    sh = gpu.shader.from_builtin('UNIFORM_COLOR')
     sh.bind()
-    
-    # Configure GPU state
     gpu.state.blend_set('ALPHA')
-    gpu.state.depth_test_set('LESS_EQUAL')
     
-    lift = custom_lift if custom_lift is not None else settings.get("LIFT_ARC", 20.0)
-    pts = apply_view_bias(points, ctx, lift_mult=lift + 1.0, persp_percent=settings.get("LIFT_PERSP", 0.2))
+    final_size = size * settings.get("UI_SCALE", 1.0)
+    half = final_size * 0.5
     
-    # Draw Solid Color Foreground
-    gpu.state.point_size_set(size * settings.get("UI_SCALE", 1.0))
-    
-    if "FLAT" in shaders:
-        vertex_colors = [color for _ in range(len(pts))]
-        batch = batch_for_shader(sh, 'POINTS', {"pos": pts, "color": vertex_colors})
-        batch.draw(sh)
-    else:
-        # Fallback for older Blender versions
-        sh.uniform_float("color", color)
-        batch = batch_for_shader(sh, 'POINTS', {"pos": pts})
-        batch.draw(sh)
+    tris = []
+    for p in pts_2d:
+        x, y = p.x, p.y
+        # Create 2 triangles for a solid square
+        v1 = Vector((x - half, y - half))
+        v2 = Vector((x + half, y - half))
+        v3 = Vector((x + half, y + half))
+        v4 = Vector((x - half, y + half))
+        tris.extend([v1, v2, v3, v1, v3, v4])
+
+    sh.uniform_float("color", color)
+    batch = batch_for_shader(sh, 'TRIS', {"pos": tris})
+    batch.draw(sh)
 # =========================================================================
 #  TOOL SPECIALISTS
 # =========================================================================
