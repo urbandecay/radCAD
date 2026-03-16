@@ -184,6 +184,15 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
         description="Color for the tangent circle preview"
     )
 
+    circle_tan3_col_preview: bpy.props.FloatVectorProperty(
+        name="Preview Geometry Color",
+        subtype='COLOR',
+        size=4,
+        min=0.0, max=1.0,
+        default=(1.0, 0.4745, 0.0, 1.0),
+        description="Color for the mesh geometry preview (Default: 255, 121, 0)"
+    )
+
     circle_tan3_width_tangent: bpy.props.FloatProperty(
         name="Tangent Circle Thickness",
         description="Line thickness for the tangent circle preview",
@@ -789,6 +798,7 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
             self.draw_group_label(col, "Tangent Circle:", icon='MESH_CIRCLE')
             self.draw_property_row(col, "Show Tangent:", "circle_tan3_show_tangent")
             self.draw_property_row(col, "Tangent Circle Color:", "circle_tan3_col_tangent")
+            self.draw_property_row(col, "Preview Geometry Color:", "circle_tan3_col_preview")
             self.draw_property_row(col, "Tangent Circle Thickness:", "circle_tan3_width_tangent")
 
         # 14. CIRCLE TANGENT TO TWO CURVES (Moved under Tan 3)

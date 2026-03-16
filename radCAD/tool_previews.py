@@ -793,6 +793,7 @@ def draw_preview_tan_tan_tan(ctx, shaders, prefs):
 
     pt_size = prefs.get("PREVIEW_VERTEX_SIZE", 5)
     t_col = prefs.get("CIRCLE_TAN3_COL_TANGENT", (0.0, 0.8, 1.0, 0.5))
+    p_col = prefs.get("CIRCLE_TAN3_COL_PREVIEW", (1.0, 0.4745, 0.0, 1.0))
     t_width = prefs.get("CIRCLE_TAN3_WIDTH_TANGENT", 2.0)
 
     # 1. Smooth Math Circle (Catmull) - Uses Preference Color (Blue)
@@ -800,12 +801,12 @@ def draw_preview_tan_tan_tan(ctx, shaders, prefs):
     if v_pts:
         draw_polyline(ctx, shaders, v_pts, t_col, prefs, custom_width=t_width)
 
-    # 2. Mesh Geometry (Always Black, 1.0 Width)
+    # 2. Mesh Geometry (Uses Preference Color, Default: Orange)
     p_pts = state.get("preview_pts", [])
     if p_pts:
-        draw_polyline(ctx, shaders, p_pts, (0, 0, 0, 1), prefs, custom_width=1.0, custom_lift=prefs["LIFT_ARC"] + 2.0)
+        draw_polyline(ctx, shaders, p_pts, p_col, prefs, custom_width=1.0, custom_lift=prefs["LIFT_ARC"] + 2.0)
         # Match 2-curve behavior: draw points at every mesh vertex
-        draw_points(ctx, shaders, p_pts, (0, 0, 0, 1), pt_size, prefs)
+        draw_points(ctx, shaders, p_pts, p_col, pt_size, prefs)
 
     # 3. Tangency Viz
     viz_tan = state.get("viz_tangent_line")

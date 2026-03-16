@@ -123,6 +123,7 @@ class CircleTool_TanTanTan:
             "stage": 0,
             "preview_pts": [],
             "visual_pts": [], # Explicitly reset to kill old ghost data
+            "catmull_spline_previews": [], # Reset
             "tan_solutions": [],
             "tan_solution_active": False,
             "viz_tangent_line": [],
@@ -134,6 +135,21 @@ class CircleTool_TanTanTan:
         
         if len(chains) == 3:
             self.splines = chains 
+            
+            # --- POPULATE CATMULL OVERLAYS ---
+            catmull_previews = []
+            for pts_raw, is_closed in chains:
+                spline = CatmullRomSpline(pts_raw, is_closed=is_closed)
+                if spline.segments:
+                    # Sample the spline for smooth visualization
+                    curve_pts = []
+                    for seg in spline.segments:
+                        # 4 samples per segment
+                        curve_pts.extend([seg.eval(seg.t_start + t*seg.dt) for t in [0.0, 0.25, 0.5, 0.75]])
+                    # Add very last point
+                    curve_pts.append(spline.segments[-1].eval(spline.segments[-1].t_end))
+                    catmull_previews.append(curve_pts)
+            state["catmull_spline_previews"] = catmull_previews
             
             v1 = chains[0][0][1] - chains[0][0][0]
             v2 = chains[0][0][-1] - chains[0][0][0]
