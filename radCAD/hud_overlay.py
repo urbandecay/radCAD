@@ -208,7 +208,8 @@ def draw_hotkeys_panel():
         if state.get("tool_mode") in ["2POINT", "3POINT", "CIRCLE_2POINT", "CIRCLE_3POINT"]:
             # --- FIX: Only show Diameter hint in Stage 1 ---
             if state["stage"] == 1:
-                lines.append(("D: Set Diameter", None))
+                if state["tool_mode"] != "3POINT":
+                    lines.append(("D: Set Diameter", None))
                 lines.append(("Alt: Bypass Axis Snap", None))
         elif state.get("tool_mode") == "ELLIPSE_ENDPOINTS" and state["stage"] == 1:
             lines.append(("D: Set Diameter", None))
@@ -520,7 +521,7 @@ def draw_hud_2d():
                 else:
                     label = "R:"
                     if tool_mode in ["2POINT", "3POINT", "CIRCLE_2POINT", "CIRCLE_3POINT"]:
-                        if state["stage"] == 1: label = "D:"
+                        if state["stage"] == 1: label = "" if tool_mode == "3POINT" else "D:"
                         elif tool_mode == "2POINT": label = "S:" # Sagitta for 2pt Stage 2
                         else: label = "R:" # Default for 3pt Stage 2 or CIRCLE_2POINT Stage 2 is Radius
                     elif tool_mode == "ELLIPSE_ENDPOINTS" and state["stage"] == 1:
@@ -618,11 +619,21 @@ def draw_hud_2d():
                     else: s_txt = f"Segments: {state['segments']}"
                     draw_ui_box_generic(px, current_y, s_txt, active=is_input_s)
                     current_y -= (40 * style["ui_scale"]) if "ui_scale" in style else 40
+                elif tool_mode == "CIRCLE_TAN_TAN":
+                    # Live radius display for Tan-Tan
+                    target = state.get("input_target", "RADIUS")
+                    r_val = state.get("radius", 0.0)
+                    if target == 'DIAMETER':
+                        r_txt = "D: " + format_length(r_val * 2.0)
+                    else:
+                        r_txt = "R: " + format_length(r_val)
+                    h1 = draw_ui_box_generic(px, current_y, r_txt)
+                    current_y -= (h1 + 4)
                 elif tool_mode == "ELLIPSE_CORNERS":
                     pass
                 elif tool_mode in ["2POINT", "3POINT", "CIRCLE_2POINT", "CIRCLE_3POINT"]:
                     if state["stage"] == 1:
-                         label = "D: "
+                         label = "" if tool_mode == "3POINT" else "D: "
                          # Chord Length / Diameter
                          d_val = (state["current"] - state["pivot"]).length if (state["current"] and state["pivot"]) else 0.0
                          r_txt = label + format_length(d_val)
