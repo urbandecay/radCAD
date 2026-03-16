@@ -100,9 +100,11 @@ def get_render_settings(ctx):
         "CIRCLE_TAN3_WIDTH_CURVES": 2.0,
         "CIRCLE_TAN3_SHOW_TANGENT": True,
         "CIRCLE_TAN3_COL_TANGENT": (0.0, 0.8, 1.0, 0.5),
+        "CIRCLE_TAN3_COL_PREVIEW": (1.0, 0.4745, 0.0, 1.0),
         "CIRCLE_TAN3_WIDTH_TANGENT": 2.0,
         "CIRCLE_TAN2_SHOW_CURVES": True,
         "CIRCLE_TAN2_COL_CURVES": (0.0, 0.8, 1.0, 0.5),
+        "CIRCLE_TAN2_COL_PREVIEW": (1.0, 0.4745, 0.0, 1.0),
         "CIRCLE_TAN2_WIDTH_CURVES": 2.0,
         "CIRCLE_TAN2_SHOW_TANGENT": True,
         "CIRCLE_TAN2_COL_TANGENT": (0.0, 0.8, 1.0, 0.5),
@@ -143,10 +145,12 @@ def get_render_settings(ctx):
 
         prefs["CIRCLE_TAN3_SHOW_TANGENT"] = getattr(addon_prefs, "circle_tan3_show_tangent", True)
         prefs["CIRCLE_TAN3_COL_TANGENT"] = tuple(getattr(addon_prefs, "circle_tan3_col_tangent", (0.0, 0.8, 1.0, 0.5)))
+        prefs["CIRCLE_TAN3_COL_PREVIEW"] = tuple(getattr(addon_prefs, "circle_tan3_col_preview", (1.0, 0.4745, 0.0, 1.0)))
         prefs["CIRCLE_TAN3_WIDTH_TANGENT"] = getattr(addon_prefs, "circle_tan3_width_tangent", 2.0)
 
         prefs["CIRCLE_TAN2_SHOW_CURVES"] = getattr(addon_prefs, "circle_tan2_show_curves", True)
         prefs["CIRCLE_TAN2_COL_CURVES"] = tuple(getattr(addon_prefs, "circle_tan2_col_curves", (0.0, 0.8, 1.0, 0.5)))
+        prefs["CIRCLE_TAN2_COL_PREVIEW"] = tuple(getattr(addon_prefs, "circle_tan2_col_preview", (1.0, 0.4745, 0.0, 1.0)))
         prefs["CIRCLE_TAN2_WIDTH_CURVES"] = getattr(addon_prefs, "circle_tan2_width_curves", 2.0)
 
         prefs["CIRCLE_TAN2_SHOW_TANGENT"] = getattr(addon_prefs, "circle_tan2_show_tangent", True)
@@ -399,9 +403,8 @@ def draw_points(ctx, shaders, points, color, size, settings, Xp=None, Yp=None, c
     sh_fill.uniform_float("color", color)
     batch_for_shader(sh_fill, 'TRIS', {"pos": tris}).draw(sh_fill)
     
-    # 2. Draw Wireframe Outline
-    outline_color = (color[0]*0.5, color[1]*0.5, color[2]*0.5, color[3])
-    setup_polyline_shader(sh_line, outline_color, 1.0, settings)
+    # 2. Draw Wireframe Outline (Same color to ensure it looks solid)
+    setup_polyline_shader(sh_line, color, 1.0, settings)
     batch_for_shader(sh_line, 'LINES', {"pos": lines}).draw(sh_line)
 # =========================================================================
 #  TOOL SPECIALISTS
@@ -767,6 +770,7 @@ def draw_preview_tan_tan(ctx, shaders, prefs):
 
     pt_size = prefs.get("PREVIEW_VERTEX_SIZE", 5)
     t_col = prefs.get("CIRCLE_TAN2_COL_TANGENT", (0.0, 0.8, 1.0, 0.5))
+    p_col = prefs.get("CIRCLE_TAN2_COL_PREVIEW", (1.0, 0.4745, 0.0, 1.0))
     t_width = prefs.get("CIRCLE_TAN2_WIDTH_TANGENT", 2.0)
 
     # 1. Smooth Math Circle (Catmull) - Uses Preference Color (Blue)
@@ -774,11 +778,11 @@ def draw_preview_tan_tan(ctx, shaders, prefs):
     if v_pts:
         draw_polyline(ctx, shaders, v_pts, t_col, prefs, custom_width=t_width)
 
-    # 2. Mesh Geometry (Always Black, 1.0 Width)
+    # 2. Mesh Geometry (Uses Preference Color, Default: Orange)
     p_pts = state.get("preview_pts", [])
     if p_pts:
-        draw_polyline(ctx, shaders, p_pts, (0, 0, 0, 1), prefs, custom_width=1.0, custom_lift=prefs["LIFT_ARC"] + 2.0)
-        draw_points(ctx, shaders, p_pts, (0, 0, 0, 1), pt_size, prefs)        
+        draw_polyline(ctx, shaders, p_pts, p_col, prefs, custom_width=1.0, custom_lift=prefs["LIFT_ARC"] + 2.0)
+        draw_points(ctx, shaders, p_pts, p_col, pt_size, prefs)        
     # 3. Tangency Viz
     viz_tan = state.get("viz_tangent_line")
     if viz_tan and len(viz_tan) == 2:
