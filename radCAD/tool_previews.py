@@ -351,33 +351,32 @@ def draw_crosshair(ctx, shaders, points, color, size, settings, Xp, Yp, custom_l
     batch_for_shader(sh, 'LINES', {"pos": segs}).draw(sh)
 
 def draw_points(ctx, shaders, points, color, size, settings, Xp=None, Yp=None, custom_lift=None):
-    """Draws points using the GPU 'POINTS' primitive for maximum robustness in Blender 4.2/5.0 (EEVEE-Next)."""
+    """Draws points using the GPU 'POINTS' primitive with FLAT_COLOR for Blender 5.0 compatibility."""
     if not points: return
     
-    sh = shaders["UNIFORM"]
+    # Use FLAT shader to bypass uniform color bugs in Blender 5.0
+    sh = shaders.get("FLAT", shaders["UNIFORM"])
     sh.bind()
     
-    # Configure GPU state for solid point rendering
+    # Configure GPU state
     gpu.state.blend_set('ALPHA')
     gpu.state.depth_test_set('LESS_EQUAL')
-    gpu.state.depth_mask_set(True)
     
-    # Apply view bias to ensure points are on top of mesh/edges
     lift = custom_lift if custom_lift is not None else settings.get("LIFT_ARC", 20.0)
     pts = apply_view_bias(points, ctx, lift_mult=lift + 1.0, persp_percent=settings.get("LIFT_PERSP", 0.2))
     
-    # 1. Draw Black Outline (Slightly larger square behind)
-    gpu.state.point_size_set((size + 2.0) * settings.get("UI_SCALE", 1.0))
-    sh.uniform_float("color", (0.0, 0.0, 0.0, 1.0))
-    batch_bg = batch_for_shader(sh, 'POINTS', {"pos": pts})
-    batch_bg.draw(sh)
-    
-    # 2. Draw Solid Color Foreground (Actual vertex square)
+    # Draw Solid Color Foreground
     gpu.state.point_size_set(size * settings.get("UI_SCALE", 1.0))
-    final_color = (float(color[0]), float(color[1]), float(color[2]), float(color[3]))
-    sh.uniform_float("color", final_color)
-    batch_fg = batch_for_shader(sh, 'POINTS', {"pos": pts})
-    batch_fg.draw(sh)
+    
+    if "FLAT" in shaders:
+        vertex_colors = [color for _ in range(len(pts))]
+        batch = batch_for_shader(sh, 'POINTS', {"pos": pts, "color": vertex_colors})
+        batch.draw(sh)
+    else:
+        # Fallback for older Blender versions
+        sh.uniform_float("color", color)
+        batch = batch_for_shader(sh, 'POINTS', {"pos": pts})
+        batch.draw(sh)
 # =========================================================================
 #  TOOL SPECIALISTS
 # =========================================================================
