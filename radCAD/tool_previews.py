@@ -31,6 +31,11 @@ def get_shaders():
     except Exception:
         shaders["UNIFORM"] = gpu.shader.from_builtin('3D_UNIFORM_COLOR')
         
+    try:
+        shaders["FLAT"] = gpu.shader.from_builtin('FLAT_COLOR')
+    except Exception:
+        shaders["FLAT"] = gpu.shader.from_builtin('3D_FLAT_COLOR')
+        
     return shaders
 
 def apply_view_bias(points, ctx, amount=0.002, lift_mult=10.0, persp_percent=0.2):
@@ -359,7 +364,7 @@ def draw_points(ctx, shaders, points, color, size, settings, Xp=None, Yp=None, c
     Y = view_inv.to_3x3() @ Vector((0, 1, 0))
     Z = view_inv.to_3x3() @ Vector((0, 0, 1))
     
-    sh_fill = shaders["UNIFORM"]
+    sh_flat = shaders.get("FLAT", shaders["UNIFORM"])
     sh_line = shaders["POLYLINE"]
     
     tris = []
@@ -398,11 +403,18 @@ def draw_points(ctx, shaders, points, color, size, settings, Xp=None, Yp=None, c
             c1,c5, c2,c6, c3,c7, c4,c8  # Connecting Pillars
         ])
 
-    # 1. Draw Solid Faces
+    # 1. Draw Solid Faces (Using FLAT_COLOR per-vertex attributes to bypass EEVEE-Next uniform bug)
     gpu.state.face_culling_set('NONE')
-    sh_fill.bind()
-    sh_fill.uniform_float("color", color)
-    batch_for_shader(sh_fill, 'TRIS', {"pos": tris}).draw(sh_fill)
+    sh_flat.bind()
+    
+    # Check if the shader has the 'color' uniform vs attribute
+    if "FLAT" in shaders:
+        vertex_colors = [color for _ in range(len(tris))]
+        batch_for_shader(sh_flat, 'TRIS', {"pos": tris, "color": vertex_colors}).draw(sh_flat)
+    else:
+        # Fallback if FLAT_COLOR couldn't be loaded
+        sh_flat.uniform_float("color", color)
+        batch_for_shader(sh_flat, 'TRIS', {"pos": tris}).draw(sh_flat)
     
     # 2. Draw Wireframe Outline (Slightly thicker for visibility)
     setup_polyline_shader(sh_line, color, 1.5, settings)
