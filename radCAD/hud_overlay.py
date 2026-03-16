@@ -216,8 +216,6 @@ def draw_hotkeys_panel():
         elif state.get("tool_mode") == "LINE_POLY":            lines.append(("L: Set Length", None)) # --- NEW: Line Length Hint ---
         elif state.get("tool_mode") == "ELLIPSE_FOCI":
             lines.append(("F: Set Foci", None))
-            if state["stage"] == 2:
-                lines.append(("R: Set Radius", None))
             
             # --- KEEP FOCI TOGGLE ---
             keep_state = "ON" if state.get("keep_foci") else "OFF"
@@ -528,7 +526,7 @@ def draw_hud_2d():
                         label = "D:"
                     elif tool_mode == "LINE_POLY": label = "" # --- REMOVED 'L' for Line Tool
                     elif tool_mode == "ELLIPSE_FOCI": 
-                        label = "F:" if state["stage"] == 1 else "R:"
+                        label = "F:" if state["stage"] == 1 else ""
                     elif tool_mode == "ELLIPSE_RADIUS":
                         label = "D:" if state["stage"] == 1 else "R:"
                     elif tool_mode == "POLYGON_CENTER_CORNER":
@@ -553,20 +551,13 @@ def draw_hud_2d():
                     h1 = draw_ui_box_generic(px, current_y, r_txt)
                     current_y -= (h1 + 4)
                 elif tool_mode == "ELLIPSE_FOCI":
-                    # Only show Minor Radius here in Stage 2 (F is shown in recap)
+                    # For Stage 1 we still need the Foci label
                     if state["stage"] == 1:
-                        # For Stage 1 we still need the Foci label
                         f1, f2 = state.get("f1") or state["pivot"], state.get("f2") or state["current"]
                         dist_f = (f2 - f1).length if (f1 and f2) else 0.0
                         r_txt_f = "F: " + format_length(dist_f)
                         h1 = draw_ui_box_generic(px, current_y, r_txt_f)
                         current_y -= (h1 + 4)
-                    elif state["stage"] == 2:
-                        label_r = "R: "
-                        r_val = state.get("ry", 0.0)
-                        r_txt_r = label_r + format_length(r_val)
-                        h2 = draw_ui_box_generic(px, current_y, r_txt_r)
-                        current_y -= (h2 + 4)
                 elif tool_mode == "ELLIPSE_ENDPOINTS":
                     if state["stage"] == 1:
                         # For Stage 1 we still need the Diameter label

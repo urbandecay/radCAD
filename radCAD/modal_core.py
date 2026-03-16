@@ -705,12 +705,14 @@ def modal_arc_common(self, ctx, ev):
         tool_mode = state.get("tool_mode", "1POINT")
         
         if ev.type == 'S': target_mode = 'SEGMENTS'
-        elif ev.type == 'R' and tool_mode != "ELLIPSE_CORNERS": target_mode = 'RADIUS'; state["input_target"] = 'RADIUS'
+        elif ev.type == 'R' and tool_mode != "ELLIPSE_CORNERS":
+            if tool_mode != "ELLIPSE_FOCI" or state["stage"] == 1:
+                target_mode = 'RADIUS'; state["input_target"] = 'RADIUS'
         elif ev.type == 'D' and tool_mode in ["2POINT", "CIRCLE_2POINT", "ELLIPSE_ENDPOINTS", "ELLIPSE_RADIUS"]: target_mode = 'RADIUS'; state["input_target"] = 'DIAMETER'
         elif ev.type == 'H' and tool_mode == "2POINT" and state["stage"] == 2: target_mode = 'RADIUS'; state["input_target"] = 'SAGITTA'
         elif ev.type == 'A' and tool_mode == "POLYGON_CENTER_TANGENT": target_mode = 'RADIUS'; state["input_target"] = 'RADIUS'
         elif ev.type == 'L' and tool_mode in ["POLYGON_CORNER_CORNER", "POLYGON_EDGE", "LINE_POLY"]: target_mode = 'RADIUS'; state["input_target"] = 'RADIUS'
-        elif ev.type == 'A' and state["stage"] == 2 and tool_mode not in ["2POINT", "CIRCLE_TAN_TAN_TAN", "LINE_POLY", "ELLIPSE_CORNERS", "ELLIPSE_ENDPOINTS"]:
+        elif ev.type == 'A' and state["stage"] == 2 and tool_mode not in ["2POINT", "CIRCLE_TAN_TAN_TAN", "LINE_POLY", "ELLIPSE_CORNERS", "ELLIPSE_ENDPOINTS", "ELLIPSE_FOCI"]:
             target_mode = 'ANGLE'        
         if is_number_input(ev): 
             # --- FIX: Context-aware number typing ---
@@ -723,10 +725,11 @@ def modal_arc_common(self, ctx, ev):
             if is_angle_stage:
                 target_mode = 'ANGLE'
             elif tool_mode != "ELLIPSE_CORNERS":
-                target_mode = 'RADIUS' # Covers 2POINT Sagitta automatically as it's in Stage 2 but not an angle stage
-                if tool_mode == "2POINT" and state["stage"] == 2: state["input_target"] = 'SAGITTA'
-                elif tool_mode in ["CIRCLE_2POINT", "ELLIPSE_RADIUS", "ELLIPSE_ENDPOINTS"] and state["stage"] == 1: state["input_target"] = 'DIAMETER'
-                else: state["input_target"] = 'RADIUS'
+                if tool_mode != "ELLIPSE_FOCI" or state["stage"] == 1:
+                    target_mode = 'RADIUS' # Covers 2POINT Sagitta automatically as it's in Stage 2 but not an angle stage
+                    if tool_mode == "2POINT" and state["stage"] == 2: state["input_target"] = 'SAGITTA'
+                    elif tool_mode in ["CIRCLE_2POINT", "ELLIPSE_RADIUS", "ELLIPSE_ENDPOINTS"] and state["stage"] == 1: state["input_target"] = 'DIAMETER'
+                    else: state["input_target"] = 'RADIUS'
             
         if target_mode:
             if self.manager.region and self.manager.rv3d and state["pivot"]:

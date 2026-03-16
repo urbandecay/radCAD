@@ -222,6 +222,8 @@ def reset_state_from_context(ctx):
         circle_tan2_col_t = tuple(getattr(prefs, "circle_tan2_col_tangent", (0.0, 0.8, 1.0, 0.5)))
         circle_tan2_width_t = getattr(prefs, "circle_tan2_width_tangent", 2.0)
 
+        ellipse_foci_col_foci = tuple(getattr(prefs, "ellipse_foci_col_foci_lines", (0.0, 1.0, 0.0, 1.0)))
+
     try:
         theme = ctx.preferences.themes[0].view_3d
         sys_prefs = ctx.preferences.system
@@ -294,6 +296,7 @@ def reset_state_from_context(ctx):
         "circle_tan2_width_curves": circle_tan2_width_c,
         "circle_tan2_show_tangent": circle_tan2_show_t, "circle_tan2_col_tangent": circle_tan2_col_t,
         "circle_tan2_width_tangent": circle_tan2_width_t,
+        "ellipse_foci_col_foci": ellipse_foci_col_foci,
         "show_measure": getattr(scene, "arc_show_measurements", True),
         "color": tuple(getattr(scene, "arc_color", (1.0, 0.6, 0.0, 1.0))),
         "color_arc_start": col_start, "color_arc_end": col_end,

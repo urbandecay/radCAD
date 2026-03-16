@@ -113,7 +113,8 @@ def get_render_settings(ctx):
         "CIRCLE_TAN2_WIDTH_CURVES": 2.0,
         "CIRCLE_TAN2_SHOW_TANGENT": True,
         "CIRCLE_TAN2_COL_TANGENT": (0.0, 0.8, 1.0, 0.5),
-        "CIRCLE_TAN2_WIDTH_TANGENT": 2.0
+        "CIRCLE_TAN2_WIDTH_TANGENT": 2.0,
+        "ELLIPSE_FOCI_COL_FOCI": (0.0, 1.0, 0.0, 1.0)
     }
 
     system_prefs = ctx.preferences.system
@@ -162,6 +163,8 @@ def get_render_settings(ctx):
         prefs["CIRCLE_TAN2_COL_TANGENT"] = tuple(getattr(addon_prefs, "circle_tan2_col_tangent", (0.0, 0.8, 1.0, 0.5)))
         prefs["CIRCLE_TAN2_WIDTH_TANGENT"] = getattr(addon_prefs, "circle_tan2_width_tangent", 2.0)
         
+        prefs["ELLIPSE_FOCI_COL_FOCI"] = tuple(getattr(addon_prefs, "ellipse_foci_col_foci_lines", (0.0, 1.0, 0.0, 1.0)))
+
         prefs["LIFT_COMPASS"] = addon_prefs.lift_compass
         prefs["LIFT_ARC"] = addon_prefs.lift_arc
         prefs["LIFT_PERSP"] = addon_prefs.lift_perspective
@@ -629,9 +632,9 @@ def draw_preview_ellipse(ctx, shaders, prefs):
              draw_points(ctx, shaders, [state["f1"]], (0,0,0,1), pt_size, prefs)
              draw_points(ctx, shaders, [state["f2"]], (0,0,0,1), pt_size, prefs)
              if state["current"] is not None:
-                  green = (0.0, 1.0, 0.0, 1.0)
-                  draw_line(ctx, shaders, state["f1"], state["current"], green, prefs)
-                  draw_line(ctx, shaders, state["f2"], state["current"], green, prefs)
+                  f_col = prefs.get("ELLIPSE_FOCI_COL_FOCI", (0.0, 1.0, 0.0, 1.0))
+                  draw_line(ctx, shaders, state["f1"], state["current"], f_col, prefs)
+                  draw_line(ctx, shaders, state["f2"], state["current"], f_col, prefs)
         
         # Draw Major Axis (Ghosted/Reference)
         if mode == "ELLIPSE_RADIUS" and "Xp" in state and "rx" in state:

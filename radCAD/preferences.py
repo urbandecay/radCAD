@@ -29,6 +29,7 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
     show_line_tan_tan_settings: bpy.props.BoolProperty(name="Line Tangent to Two Curves Settings", default=True)
     show_circle_tan3_settings: bpy.props.BoolProperty(name="Circle Tangent to Three Curves Settings", default=True)
     show_circle_tan2_settings: bpy.props.BoolProperty(name="Circle Tangent to Two Curves Settings", default=True)
+    show_ellipse_foci_settings: bpy.props.BoolProperty(name="Ellipse from Foci Points Settings", default=True)
     show_ellipse_settings: bpy.props.BoolProperty(name="Ellipse Settings", default=True)
     show_polygon_settings: bpy.props.BoolProperty(name="Polygon Settings", default=True)
     show_rectangle_settings: bpy.props.BoolProperty(name="Rectangle Settings", default=True)
@@ -258,6 +259,16 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
         min=0.5, max=10.0,
         precision=1,
         step=10
+    )
+
+    # --- Ellipse from Foci Points ---
+    ellipse_foci_col_foci_lines: bpy.props.FloatVectorProperty(
+        name="Foci Line Color",
+        subtype='COLOR',
+        size=4,
+        min=0.0, max=1.0,
+        default=(0.0, 1.0, 0.0, 1.0),
+        description="Color for the lines connecting foci to the mouse cursor"
     )
 
     axis_color_dim: bpy.props.FloatProperty(
@@ -826,7 +837,13 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
             self.draw_property_row(col, "Preview Geometry Color:", "circle_tan2_col_preview")
             self.draw_property_row(col, "Tangent Circle Thickness:", "circle_tan2_width_tangent")
 
-        # 15-18. Shapes and Curves
+        # 15. ELLIPSE FROM FOCI POINTS
+        col = self.draw_section_header(layout, "Ellipse from Foci Points Settings", "show_ellipse_foci_settings", icon='CURVE_NCURVE', tool_key='ellipse_foci_point')
+        if col:
+            self.draw_group_label(col, "Visuals:", icon='COLOR')
+            self.draw_property_row(col, "Foci Line Color:", "ellipse_foci_col_foci_lines")
+
+        # 16-19. Shapes and Curves
         shape_tools = [
             ("ellipse", "Ellipse Settings", "show_ellipse_settings", "ellipse_from_radius", "CURVE_EE"),
             ("poly", "Polygon Settings", "show_polygon_settings", "polygon_cen_cor", "MESH_CIRCLE"),

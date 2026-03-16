@@ -1,52 +1,43 @@
-# text_entry_utils.py
-# The Bouncer: Handles keyboard input events and parsing application.
+# radCAD/text_entry_utils.py
 
 import bpy
 import math
-from mathutils import Vector
+from mathutils import Vector, geometry
 from .modal_state import state
-from .units_utils import parse_length_input
-from .plane_utils import world_to_plane 
-from .geometry_utils import arc_points_world
+from .units_utils import format_length
+from .plane_utils import world_to_plane
 
 def apply_input_value(ctx):
-    """
-    Taking the user's string, parsing it, and updating the Arc state.
-    """
     val_str = state["input_string"]
+    if not val_str:
+        return
+
+    try:
+        # Check for segments first (must be int)
+        if state["input_mode"] == 'SEGMENTS':
+            val_meters = 0 # Dummy for flow
+        else:
+            val_meters = bpy.utils.units.to_value(val_str, 'LENGTH', 'METERS')
+    except ValueError:
+        # Fallback if typing just numbers without units
+        try:
+            val_meters = float(val_str)
+        except ValueError:
+            return
+
     tool_mode = state.get("tool_mode", "1POINT")
-    
-    # --- RADIUS (OR DISTANCE) INPUT ---
+
+    # --- RADIUS / DISTANCE INPUT ---
     if state["input_mode"] == 'RADIUS':
-        val_meters = parse_length_input(val_str)
-        state["radius"] = max(0.0001, abs(val_meters)) # Stores the value
-        
         # === 1-POINT LOGIC ===
         if tool_mode == "1POINT":
-            if state["stage"] == 1:
-                d = state["current"] - state["pivot"]
-                if d.length > 1e-9: d.normalize()
-                else: d = Vector((1,0,0))
-                state["start"] = state["pivot"] + (d * state["radius"])
-                state["current"] = state["start"]
-                rvec2 = world_to_plane(state["start"] - state["pivot"], state["Xp"], state["Yp"])
-                a0 = math.atan2(rvec2.y, rvec2.x)
-                state["a0"] = a0; state["a1"] = a0; state["a_prev_raw"] = a0
-                state["accum_angle"] = 0.0
-                state["stage"] = 2
-            elif state["stage"] == 2:
-                d = state["start"] - state["pivot"]
-                if d.length > 0: 
-                    d.normalize()
-                    state["start"] = state["pivot"] + d * state["radius"]
-
-        # === POINTS BY ARCS LOGIC ===
-        elif tool_mode == "POINT_BY_ARCS":
-            if state["stage"] in [1, 4]:
-                pv = state["pivot"]
+            state["radius"] = abs(val_meters)
+            pv = state["pivot"]
+            if pv:
                 d = state["current"] - pv
                 if d.length > 1e-9: d.normalize()
                 else: d = Vector((1,0,0))
+                
                 state["start"] = pv + (d * state["radius"])
                 state["current"] = state["start"]
                 rvec2 = world_to_plane(state["start"] - pv, state["Xp"], state["Yp"])
@@ -117,24 +108,6 @@ def apply_input_value(ctx):
                 state["current"] = center + (Yp * ry)
                 if state["stage"] == 1: state["stage"] = 2
 
-        elif tool_mode == "ELLIPSE_FOCI":
-            if state["stage"] == 1:
-                pv = state["pivot"]
-                maj = state.get("Xp") or Vector((1,0,0))
-                state["f1"] = pv
-                state["f2"] = pv + (maj * abs(val_meters))
-                state["stage"] = 2
-            elif state["stage"] == 2:
-                ry = abs(val_meters)
-                state["ry"] = ry
-                f1, f2 = state.get("f1"), state.get("f2")
-                if f1 and f2:
-                    center = (f1 + f2) * 0.5
-                    Xp = (f2 - f1).normalized()
-                    Zp = state.get("Zp") or Vector((0,0,1))
-                    Yp = Zp.cross(Xp).normalized()
-                    state["current"] = center + (Yp * ry)
-
         elif tool_mode == "ELLIPSE_ENDPOINTS":
             target = state.get("input_target", "RADIUS")
             if target == 'DIAMETER':
@@ -159,6 +132,19 @@ def apply_input_value(ctx):
                     Yp = Zp.cross(Xp).normalized()
                     state["current"] = center + (Yp * ry)
                 if state["stage"] == 1: state["stage"] = 2
+
+        elif tool_mode == "ELLIPSE_FOCI":
+            if state["stage"] == 1:
+                pv = state["pivot"]
+                maj = state.get("Xp") or Vector((1,0,0))
+                state["f1"] = pv
+                state["f2"] = pv + (maj * abs(val_meters))
+                state["stage"] = 2
+
+        elif tool_mode in ["POLYGON_CENTER_CORNER", "POLYGON_CENTER_TANGENT", "POLYGON_CORNER_CORNER", "POLYGON_EDGE"]:
+            # Generic Radius / Distance storage
+            if state["input_mode"] == 'RADIUS':
+                state["radius"] = abs(val_meters)
 
     # --- ANGLE INPUT (1-POINT ONLY) ---
     elif state["input_mode"] == 'ANGLE':
@@ -211,36 +197,30 @@ def handle_text_input(ctx, ev):
         state["cursor_index"] = min(len(curr_str), idx + 1)
         ctx.area.tag_redraw()
         return True
-    elif ev.type == 'BACK_SPACE' and ev.value == 'PRESS':
+    elif ev.type == 'BACKSPACE' and ev.value == 'PRESS':
         if idx > 0:
             state["input_string"] = curr_str[:idx-1] + curr_str[idx:]
             state["cursor_index"] = idx - 1
-            ctx.area.tag_redraw()
+        ctx.area.tag_redraw()
         return True
     elif ev.type == 'DEL' and ev.value == 'PRESS':
         if idx < len(curr_str):
             state["input_string"] = curr_str[:idx] + curr_str[idx+1:]
-            ctx.area.tag_redraw()
+        ctx.area.tag_redraw()
         return True
-    elif ev.value == 'PRESS':
-        char = ev.unicode
-        if char == "-":
-            if state["input_mode"] == 'ANGLE':
-                if state["input_string"].startswith("-"):
-                    state["input_string"] = state["input_string"][1:]
-                    state["cursor_index"] = max(0, idx - 1)
-                else:
-                    state["input_string"] = "-" + state["input_string"]
-                    state["cursor_index"] = idx + 1
-            else:
-                state["input_string"] = curr_str[:idx] + "-" + curr_str[idx:]
-                state["cursor_index"] = idx + 1
-            ctx.area.tag_redraw()
-            return True
-        if char and (char.isdigit() or char in ".,'\"cmftinµ/ "):
-            state["input_string"] = curr_str[:idx] + char + curr_str[idx:]
-            state["cursor_index"] = idx + 1
-            ctx.area.tag_redraw()
-            return True
+    
+    # Generic text characters
+    if ev.unicode:
+        state["input_string"] = curr_str[:idx] + ev.unicode + curr_str[idx:]
+        state["cursor_index"] = idx + 1
+        ctx.area.tag_redraw()
+        return True
 
-    return True
+    return False
+
+def get_display_str(label, typed, show_cursor):
+    if not show_cursor:
+        return f"{label} {typed}"
+    
+    idx = state["cursor_index"]
+    return f"{label} {typed[:idx]}|{typed[idx:]}"
