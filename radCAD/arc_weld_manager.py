@@ -203,119 +203,127 @@ def _run_knife_project_final(ctx, obj, arc_edge_indices, arc_coords_to_find):
     cutter_obj = bpy.data.objects.new("TempArcCutter", mesh_data)
     ctx.collection.objects.link(cutter_obj)
     
-    # 3. PREPARE SELECTION
-    bpy.ops.mesh.select_all(action='DESELECT')
-    
-    bm.verts.ensure_lookup_table()
-    bm.edges.ensure_lookup_table()
-    bm.faces.ensure_lookup_table()
-
-    target_set = set(target_faces)
-    
-    for f in bm.faces:
-        if f in target_set:
-            f.hide = False
-            f.select = True
-        else:
-            f.hide = True
-            
-    bmesh.update_edit_mesh(obj.data)
-    
-    # 4. ALIGN VIEW
-    area, space = find_view3d()
-    orig_rot, orig_loc, orig_persp = None, None, None
-    if space:
-        r3d = space.region_3d
-        orig_rot = r3d.view_rotation.copy()
-        orig_loc = r3d.view_location.copy()
-        orig_persp = r3d.view_perspective
-        align_view_to_face_robust(space, arc_center, Zp, arc_radius)
-        try: bpy.ops.wm.redraw_timer(type='DRAW_WIN', iterations=1)
-        except Exception: pass
-        ctx.view_layer.update()
-    
-    # 5. KNIFE PROJECT
-    cutter_obj.select_set(True)
-    obj.select_set(True)
-    ctx.view_layer.objects.active = obj
-    
     try:
-        dbg("Executing Knife Project (Cut Through=True)...")
-        res = bpy.ops.mesh.knife_project(cut_through=True)
+        # 3. PREPARE SELECTION
+        bpy.ops.mesh.select_all(action='DESELECT')
         
-        # 6. MERGE LOGIC (The Teleporter)
-        bm_final = bmesh.from_edit_mesh(obj.data)
-        bm_final.verts.ensure_lookup_table()
+        bm.verts.ensure_lookup_table()
+        bm.edges.ensure_lookup_table()
+        bm.faces.ensure_lookup_table()
+
+        target_set = set(target_faces)
         
-        # Use user preference for the final weld threshold
-        weld_rad = state.get("weld_radius", 0.001)
-        
-        # Search area to catch the sloppy cut (slightly reduced from 3.0 to 2.5 for safety)
-        search_rad_sq = (weld_rad * 2.5) ** 2
-        
-        reselected = 0
-        
-        for v in bm_final.verts:
-            if v.hide: continue
-            
-            # --- SAFETY CHECK ---
-            # Only affect vertices that were SELECTED by the Knife Project.
-            if not v.select: continue
-            
-            # Check against IDEAL coordinates
-            for target_co in arc_coords_to_find:
-                dist_sq = (v.co - target_co).length_squared
+        for f in bm.faces:
+            if f in target_set:
+                f.hide = False
+                f.select = True
+            else:
+                f.hide = True
                 
-                if dist_sq < search_rad_sq:
-                    # Teleport the fresh cut to the ideal mathematical position
-                    v.co = target_co
-                    reselected += 1
-                    break
-        
-        dbg(f"GPS Reselected & Teleported {reselected} verts.")
-        
         bmesh.update_edit_mesh(obj.data)
         
-        # Now remove doubles. Since we teleported them to EXACTLY 0.0 distance,
-        # this will 100% succeed for the intended verts only.
-        ret = bpy.ops.mesh.remove_doubles(threshold=weld_rad)
-        dbg(f"Remove Doubles Result: {ret}")
+        # 4. ALIGN VIEW
+        area, space = find_view3d()
+        orig_rot, orig_loc, orig_persp = None, None, None
+        if space:
+            r3d = space.region_3d
+            orig_rot = r3d.view_rotation.copy()
+            orig_loc = r3d.view_location.copy()
+            orig_persp = r3d.view_perspective
+            align_view_to_face_robust(space, arc_center, Zp, arc_radius)
+            try: bpy.ops.wm.redraw_timer(type='DRAW_WIN', iterations=1)
+            except Exception: pass
+            ctx.view_layer.update()
+        
+        # 5. KNIFE PROJECT
+        cutter_obj.select_set(True)
+        obj.select_set(True)
+        ctx.view_layer.objects.active = obj
+        
+        try:
+            dbg("Executing Knife Project (Cut Through=True)...")
+            res = bpy.ops.mesh.knife_project(cut_through=True)
+            
+            # 6. MERGE LOGIC (The Teleporter)
+            bm_final = bmesh.from_edit_mesh(obj.data)
+            bm_final.verts.ensure_lookup_table()
+            
+            # Use user preference for the final weld threshold
+            weld_rad = state.get("weld_radius", 0.001)
+            
+            # Search area to catch the sloppy cut (slightly reduced from 3.0 to 2.5 for safety)
+            search_rad_sq = (weld_rad * 2.5) ** 2
+            
+            reselected = 0
+            
+            for v in bm_final.verts:
+                if v.hide: continue
+                
+                if v.select:
+                    # --- NEWLY CUT VERTEX ---
+                    # It was selected by the Knife Project. Teleport it to the ideal mathematical position.
+                    for target_co in arc_coords_to_find:
+                        dist_sq = (v.co - target_co).length_squared
+                        if dist_sq < search_rad_sq:
+                            v.co = target_co
+                            reselected += 1
+                            break
+                else:
+                    # --- ORIGINAL ARC VERTEX ---
+                    # It was unselected before the cut. If it's exactly at an ideal coordinate, 
+                    # select it now so it gets merged with the cut geometry and disappears!
+                    for target_co in arc_coords_to_find:
+                        if (v.co - target_co).length_squared < 1e-8:
+                            v.select = True
+                            break
+            
+            dbg(f"GPS Reselected & Teleported {reselected} verts.")
+            
+            bmesh.update_edit_mesh(obj.data)
+            
+            # Now remove doubles. Since we teleported them to EXACTLY 0.0 distance,
+            # this will 100% succeed for the intended verts only.
+            ret = bpy.ops.mesh.remove_doubles(threshold=weld_rad)
+            dbg(f"Remove Doubles Result: {ret}")
 
-        # 7. CLEANUP VISIBILITY
-        bm_clean = bmesh.from_edit_mesh(obj.data)
-        bm_clean.faces.ensure_lookup_table()
-        
-        hidden_indices = set(originally_hidden_faces)
-        for f in bm_clean.faces:
-            if f.index in hidden_indices:
-                f.hide = True
-            else:
+            # 7. CLEANUP VISIBILITY
+            bm_clean = bmesh.from_edit_mesh(obj.data)
+            bm_clean.faces.ensure_lookup_table()
+            
+            hidden_indices = set(originally_hidden_faces)
+            for f in bm_clean.faces:
+                if f.index in hidden_indices:
+                    f.hide = True
+                else:
+                    f.hide = False
+            
+            for f in bm_clean.faces:
+                if not f.hide:
+                    f.select = False 
+                    for v in f.verts: v.hide = False
+                    for e in f.edges: e.hide = False
+                    
+            bmesh.update_edit_mesh(obj.data)
+            
+        except Exception as e:
+            print(f"[ArcWeld ERROR] Knife Project Failed: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            bm_fail = bmesh.from_edit_mesh(obj.data)
+            for f in bm_fail.faces: 
                 f.hide = False
-        
-        for f in bm_clean.faces:
-            if not f.hide:
-                f.select = False 
                 for v in f.verts: v.hide = False
                 for e in f.edges: e.hide = False
-                
-        bmesh.update_edit_mesh(obj.data)
-        
-    except Exception as e:
-        print(f"[ArcWeld ERROR] Knife Project Failed: {e}")
-        import traceback
-        traceback.print_exc()
-        
-        bm_fail = bmesh.from_edit_mesh(obj.data)
-        for f in bm_fail.faces: 
-            f.hide = False
-            for v in f.verts: v.hide = False
-            for e in f.edges: e.hide = False
-        bmesh.update_edit_mesh(obj.data)
+            bmesh.update_edit_mesh(obj.data)
 
-    if space and orig_rot:
-        space.region_3d.view_rotation = orig_rot
-        space.region_3d.view_location = orig_loc
-        space.region_3d.view_perspective = orig_persp
+        if space and orig_rot:
+            space.region_3d.view_rotation = orig_rot
+            space.region_3d.view_location = orig_loc
+            space.region_3d.view_perspective = orig_persp
 
-    bpy.data.objects.remove(cutter_obj, do_unlink=True)
-    bpy.data.meshes.remove(mesh_data)
+    finally:
+        if cutter_obj.name in bpy.data.objects:
+            bpy.data.objects.remove(cutter_obj, do_unlink=True)
+        if mesh_data.name in bpy.data.meshes:
+            bpy.data.meshes.remove(mesh_data)
