@@ -48,11 +48,17 @@ class RectangleTool_CenterCorner(SurfaceDrawTool):
             # 2. Resolve target using the updated Zp — intersects the correct plane
             ray_origin = view3d_utils.region_2d_to_origin_3d(context.region, context.region_data, coord)
             ray_vector = view3d_utils.region_2d_to_vector_3d(context.region, context.region_data, coord)
-            if snap_point and (snap_point - center).length > 1e-6:
-                target = snap_point
-            else:
+            if is_perp:
+                # In perp mode, always raycast to the vertical plane — snap_point is a floor
+                # point with z=0 which would collapse height to zero
                 hit = geometry.intersect_line_plane(ray_origin, ray_origin + ray_vector, center, self.Zp)
                 target = hit if hit else snap_point
+            else:
+                if snap_point and (snap_point - center).length > 1e-6:
+                    target = snap_point
+                else:
+                    hit = geometry.intersect_line_plane(ray_origin, ray_origin + ray_vector, center, self.Zp)
+                    target = hit if hit else snap_point
 
             # NOTE: No axis snapping — snapping to a world axis zeros out dx or dy, collapsing to a line.
 
@@ -150,11 +156,17 @@ class RectangleTool_CornerCorner(SurfaceDrawTool):
             # 2. Resolve target using the updated Zp — intersects the correct plane
             ray_origin = view3d_utils.region_2d_to_origin_3d(context.region, context.region_data, coord)
             ray_vector = view3d_utils.region_2d_to_vector_3d(context.region, context.region_data, coord)
-            if snap_point and (snap_point - c1).length > 1e-6:
-                target = snap_point
-            else:
+            if is_perp:
+                # In perp mode, always raycast to the vertical plane — snap_point is a floor
+                # point with z=0 which would collapse height to zero
                 hit = geometry.intersect_line_plane(ray_origin, ray_origin + ray_vector, c1, self.Zp)
                 target = hit if hit else snap_point
+            else:
+                if snap_point and (snap_point - c1).length > 1e-6:
+                    target = snap_point
+                else:
+                    hit = geometry.intersect_line_plane(ray_origin, ray_origin + ray_vector, c1, self.Zp)
+                    target = hit if hit else snap_point
 
             # NOTE: No axis snapping — snapping to a world axis zeros out dx or dy, collapsing to a line.
 
