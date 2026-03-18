@@ -582,7 +582,18 @@ class CircleTool_TanTan(SurfaceDrawTool):
                     self.state["locked"] = True
                     self.state["locked_normal"] = self.Zp
                     self.state.update({"Xp": self.Xp, "Yp": self.Yp})
-                    
+
+                    # --- POPULATE CATMULL CURVE OVERLAYS ---
+                    catmull_previews = []
+                    for spline in [self.spline_1, self.spline_2]:
+                        curve_pts = []
+                        for seg in spline.segments:
+                            curve_pts.extend([seg.eval(seg.t_start + t*seg.dt) for t in [0.0, 0.25, 0.5, 0.75]])
+                        if spline.segments:
+                            curve_pts.append(spline.segments[-1].eval(spline.segments[-1].t_end))
+                        catmull_previews.append(curve_pts)
+                    self.state["catmull_spline_previews"] = catmull_previews
+
                     # --- NO RAIL GENERATION (Speed Fix) ---
                     # Just smooth the curves for display, no heavy rail calculation
                     self.state["smooth_curve_1"] = [self.spline_1.segments[i].eval(self.spline_1.segments[i].t_start + t*self.spline_1.segments[i].dt) for i in range(len(self.spline_1.segments)) for t in [0.0, 0.33, 0.66]]

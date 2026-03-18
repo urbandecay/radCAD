@@ -72,7 +72,7 @@ def get_axis_aligned_color(vec, default_col, settings=None, toggle_key="USE_AXIS
     v_norm = vec.normalized()
     tol = 0.9999
     if abs(v_norm.dot(Vector((1, 0, 0)))) > tol: return (1.0 * dim, 0.1 * dim, 0.1 * dim, 1.0) # Brighter Red
-    if abs(v_norm.dot(Vector((0, 1, 0)))) > tol: return (0.1 * dim, 1.0 * dim, 0.1 * dim, 1.0) # Brighter Green
+    if abs(v_norm.dot(Vector((0, 1, 0)))) > tol: return (0.1 * dim, 0.7 * dim, 0.1 * dim, 1.0) # Toned Green
     if abs(v_norm.dot(Vector((0, 0, 1)))) > tol: return (0.2 * dim, 0.5 * dim, 1.0 * dim, 1.0) # Brighter Blue
     return default_col
 
