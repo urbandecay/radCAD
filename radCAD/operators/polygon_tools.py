@@ -42,6 +42,31 @@ class PolygonTool_CenterCorner(SurfaceDrawTool):
         self.major_axis = Vector((1,0,0))
         self.constraint_axis = None
 
+    def handle_input(self, context, event):
+        if super().handle_plane_lock_input(context, event):
+            if self.Zp: self.ref_normal = self.Zp.copy()
+            return True
+        if event.type == 'P' and event.value == 'PRESS':
+            if self.stage == 0: return False
+            self.state["is_perpendicular"] = not self.state.get("is_perpendicular", False)
+            self.vertical_override_axis = None
+            self.state["locked"], self.state["locked_normal"] = True, self.ref_normal
+            return True
+
+        # X/Y/Z axis constraint (toggle constraint_axis)
+        if event.type in {'X', 'Y', 'Z'} and event.value == 'PRESS' and self.stage > 0:
+            axes = {'X': self.Xp, 'Y': self.Yp, 'Z': self.Zp}
+            new_axis = axes[event.type]
+            if self.constraint_axis == new_axis:
+                self.constraint_axis = None
+                self.state["constraint_axis"] = None
+            else:
+                self.constraint_axis = new_axis
+                self.state["constraint_axis"] = new_axis
+            return True
+
+        return False
+
     def update(self, context, event, snap_point, snap_normal):
         # Stage 0: Let the Prep Chef find the wall/orientation
         if self.stage == 0:
@@ -49,13 +74,14 @@ class PolygonTool_CenterCorner(SurfaceDrawTool):
             if self.Zp: self.ref_normal = self.Zp.copy()
             return
 
-        # Stage 1: Dragging to Corner
+        # Stage 1: Dragging to Corner (plane locked from stage 0)
         if self.stage == 1:
             pv = self.pivot
             coord = (event.mouse_region_x, event.mouse_region_y)
             target = snap_point
+            inf_loc = None
 
-            # Snapping: Check constraint axis first, then axis-aligned snapping
+            # Snapping (exact same logic as arc tools)
             if self.constraint_axis and not event.alt:
                 if self.state.get("geometry_snap", False):
                     diff = target - pv
@@ -79,54 +105,18 @@ class PolygonTool_CenterCorner(SurfaceDrawTool):
                 inf_loc, _, _ = get_axis_snapped_location(pv, coord, context, snap_threshold=axis_thresh)
                 if inf_loc: target = inf_loc
 
-            # Perpendicular Logic
+            # Keep target on drawing plane (project out the normal component)
+            if self.Zp:
+                offset = (target - pv).dot(self.Zp)
+                target = target - self.Zp * offset
+
+            # Update major_axis for visual feedback
             bridge = target - pv
             if bridge.length_squared > 1e-8:
-                b_vec = bridge.normalized()
-                self.major_axis = b_vec
-                up = self.ref_normal
-                is_perp = self.state.get("is_perpendicular", False)
-                is_vertical = abs(b_vec.dot(up)) > (0.98 if getattr(self, "_is_vert_last", False) else 0.995)
-                self._is_vert_last = is_vertical
+                self.major_axis = bridge.normalized()
 
-                if is_perp or is_vertical:
-                    if is_vertical:
-                        ax_x, ax_y, _ = orthonormal_basis_from_normal(up)
-                        if self.vertical_override_axis is None:
-                            rv3d = context.region_data
-                            view_fwd = rv3d.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
-                            new_Zp = ax_x if abs(view_fwd.dot(ax_x)) > abs(view_fwd.dot(ax_y)) else ax_y
-                        else:
-                            new_Zp = ax_x if self.vertical_override_axis == 'X' else ax_y
-                        
-                        if new_Zp.length > 1e-4:
-                            view_fwd = context.region_data.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
-                            if new_Zp.dot(view_fwd) > 0: new_Zp = -new_Zp
-                            self.Zp = new_Zp.normalized()
-                            self.Yp = up.normalized()
-                            self.Xp = self.Yp.cross(self.Zp).normalized()
-                    else:
-                        new_Zp = b_vec.cross(up).normalized()
-                        if new_Zp.length > 1e-4:
-                            view_fwd = context.region_data.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
-                            if new_Zp.dot(view_fwd) > 0: new_Zp = -new_Zp
-                            self.Zp = new_Zp.normalized()
-                            self.Xp = b_vec
-                            self.Yp = self.Zp.cross(self.Xp).normalized()
-                else:
-                    self.Zp = up.copy()
-                    self.Xp = b_vec
-                    self.Yp = self.Zp.cross(self.Xp).normalized()
-
-            # Final project to current plane (only if NOT axis snapped OR alt is held)
-            if not inf_loc or event.alt:
-                ray_origin = view3d_utils.region_2d_to_origin_3d(context.region, context.region_data, coord)
-                ray_vector = view3d_utils.region_2d_to_vector_3d(context.region, context.region_data, coord)
-                hit = geometry.intersect_line_plane(ray_origin, ray_origin + ray_vector, pv, self.Zp)
-                if hit: target = hit
-            
             self.current = target
-            
+
             # Radius is distance to corner
             d_vec = target - pv
             self.radius = d_vec.length
@@ -211,6 +201,31 @@ class PolygonTool_CenterTangent(SurfaceDrawTool):
         self.major_axis = Vector((1,0,0))
         self.constraint_axis = None
 
+    def handle_input(self, context, event):
+        if super().handle_plane_lock_input(context, event):
+            if self.Zp: self.ref_normal = self.Zp.copy()
+            return True
+        if event.type == 'P' and event.value == 'PRESS':
+            if self.stage == 0: return False
+            self.state["is_perpendicular"] = not self.state.get("is_perpendicular", False)
+            self.vertical_override_axis = None
+            self.state["locked"], self.state["locked_normal"] = True, self.ref_normal
+            return True
+
+        # X/Y/Z axis constraint (toggle constraint_axis)
+        if event.type in {'X', 'Y', 'Z'} and event.value == 'PRESS' and self.stage > 0:
+            axes = {'X': self.Xp, 'Y': self.Yp, 'Z': self.Zp}
+            new_axis = axes[event.type]
+            if self.constraint_axis == new_axis:
+                self.constraint_axis = None
+                self.state["constraint_axis"] = None
+            else:
+                self.constraint_axis = new_axis
+                self.state["constraint_axis"] = new_axis
+            return True
+
+        return False
+
     def update(self, context, event, snap_point, snap_normal):
         if self.stage == 0:
             self.update_initial_plane(context, event, snap_point, snap_normal)
@@ -221,8 +236,9 @@ class PolygonTool_CenterTangent(SurfaceDrawTool):
             pv = self.pivot
             coord = (event.mouse_region_x, event.mouse_region_y)
             target = snap_point
+            inf_loc = None
 
-            # Snapping: Check constraint axis first, then axis-aligned snapping
+            # Snapping (exact same logic as arc tools)
             if self.constraint_axis and not event.alt:
                 if self.state.get("geometry_snap", False):
                     diff = target - pv
@@ -246,54 +262,18 @@ class PolygonTool_CenterTangent(SurfaceDrawTool):
                 inf_loc, _, _ = get_axis_snapped_location(pv, coord, context, snap_threshold=axis_thresh)
                 if inf_loc: target = inf_loc
 
-            # Perpendicular Logic
+            # Keep target on drawing plane (project out the normal component)
+            if self.Zp:
+                offset = (target - pv).dot(self.Zp)
+                target = target - self.Zp * offset
+
+            # Update major_axis for visual feedback
             bridge = target - pv
             if bridge.length_squared > 1e-8:
-                b_vec = bridge.normalized()
-                self.major_axis = b_vec
-                up = self.ref_normal
-                is_perp = self.state.get("is_perpendicular", False)
-                is_vertical = abs(b_vec.dot(up)) > (0.98 if getattr(self, "_is_vert_last", False) else 0.995)
-                self._is_vert_last = is_vertical
+                self.major_axis = bridge.normalized()
 
-                if is_perp or is_vertical:
-                    if is_vertical:
-                        ax_x, ax_y, _ = orthonormal_basis_from_normal(up)
-                        if self.vertical_override_axis is None:
-                            rv3d = context.region_data
-                            view_fwd = rv3d.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
-                            new_Zp = ax_x if abs(view_fwd.dot(ax_x)) > abs(view_fwd.dot(ax_y)) else ax_y
-                        else:
-                            new_Zp = ax_x if self.vertical_override_axis == 'X' else ax_y
-                        
-                        if new_Zp.length > 1e-4:
-                            view_fwd = context.region_data.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
-                            if new_Zp.dot(view_fwd) > 0: new_Zp = -new_Zp
-                            self.Zp = new_Zp.normalized()
-                            self.Yp = up.normalized()
-                            self.Xp = self.Yp.cross(self.Zp).normalized()
-                    else:
-                        new_Zp = b_vec.cross(up).normalized()
-                        if new_Zp.length > 1e-4:
-                            view_fwd = context.region_data.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
-                            if new_Zp.dot(view_fwd) > 0: new_Zp = -new_Zp
-                            self.Zp = new_Zp.normalized()
-                            self.Xp = b_vec
-                            self.Yp = self.Zp.cross(self.Xp).normalized()
-                else:
-                    self.Zp = up.copy()
-                    self.Xp = b_vec
-                    self.Yp = self.Zp.cross(self.Xp).normalized()
-
-            # Final project to current plane (only if NOT axis snapped OR alt is held)
-            if not inf_loc or event.alt:
-                ray_origin = view3d_utils.region_2d_to_origin_3d(context.region, context.region_data, coord)
-                ray_vector = view3d_utils.region_2d_to_vector_3d(context.region, context.region_data, coord)
-                hit = geometry.intersect_line_plane(ray_origin, ray_origin + ray_vector, pv, self.Zp)
-                if hit: target = hit
-            
             self.current = target
-            
+
             d_vec = target - pv
             apothem = d_vec.length
             self.radius = apothem 
@@ -382,6 +362,31 @@ class PolygonTool_CornerCorner(SurfaceDrawTool):
         self.major_axis = Vector((1,0,0))
         self.constraint_axis = None
 
+    def handle_input(self, context, event):
+        if super().handle_plane_lock_input(context, event):
+            if self.Zp: self.ref_normal = self.Zp.copy()
+            return True
+        if event.type == 'P' and event.value == 'PRESS':
+            if self.stage == 0: return False
+            self.state["is_perpendicular"] = not self.state.get("is_perpendicular", False)
+            self.vertical_override_axis = None
+            self.state["locked"], self.state["locked_normal"] = True, self.ref_normal
+            return True
+
+        # X/Y/Z axis constraint (toggle constraint_axis)
+        if event.type in {'X', 'Y', 'Z'} and event.value == 'PRESS' and self.stage > 0:
+            axes = {'X': self.Xp, 'Y': self.Yp, 'Z': self.Zp}
+            new_axis = axes[event.type]
+            if self.constraint_axis == new_axis:
+                self.constraint_axis = None
+                self.state["constraint_axis"] = None
+            else:
+                self.constraint_axis = new_axis
+                self.state["constraint_axis"] = new_axis
+            return True
+
+        return False
+
     def update(self, context, event, snap_point, snap_normal):
         # Stage 0: Set First Corner
         if self.stage == 0:
@@ -394,6 +399,7 @@ class PolygonTool_CornerCorner(SurfaceDrawTool):
             corner1 = self.pivot
             coord = (event.mouse_region_x, event.mouse_region_y)
             target = snap_point
+            inf_loc = None
 
             # Snapping: Check constraint axis first, then axis-aligned snapping
             if self.constraint_axis and not event.alt:
@@ -419,54 +425,13 @@ class PolygonTool_CornerCorner(SurfaceDrawTool):
                 inf_loc, _, _ = get_axis_snapped_location(corner1, coord, context, snap_threshold=axis_thresh)
                 if inf_loc: target = inf_loc
 
-            # Perpendicular Logic
-            bridge = target - corner1
-            if bridge.length_squared > 1e-8:
-                b_vec = bridge.normalized()
-                self.major_axis = b_vec
-                up = self.ref_normal
-                is_perp = self.state.get("is_perpendicular", False)
-                is_vertical = abs(b_vec.dot(up)) > (0.98 if getattr(self, "_is_vert_last", False) else 0.995)
-                self._is_vert_last = is_vertical
-
-                if is_perp or is_vertical:
-                    if is_vertical:
-                        ax_x, ax_y, _ = orthonormal_basis_from_normal(up)
-                        if self.vertical_override_axis is None:
-                            rv3d = context.region_data
-                            view_fwd = rv3d.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
-                            new_Zp = ax_x if abs(view_fwd.dot(ax_x)) > abs(view_fwd.dot(ax_y)) else ax_y
-                        else:
-                            new_Zp = ax_x if self.vertical_override_axis == 'X' else ax_y
-                        
-                        if new_Zp.length > 1e-4:
-                            view_fwd = context.region_data.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
-                            if new_Zp.dot(view_fwd) > 0: new_Zp = -new_Zp
-                            self.Zp = new_Zp.normalized()
-                            self.Yp = up.normalized()
-                            self.Xp = self.Yp.cross(self.Zp).normalized()
-                    else:
-                        new_Zp = b_vec.cross(up).normalized()
-                        if new_Zp.length > 1e-4:
-                            view_fwd = context.region_data.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
-                            if new_Zp.dot(view_fwd) > 0: new_Zp = -new_Zp
-                            self.Zp = new_Zp.normalized()
-                            self.Xp = b_vec
-                            self.Yp = self.Zp.cross(self.Xp).normalized()
-                else:
-                    self.Zp = up.copy()
-                    self.Xp = b_vec
-                    self.Yp = self.Zp.cross(self.Xp).normalized()
-
-            # Final project to current plane (only if NOT axis snapped OR alt is held)
-            if not inf_loc or event.alt:
-                ray_origin = view3d_utils.region_2d_to_origin_3d(context.region, context.region_data, coord)
-                ray_vector = view3d_utils.region_2d_to_vector_3d(context.region, context.region_data, coord)
-                hit = geometry.intersect_line_plane(ray_origin, ray_origin + ray_vector, corner1, self.Zp)
-                if hit: target = hit
+            # Keep target on drawing plane (project out the normal component)
+            if self.Zp:
+                offset = (target - corner1).dot(self.Zp)
+                target = target - self.Zp * offset
 
             self.current = target
-            
+
             # 1. Midpoint is Center, Radius is half the distance
             d_vec = target - corner1
             center = corner1 + (d_vec * 0.5)
@@ -569,6 +534,31 @@ class PolygonTool_Edge(SurfaceDrawTool):
         self.major_axis = Vector((1,0,0))
         self.constraint_axis = None
 
+    def handle_input(self, context, event):
+        if super().handle_plane_lock_input(context, event):
+            if self.Zp: self.ref_normal = self.Zp.copy()
+            return True
+        if event.type == 'P' and event.value == 'PRESS':
+            if self.stage == 0: return False
+            self.state["is_perpendicular"] = not self.state.get("is_perpendicular", False)
+            self.vertical_override_axis = None
+            self.state["locked"], self.state["locked_normal"] = True, self.ref_normal
+            return True
+
+        # X/Y/Z axis constraint (toggle constraint_axis)
+        if event.type in {'X', 'Y', 'Z'} and event.value == 'PRESS' and self.stage > 0:
+            axes = {'X': self.Xp, 'Y': self.Yp, 'Z': self.Zp}
+            new_axis = axes[event.type]
+            if self.constraint_axis == new_axis:
+                self.constraint_axis = None
+                self.state["constraint_axis"] = None
+            else:
+                self.constraint_axis = new_axis
+                self.state["constraint_axis"] = new_axis
+            return True
+
+        return False
+
     def update(self, context, event, snap_point, snap_normal):
         # Stage 0: Set First Point of Edge
         if self.stage == 0:
@@ -581,6 +571,7 @@ class PolygonTool_Edge(SurfaceDrawTool):
             p1 = self.pivot
             coord = (event.mouse_region_x, event.mouse_region_y)
             target = snap_point
+            inf_loc = None
 
             # Snapping: Check constraint axis first, then axis-aligned snapping
             if self.constraint_axis and not event.alt:
@@ -605,6 +596,11 @@ class PolygonTool_Edge(SurfaceDrawTool):
                 axis_thresh = math.cos(math.radians(strength_deg))
                 inf_loc, _, _ = get_axis_snapped_location(p1, coord, context, snap_threshold=axis_thresh)
                 if inf_loc: target = inf_loc
+
+            # Keep target on drawing plane (project out the normal component)
+            if self.Zp:
+                offset = (target - p1).dot(self.Zp)
+                target = target - self.Zp * offset
 
             # Perpendicular Logic
             bridge = target - p1
@@ -645,15 +641,8 @@ class PolygonTool_Edge(SurfaceDrawTool):
                     self.Xp = b_vec
                     self.Yp = self.Zp.cross(self.Xp).normalized()
 
-            # Final project to current plane (only if NOT axis snapped OR alt is held)
-            if not inf_loc or event.alt:
-                ray_origin = view3d_utils.region_2d_to_origin_3d(context.region, context.region_data, coord)
-                ray_vector = view3d_utils.region_2d_to_vector_3d(context.region, context.region_data, coord)
-                hit = geometry.intersect_line_plane(ray_origin, ray_origin + ray_vector, p1, self.Zp)
-                if hit: target = hit
-
             self.current = target
-            
+
             # 1. Calculation for Odd-Sided Polygon (Corner to Opposite Edge Midpoint)
             # The distance 'h' between a corner and the opposite edge midpoint is:
             # h = R * (1 + cos(pi/n))
