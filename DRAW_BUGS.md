@@ -217,3 +217,37 @@ perp_dir = edge_dir.cross(self.Zp).normalized()
 ```
 
 This is perpendicular to both the edge and the plane normal, ensuring it's always in the plane regardless of plane orientation. Applied to both `update()` and `refresh_preview()`.
+
+---
+
+## Bug: Rectangle tools P key flip collapses to a line
+
+**Date:** 2026-03-18
+**Affected tools:** Rectangle (Center/Corner), Rectangle (Corner/Corner)
+
+### What was wrong
+
+When you pressed P to flip a rectangle from flat to perpendicular (vertical), the rectangle would immediately collapse to a thin line. The height dimension became zero.
+
+### Why it happened
+
+The code was resolving the snap target BEFORE updating the orientation basis. When P flipped `is_perp = True`:
+1. Target was intersected with the OLD plane (floor, Zp = world Z)
+2. Result: target was on the floor with z≈0
+3. NEW orientation computed Zp as a horizontal axis (vertical plane normal)
+4. But target was already a floor point with z=0
+5. When dimensions were extracted: `dy = d_vec.dot(Yp_vertical) = 0` → collapse
+
+Even worse, if a vertex snap point (floor mesh vertex) was available, it would be used directly without raycast, guaranteeing z=0.
+
+### What was fixed
+
+**Restructured update order:**
+1. Compute orientation FIRST (set Zp, Xp, Yp for the current mode)
+2. THEN resolve target using `intersect_line_plane(ray, center, Zp)` — now hits the correct plane
+3. Target from a vertical plane intersection has proper Z component
+
+**Skip snap points in perp mode:**
+When `is_perpendicular = True`, always raycast to the vertical plane instead of using `snap_point` directly. Floor vertices always have z=0 and would collapse the height.
+
+Result: when P flips the rectangle perpendicular, the target is determined by where the camera ray hits the vertical plane, which depends on camera angle — giving proper Z extent for the height dimension.
