@@ -114,7 +114,15 @@ def get_render_settings(ctx):
         "CIRCLE_TAN2_SHOW_TANGENT": True,
         "CIRCLE_TAN2_COL_TANGENT": (0.0, 0.8, 1.0, 0.5),
         "CIRCLE_TAN2_WIDTH_TANGENT": 2.0,
-        "ELLIPSE_FOCI_COL_FOCI": (0.0, 1.0, 0.0, 1.0)
+        "ELLIPSE_FOCI_COL_FOCI": (0.0, 1.0, 0.0, 1.0),
+        "ARC_2PT_USE_AXIS_COLORS": True,
+        "COL_OVERLAY_2PT": (0.5, 0.5, 0.5, 0.5),
+        "ARC_3PT_USE_AXIS_COLORS": True,
+        "COL_OVERLAY_3PT": (0.5, 0.5, 0.5, 0.5),
+        "CIRCLE_2PT_USE_AXIS_COLORS": True,
+        "COL_OVERLAY_C2PT": (0.5, 0.5, 0.5, 0.5),
+        "CIRCLE_3PT_USE_AXIS_COLORS": True,
+        "COL_OVERLAY_C3PT": (0.5, 0.5, 0.5, 0.5)
     }
 
     system_prefs = ctx.preferences.system
@@ -356,49 +364,30 @@ def draw_crosshair(ctx, shaders, points, color, size, settings, Xp, Yp, custom_l
 from bpy_extras import view3d_utils
 
 def draw_points(ctx, shaders, points, color, size, settings, Xp=None, Yp=None, custom_lift=None):
-    """Draws points as solid screen-space squares to bypass Blender 5.0 EEVEE-Next 3D rendering bugs."""
+    """Draws points as small 3D crosses using the POLYLINE shader (works in POST_VIEW/EEVEE-Next)."""
     if not points: return
-    
-    # 1. Project 3D points to 2D screen coordinates
-    region = ctx.region
-    rv3d = ctx.region_data
-    pts_2d = []
-    for p in points:
-        # Apply a small lift in 3D first to ensure they stay on top
-        lift_val = (custom_lift if custom_lift is not None else settings.get("LIFT_ARC", 20.0)) * 0.001
-        p_lifted = p.copy()
-        
-        # Simple camera-facing lift
-        view_inv = rv3d.view_matrix.inverted()
-        cam_z = Vector((view_inv[0][2], view_inv[1][2], view_inv[2][2]))
-        p_lifted += cam_z * lift_val
-        
-        p2d = view3d_utils.location_3d_to_region_2d(region, rv3d, p_lifted)
-        if p2d: pts_2d.append(p2d)
-        
-    if not pts_2d: return
 
-    # 2. Draw using 2D UI shader (completely robust in EEVEE-Next)
-    sh = gpu.shader.from_builtin('UNIFORM_COLOR')
-    sh.bind()
-    gpu.state.blend_set('ALPHA')
-    
-    final_size = size * settings.get("UI_SCALE", 1.0)
-    half = final_size * 0.5
-    
-    tris = []
-    for p in pts_2d:
-        x, y = p.x, p.y
-        # Create 2 triangles for a solid square
-        v1 = Vector((x - half, y - half))
-        v2 = Vector((x + half, y - half))
-        v3 = Vector((x + half, y + half))
-        v4 = Vector((x - half, y + half))
-        tris.extend([v1, v2, v3, v1, v3, v4])
+    lift = custom_lift if custom_lift is not None else settings.get("LIFT_ARC", 20.0)
+    pts = apply_view_bias(points, ctx, lift_mult=lift, persp_percent=settings.get("LIFT_PERSP", 0.2))
 
-    sh.uniform_float("color", color)
-    batch = batch_for_shader(sh, 'TRIS', {"pos": tris})
-    batch.draw(sh)
+    # Use plane axes if provided, otherwise fall back to world axes
+    if Xp is None: Xp = Vector((1, 0, 0))
+    if Yp is None: Yp = Vector((0, 1, 0))
+    Zp = Xp.cross(Yp).normalized()
+
+    sh = shaders["POLYLINE"]
+    setup_polyline_shader(sh, color, 2.0, settings)
+
+    segs = []
+    for p in pts:
+        offset = world_radius_for_pixel_size(ctx, p, Xp, Yp, size / 2.0)
+        if offset <= 0: offset = 0.01
+        # Draw a small 3-axis cross
+        segs += [p - Xp * offset, p + Xp * offset,
+                 p - Yp * offset, p + Yp * offset,
+                 p - Zp * offset, p + Zp * offset]
+
+    batch_for_shader(sh, 'LINES', {"pos": segs}).draw(sh)
 # =========================================================================
 #  TOOL SPECIALISTS
 # =========================================================================
