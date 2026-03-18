@@ -467,13 +467,14 @@ def get_disjoint_chains(bm):
 def solve_rhino_tangent(s1, s2, seed_u1, seed_u2):
     bestU1 = seed_u1
     bestU2 = seed_u2
-    
-    # 1. Global Search (Prevent getting stuck at vertices)
+
+    # 1. Global Search (Constrained nearby search to prevent jitter)
+    search_range = 1.0
     p1 = s1.evalCatmull(bestU1)
-    bestU2 = s2.find_tangent_param_from_point(p1, bestU2, float('inf'))
+    bestU2 = s2.find_tangent_param_from_point(p1, bestU2, search_range)
     p2 = s2.evalCatmull(bestU2)
-    bestU1 = s1.find_tangent_param_from_point(p2, bestU1, float('inf'))
-    
+    bestU1 = s1.find_tangent_param_from_point(p2, bestU1, search_range)
+
     # 2. Local Refinement
     range_val = 2.0
     for _ in range(9):
@@ -481,19 +482,20 @@ def solve_rhino_tangent(s1, s2, seed_u1, seed_u2):
         bestU2 = s2.find_tangent_param_from_point(p1, bestU2, range_val)
         p2 = s2.evalCatmull(bestU2)
         bestU1 = s1.find_tangent_param_from_point(p2, bestU1, range_val)
-        
+
     return bestU1, bestU2
 
 def solve_rhino_perp(s1, s2, seed_u1, seed_u2):
     bestU1 = seed_u1
     bestU2 = seed_u2
-    
-    # 1. Global Search
+
+    # 1. Global Search (Constrained nearby search to prevent jitter)
+    search_range = 1.0
     p1 = s1.evalCatmull(bestU1)
-    bestU2 = s2.find_perp_param_from_point(p1, bestU2, float('inf'))
+    bestU2 = s2.find_perp_param_from_point(p1, bestU2, search_range)
     p2 = s2.evalCatmull(bestU2)
-    bestU1 = s1.find_perp_param_from_point(p2, bestU1, float('inf'))
-    
+    bestU1 = s1.find_perp_param_from_point(p2, bestU1, search_range)
+
     # 2. Local Refinement
     range_val = 2.0
     for _ in range(9):
@@ -563,29 +565,22 @@ class LineTool_Poly(SurfaceDrawTool):
                         self.shift_lock_vec = diff.normalized()
             
             if self.shift_lock_vec:
-                # Mirroring the logic from Axis Constraint to handle both Snaps and Empty Space correctly
-                if self.state.get("geometry_snap", False):
-                     # If we are snapping to geometry, project that snap point onto our locked line
-                     v = target - ref
-                     dist = v.dot(self.shift_lock_vec)
-                     target = ref + self.shift_lock_vec * dist
+                # Use 3D ray intersection to handle vertical lines correctly
+                ray_o = view3d_utils.region_2d_to_origin_3d(context.region, context.region_data, (event.mouse_region_x, event.mouse_region_y))
+                ray_v = view3d_utils.region_2d_to_vector_3d(context.region, context.region_data, (event.mouse_region_x, event.mouse_region_y))
+
+                line_p1 = ref
+                line_p2 = ref + self.shift_lock_vec
+
+                res = geometry.intersect_line_line(ray_o, ray_o + ray_v, line_p1, line_p2)
+
+                if res:
+                    target = res[1]
                 else:
-                    # If strictly using mouse input, use 3D ray intersection to handle vertical lines correctly
-                    ray_o = view3d_utils.region_2d_to_origin_3d(context.region, context.region_data, (event.mouse_region_x, event.mouse_region_y))
-                    ray_v = view3d_utils.region_2d_to_vector_3d(context.region, context.region_data, (event.mouse_region_x, event.mouse_region_y))
-                    
-                    line_p1 = ref
-                    line_p2 = ref + self.shift_lock_vec
-                    
-                    res = geometry.intersect_line_line(ray_o, ray_o + ray_v, line_p1, line_p2)
-                    
-                    if res:
-                        target = res[1]
-                    else:
-                        v = target - ref
-                        dist = v.dot(self.shift_lock_vec)
-                        target = ref + self.shift_lock_vec * dist
-                
+                    v = target - ref
+                    dist = v.dot(self.shift_lock_vec)
+                    target = ref + self.shift_lock_vec * dist
+
                 self.state["current_axis_vector"] = self.shift_lock_vec
         else:
             self.shift_lock_vec = None
@@ -595,16 +590,13 @@ class LineTool_Poly(SurfaceDrawTool):
         # 1. Axis Constraint (Override target if active)
         if self.constraint_axis:
             self.state["current_axis_vector"] = self.constraint_axis
-            if self.state.get("geometry_snap", False):
-                target = ref + self.constraint_axis * (target - ref).dot(self.constraint_axis)
-            else:
-                ray_o = view3d_utils.region_2d_to_origin_3d(context.region, context.region_data, (event.mouse_region_x, event.mouse_region_y))
-                ray_v = view3d_utils.region_2d_to_vector_3d(context.region, context.region_data, (event.mouse_region_x, event.mouse_region_y))
-                res = geometry.intersect_line_line(ray_o, ray_o + ray_v, ref, ref + self.constraint_axis)
-                if res: target = res[1]
+            ray_o = view3d_utils.region_2d_to_origin_3d(context.region, context.region_data, (event.mouse_region_x, event.mouse_region_y))
+            ray_v = view3d_utils.region_2d_to_vector_3d(context.region, context.region_data, (event.mouse_region_x, event.mouse_region_y))
+            res = geometry.intersect_line_line(ray_o, ray_o + ray_v, ref, ref + self.constraint_axis)
+            if res: target = res[1]
 
         # 2. Axis Inference (Override target if active and applicable)
-        elif not self.state.get("geometry_snap", False) and not self.shift_lock_vec:
+        elif not self.shift_lock_vec:
             strength = max(0.1, min(89.0, self.state.get("snap_strength", 6.0)))
             inf_loc, inf_axis, _ = get_axis_snapped_location(ref, (event.mouse_region_x, event.mouse_region_y), context, snap_threshold=math.cos(math.radians(strength)))
             if inf_loc: 
@@ -734,19 +726,19 @@ class LineTool_PerpFromCurve(SurfaceDrawTool):
         ray_origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, coord)
         ray_vector = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
         
-        # --- NEW: PRIORITIZE GEOMETRY SNAP ---
-        if self.state.get("geometry_snap", False) and snap_point:
-            raw_world_pos = snap_point
+        # --- CALCULATE PURE RAY-PLANE INTERSECTION (no geometry snap) ---
+        ref_point = self.pivot if self.pivot else self.state.get("last_surface_hit") or Vector((0,0,0))
+        raw_world_pos = Vector((0,0,0))
+        if ref_point and self.Zp:
+            denom = ray_vector.dot(self.Zp)
+            if abs(denom) > 1e-6:
+                t = (ref_point - ray_origin).dot(self.Zp) / denom
+                raw_world_pos = ray_origin + ray_vector * t
+            else:
+                raw_world_pos = ref_point
         else:
-            ref_point = self.pivot if self.pivot else snap_point
-            if ref_point and self.Zp:
-                denom = ray_vector.dot(self.Zp)
-                if abs(denom) > 1e-6:
-                    t = (ref_point - ray_origin).dot(self.Zp) / denom
-                    raw_world_pos = ray_origin + ray_vector * t
-                else: raw_world_pos = snap_point
-            else: raw_world_pos = snap_point
-        
+            raw_world_pos = ref_point
+
         m_2d = world_to_plane(raw_world_pos, self.Xp, self.Yp)
 
         if self.stage == 0:
@@ -839,19 +831,19 @@ class LineTool_TangentFromCurve(SurfaceDrawTool):
         ray_origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, coord)
         ray_vector = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
         
-        # --- NEW: PRIORITIZE GEOMETRY SNAP ---
-        if self.state.get("geometry_snap", False) and snap_point:
-            raw_world_pos = snap_point
+        # --- CALCULATE PURE RAY-PLANE INTERSECTION (no geometry snap) ---
+        ref_point = self.pivot if self.pivot else self.state.get("last_surface_hit") or Vector((0,0,0))
+        raw_world_pos = Vector((0,0,0))
+        if ref_point and self.Zp:
+            denom = ray_vector.dot(self.Zp)
+            if abs(denom) > 1e-6:
+                t = (ref_point - ray_origin).dot(self.Zp) / denom
+                raw_world_pos = ray_origin + ray_vector * t
+            else:
+                raw_world_pos = ref_point
         else:
-            ref_point = self.pivot if self.pivot else snap_point
-            if ref_point and self.Zp:
-                denom = ray_vector.dot(self.Zp)
-                if abs(denom) > 1e-6:
-                    t = (ref_point - ray_origin).dot(self.Zp) / denom
-                    raw_world_pos = ray_origin + ray_vector * t
-                else: raw_world_pos = snap_point
-            else: raw_world_pos = snap_point
-        
+            raw_world_pos = ref_point
+
         m_2d = world_to_plane(raw_world_pos, self.Xp, self.Yp)
 
         if self.stage == 0:
@@ -961,13 +953,15 @@ class LineTool_TanTan(SurfaceDrawTool):
         # --- FIXED: IGNORE SNAP_POINT AND CALCULATE PURE RAY-PLANE INTERSECTION ---
         # We need a reference point on the drawing plane for the intersection.
         ref_p = self.pivot if self.pivot else self.state.get("locked_plane_point") or self.state.get("last_surface_hit") or Vector((0,0,0))
-        
-        raw_world_pos = snap_point # Fallback
+
+        raw_world_pos = Vector((0,0,0))  # Initialize
         if self.Zp:
             denom = ray_vector.dot(self.Zp)
             if abs(denom) > 1e-6:
                 t = (ref_p - ray_origin).dot(self.Zp) / denom
                 raw_world_pos = ray_origin + ray_vector * t
+            else:
+                raw_world_pos = ref_p
         
         m_2d = world_to_plane(raw_world_pos, self.Xp, self.Yp)
         
@@ -1080,19 +1074,19 @@ class LineTool_PerpToTwoCurves(SurfaceDrawTool):
         ray_origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, coord)
         ray_vector = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
         
-        # --- NEW: PRIORITIZE GEOMETRY SNAP ---
-        if self.state.get("geometry_snap", False) and snap_point:
-            raw_world_pos = snap_point
+        # --- CALCULATE PURE RAY-PLANE INTERSECTION (no geometry snap) ---
+        ref_point = self.pivot if self.pivot else self.state.get("last_surface_hit") or Vector((0,0,0))
+        raw_world_pos = Vector((0,0,0))
+        if ref_point and self.Zp:
+            denom = ray_vector.dot(self.Zp)
+            if abs(denom) > 1e-6:
+                t = (ref_point - ray_origin).dot(self.Zp) / denom
+                raw_world_pos = ray_origin + ray_vector * t
+            else:
+                raw_world_pos = ref_point
         else:
-            ref_point = self.pivot if self.pivot else snap_point
-            if ref_point and self.Zp:
-                denom = ray_vector.dot(self.Zp)
-                if abs(denom) > 1e-6:
-                    t = (ref_point - ray_origin).dot(self.Zp) / denom
-                    raw_world_pos = ray_origin + ray_vector * t
-                else: raw_world_pos = snap_point
-            else: raw_world_pos = snap_point
-        
+            raw_world_pos = ref_point
+
         m_2d = world_to_plane(raw_world_pos, self.Xp, self.Yp)
         
         if self.stage == 0:
