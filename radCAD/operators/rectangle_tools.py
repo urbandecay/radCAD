@@ -22,7 +22,6 @@ class RectangleTool_CenterCorner(SurfaceDrawTool):
         if self.stage == 1:
             center = self.pivot
             coord = (event.mouse_region_x, event.mouse_region_y)
-            target = snap_point
 
             # 1. ORIENTATION LOGIC (Stable Basis)
             # Start with the original surface basis
@@ -48,20 +47,23 @@ class RectangleTool_CenterCorner(SurfaceDrawTool):
                 self.Zp = up.copy()
                 self.Xp, self.Yp, _ = orthonormal_basis_from_normal(self.Zp)
 
-            # 2. Axis Snapping (Only when flat, ignore normal-axis snaps like Z)
-            inf_loc = None
-            if not is_perp:
-                from ..inference_utils import get_axis_snapped_location
-                strength_deg = self.state.get("snap_strength", 6.0)
-                axis_thresh = math.cos(math.radians(strength_deg))
-                inf_loc, inf_vec, _ = get_axis_snapped_location(center, coord, context, snap_threshold=axis_thresh)
-                if inf_loc and not event.alt:
-                    # Ignore snapping to the plane's normal (prevents collapse on Z-axis)
-                    if inf_vec and abs(inf_vec.dot(self.Zp)) < 0.9:
-                        target = inf_loc
+            # 2. Start with snap_point, but reject it if it snapped back to the anchor
+            # (snap_to_mesh_components can snap to the anchor vertex, collapsing the rectangle)
+            from bpy_extras import view3d_utils
+            from mathutils import geometry
+            ray_origin = view3d_utils.region_2d_to_origin_3d(context.region, context.region_data, coord)
+            ray_vector = view3d_utils.region_2d_to_vector_3d(context.region, context.region_data, coord)
+            if snap_point and (snap_point - center).length > 1e-6:
+                target = snap_point
+            else:
+                hit = geometry.intersect_line_plane(ray_origin, ray_origin + ray_vector, center, self.Zp)
+                target = hit if hit else snap_point
+
+            # NOTE: No axis snapping here — snapping to a world axis zeros out one rectangle
+            # dimension (dx or dy), collapsing the rectangle to a line.
+            # Vertex snapping (snap_point above) is sufficient for CenterCorner.
 
             # 3. Project target onto plane (after snapping, to preserve snap direction)
-            # Keep target on drawing plane by removing only the normal component
             if self.Zp:
                 offset = (target - center).dot(self.Zp)
                 target = target - self.Zp * offset
@@ -129,7 +131,6 @@ class RectangleTool_CornerCorner(SurfaceDrawTool):
         if self.stage == 1:
             c1 = self.pivot
             coord = (event.mouse_region_x, event.mouse_region_y)
-            target = snap_point
 
             # 1. ORIENTATION LOGIC (Stable Basis)
             up = self.ref_normal
@@ -151,20 +152,21 @@ class RectangleTool_CornerCorner(SurfaceDrawTool):
                 self.Zp = up.copy()
                 self.Xp, self.Yp, _ = orthonormal_basis_from_normal(self.Zp)
 
-            # 2. Axis Snapping (Only when flat, ignore normal-axis snaps like Z)
-            inf_loc = None
-            if not is_perp:
-                from ..inference_utils import get_axis_snapped_location
-                strength_deg = self.state.get("snap_strength", 6.0)
-                axis_thresh = math.cos(math.radians(strength_deg))
-                inf_loc, inf_vec, _ = get_axis_snapped_location(c1, coord, context, snap_threshold=axis_thresh)
-                if inf_loc and not event.alt:
-                    # Ignore snapping to the plane's normal (prevents collapse on Z-axis)
-                    if inf_vec and abs(inf_vec.dot(self.Zp)) < 0.9:
-                        target = inf_loc
+            # 2. Start with snap_point, but reject if it snapped back to the anchor
+            from bpy_extras import view3d_utils
+            from mathutils import geometry
+            ray_origin = view3d_utils.region_2d_to_origin_3d(context.region, context.region_data, coord)
+            ray_vector = view3d_utils.region_2d_to_vector_3d(context.region, context.region_data, coord)
+            if snap_point and (snap_point - c1).length > 1e-6:
+                target = snap_point
+            else:
+                hit = geometry.intersect_line_plane(ray_origin, ray_origin + ray_vector, c1, self.Zp)
+                target = hit if hit else snap_point
+
+            # NOTE: No axis snapping here — same reason as CenterCorner.
+            # Snapping to a world axis zeros out dx or dy, collapsing the rectangle to a line.
 
             # 3. Project target onto plane (after snapping, to preserve snap direction)
-            # Keep target on drawing plane by removing only the normal component
             if self.Zp:
                 offset = (target - c1).dot(self.Zp)
                 target = target - self.Zp * offset
@@ -237,14 +239,24 @@ class RectangleTool_3Point(SurfaceDrawTool):
         # Stage 1: Set P2 (End of Edge / Rotation)
         if self.stage == 1:
             p1 = self.pivot
-            target = snap_point
-            
+
+            # Reject snap_point if it snapped back to the anchor (collapses the edge/rectangle)
+            from bpy_extras import view3d_utils
+            from mathutils import geometry as geo
+            ray_o = view3d_utils.region_2d_to_origin_3d(context.region, context.region_data, coord)
+            ray_v = view3d_utils.region_2d_to_vector_3d(context.region, context.region_data, coord)
+            if snap_point and (snap_point - p1).length > 1e-6:
+                target = snap_point
+            else:
+                hit = geo.intersect_line_plane(ray_o, ray_o + ray_v, p1, self.ref_normal)
+                target = hit if hit else snap_point
+
             # Axis Snapping (Ignore normal-axis snaps like Z)
             inf_loc, inf_vec, _ = get_axis_snapped_location(p1, coord, context, snap_threshold=axis_thresh)
             if inf_loc and not event.alt:
                 if inf_vec and abs(inf_vec.dot(self.ref_normal)) < 0.9:
                     target = inf_loc
-            
+
             self.current = target
             # Just draw the edge being defined
             self.preview_pts = [p1, target]
