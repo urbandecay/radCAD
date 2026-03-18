@@ -128,7 +128,8 @@ def get_render_settings(ctx):
         "ELLIPSE_RADIUS_USE_AXIS_COLORS": True,
         "COL_OVERLAY_ELLIPSE_RADIUS": (0.1, 0.1, 0.1, 1.0),
         "ELLIPSE_ENDPOINTS_USE_AXIS_COLORS": True,
-        "COL_OVERLAY_ELLIPSE_ENDPOINTS": (0.1, 0.1, 0.1, 1.0)
+        "COL_OVERLAY_ELLIPSE_ENDPOINTS": (0.1, 0.1, 0.1, 1.0),
+        "ELLIPSE_CORNERS_COLOR": (0.0, 1.0, 0.0, 1.0)
     }
 
     system_prefs = ctx.preferences.system
@@ -213,6 +214,8 @@ def get_render_settings(ctx):
 
         prefs["ELLIPSE_ENDPOINTS_USE_AXIS_COLORS"] = getattr(addon_prefs, "ellipse_endpoints_use_axis_colors", True)
         prefs["COL_OVERLAY_ELLIPSE_ENDPOINTS"] = getattr(addon_prefs, "color_ellipse_endpoints_overlay", (0.1, 0.1, 0.1, 1.0))
+
+        prefs["ELLIPSE_CORNERS_COLOR"] = getattr(addon_prefs, "ellipse_corners_color", (0.0, 1.0, 0.0, 1.0))
 
         prefs["PREVIEW_VERTEX_SIZE"] = addon_prefs.preview_vertex_size
         
@@ -601,7 +604,7 @@ def draw_preview_ellipse(ctx, shaders, prefs):
             p4 = pv + state["Yp"] * h
 
             # Draw Box (no axis colors for corners)
-            col_box = (0.2, 0.2, 0.2, 1.0)
+            col_box = prefs.get("ELLIPSE_CORNERS_COLOR", (0.0, 1.0, 0.0, 1.0))
             draw_line(ctx, shaders, p1, p2, col_box, prefs)
             draw_line(ctx, shaders, p2, p3, col_box, prefs)
             draw_line(ctx, shaders, p3, p4, col_box, prefs)
@@ -636,7 +639,7 @@ def draw_preview_ellipse(ctx, shaders, prefs):
         else:
             # ELLIPSE_CORNERS doesn't have axis colors
             diff = state["current"] - pv
-            col = (0.5, 0.5, 0.5, 1.0)
+            col = prefs.get("ELLIPSE_CORNERS_COLOR", (0.0, 1.0, 0.0, 1.0))
             draw_line(ctx, shaders, pv, state["current"], col, prefs)
         
     elif state["stage"] == 2:

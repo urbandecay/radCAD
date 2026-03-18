@@ -320,6 +320,16 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
         description="The color for the guide lines when not using axis colors"
     )
 
+    # --- Ellipse from Corners ---
+    ellipse_corners_color: bpy.props.FloatVectorProperty(
+        name="Corners Color",
+        subtype='COLOR',
+        size=4,
+        min=0.0, max=1.0,
+        default=(0.0, 1.0, 0.0, 1.0),
+        description="Color for the bounding box lines in corners mode"
+    )
+
     axis_color_dim: bpy.props.FloatProperty(
         name="Axis Color Dimmer",
         description="Controls how much the axis colors are dimmed when snapped. 1.0 is full brightness, 0.0 is black",
@@ -897,8 +907,11 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
             self.draw_property_row(col, "Use Axis Colors:", "ellipse_foci_use_axis_colors")
             self.draw_property_row(col, "Overlay Color:", "color_ellipse_foci_overlay", enabled=not self.ellipse_foci_use_axis_colors)
 
-        # 16. Ellipse Corners (no snapping visuals)
-        self.draw_section_header(layout, "Ellipse (From Corners) Settings", "show_ellipse_corners_settings", icon='CURVE_NCURVE', tool_key='ellipse_corners')
+        # 16. Ellipse Corners
+        col = self.draw_section_header(layout, "Ellipse (From Corners) Settings", "show_ellipse_corners_settings", icon='CURVE_NCURVE', tool_key='ellipse_corners')
+        if col:
+            self.draw_group_label(col, "Visuals:", icon='COLOR')
+            self.draw_property_row(col, "Corners Color:", "ellipse_corners_color")
 
         # 17-18. Ellipse Tools (Endpoints & Radius with Snapping Visuals)
         ellipse_tools = [
