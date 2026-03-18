@@ -849,7 +849,7 @@ def draw_cb_3d():
                 draw_col = settings.get("LINE_PERP2_COL_CATMULL", (0.0, 0.8, 1.0, 0.5))
                 draw_width = settings.get("LINE_PERP2_WIDTH_CATMULL", 2.0)
             elif mode == "LINE_TANGENT_FROM_CURVE":
-                do_draw = settings.get("LINE_TANGENT_SHOW_CATMULL", True)
+                do_draw = False
                 draw_col = settings.get("LINE_TANGENT_COL_CATMULL", (0.0, 0.8, 1.0, 0.5))
                 draw_width = settings.get("LINE_TANGENT_WIDTH_CATMULL", 2.0)
             elif mode == "LINE_TAN_TAN":
