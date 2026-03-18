@@ -330,6 +330,113 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
         description="Color for the bounding box lines in corners mode"
     )
 
+    # --- Polygon Tools ---
+    polygon_center_corner_use_axis_colors: bpy.props.BoolProperty(
+        name="Use Axis Colors",
+        description="When snapped to X, Y, or Z, the guide lines will turn the axis color. If off, they stay the default color",
+        default=True
+    )
+
+    color_polygon_center_corner_overlay: bpy.props.FloatVectorProperty(
+        name="Overlay Color",
+        subtype='COLOR',
+        size=4,
+        min=0.0, max=1.0,
+        default=(0.1, 0.1, 0.1, 1.0),
+        description="The color for the guide lines when not using axis colors"
+    )
+
+    polygon_center_tangent_use_axis_colors: bpy.props.BoolProperty(
+        name="Use Axis Colors",
+        description="When snapped to X, Y, or Z, the guide lines will turn the axis color. If off, they stay the default color",
+        default=True
+    )
+
+    color_polygon_center_tangent_overlay: bpy.props.FloatVectorProperty(
+        name="Overlay Color",
+        subtype='COLOR',
+        size=4,
+        min=0.0, max=1.0,
+        default=(0.1, 0.1, 0.1, 1.0),
+        description="The color for the guide lines when not using axis colors"
+    )
+
+    polygon_corner_corner_use_axis_colors: bpy.props.BoolProperty(
+        name="Use Axis Colors",
+        description="When snapped to X, Y, or Z, the guide lines will turn the axis color. If off, they stay the default color",
+        default=True
+    )
+
+    color_polygon_corner_corner_overlay: bpy.props.FloatVectorProperty(
+        name="Overlay Color",
+        subtype='COLOR',
+        size=4,
+        min=0.0, max=1.0,
+        default=(0.1, 0.1, 0.1, 1.0),
+        description="The color for the guide lines when not using axis colors"
+    )
+
+    polygon_edge_use_axis_colors: bpy.props.BoolProperty(
+        name="Use Axis Colors",
+        description="When snapped to X, Y, or Z, the guide lines will turn the axis color. If off, they stay the default color",
+        default=True
+    )
+
+    color_polygon_edge_overlay: bpy.props.FloatVectorProperty(
+        name="Overlay Color",
+        subtype='COLOR',
+        size=4,
+        min=0.0, max=1.0,
+        default=(0.1, 0.1, 0.1, 1.0),
+        description="The color for the guide lines when not using axis colors"
+    )
+
+    # --- Rectangle Tools ---
+    rectangle_center_corner_use_axis_colors: bpy.props.BoolProperty(
+        name="Use Axis Colors",
+        description="When snapped to X, Y, or Z, the guide lines will turn the axis color. If off, they stay the default color",
+        default=True
+    )
+
+    color_rectangle_center_corner_overlay: bpy.props.FloatVectorProperty(
+        name="Overlay Color",
+        subtype='COLOR',
+        size=4,
+        min=0.0, max=1.0,
+        default=(0.1, 0.1, 0.1, 1.0),
+        description="The color for the guide lines when not using axis colors"
+    )
+
+    rectangle_corner_corner_use_axis_colors: bpy.props.BoolProperty(
+        name="Use Axis Colors",
+        description="When snapped to X, Y, or Z, the guide lines will turn the axis color. If off, they stay the default color",
+        default=True
+    )
+
+    color_rectangle_corner_corner_overlay: bpy.props.FloatVectorProperty(
+        name="Overlay Color",
+        subtype='COLOR',
+        size=4,
+        min=0.0, max=1.0,
+        default=(0.1, 0.1, 0.1, 1.0),
+        description="The color for the guide lines when not using axis colors"
+    )
+
+    rectangle_3pt_use_axis_colors: bpy.props.BoolProperty(
+        name="Use Axis Colors",
+        description="When snapped to X, Y, or Z, the guide lines will turn the axis color. If off, they stay the default color",
+        default=True
+    )
+
+    color_rectangle_3pt_overlay: bpy.props.FloatVectorProperty(
+        name="Overlay Color",
+        subtype='COLOR',
+        size=4,
+        min=0.0, max=1.0,
+        default=(0.1, 0.1, 0.1, 1.0),
+        description="The color for the guide lines when not using axis colors"
+    )
+
     axis_color_dim: bpy.props.FloatProperty(
         name="Axis Color Dimmer",
         description="Controls how much the axis colors are dimmed when snapped. 1.0 is full brightness, 0.0 is black",
@@ -925,14 +1032,35 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
                 self.draw_property_row(col, "Use Axis Colors:", f"ellipse_{prop_prefix}_use_axis_colors")
                 self.draw_property_row(col, "Overlay Color:", f"color_ellipse_{prop_prefix}_overlay", enabled=not getattr(self, f"ellipse_{prop_prefix}_use_axis_colors"))
 
-        # 20-23. Other Shapes and Curves
-        shape_tools = [
-            ("poly", "Polygon Settings", "show_polygon_settings", "polygon_cen_cor", "MESH_CIRCLE"),
-            ("rect", "Rectangle Settings", "show_rectangle_settings", "rectangle_from_center", "MESH_PLANE"),
-            ("curve", "Curve Settings", "show_curve_settings", "curve_interpolate_points", "CURVE_BEZCURVE")
+        # 20-23. Polygon Tools (with Snapping Visuals)
+        polygon_tools = [
+            ("center_corner", "Polygon (Center/Corner) Settings", "show_polygon_settings", "polygon_cen_cor"),
+            ("center_tangent", "Polygon (Center/Tangent) Settings", "show_polygon_settings", "polygon_cen_tan"),
+            ("corner_corner", "Polygon (Corner/Corner) Settings", "show_polygon_settings", "polygon_cor_cor"),
+            ("edge", "Polygon (Edge) Settings", "show_polygon_settings", "polygon_edge")
         ]
-        for key, title, show_prop, tool_key, fallback_icon in shape_tools:
-            self.draw_section_header(layout, title, show_prop, icon=fallback_icon, tool_key=tool_key)
+        for prop_prefix, title, show_prop, tool_key in polygon_tools:
+            col = self.draw_section_header(layout, title, show_prop, icon='MESH_CIRCLE', tool_key=tool_key)
+            if col:
+                self.draw_group_label(col, "Snapping Visuals:", icon='COLOR')
+                self.draw_property_row(col, "Use Axis Colors:", f"polygon_{prop_prefix}_use_axis_colors")
+                self.draw_property_row(col, "Overlay Color:", f"color_polygon_{prop_prefix}_overlay", enabled=not getattr(self, f"polygon_{prop_prefix}_use_axis_colors"))
+
+        # 24-26. Rectangle Tools (with Snapping Visuals)
+        rectangle_tools = [
+            ("center_corner", "Rectangle (Center/Corner) Settings", "show_rectangle_settings", "rectangle_center_corner"),
+            ("corner_corner", "Rectangle (Corner/Corner) Settings", "show_rectangle_settings", "rectangle_corner_corner"),
+            ("3pt", "Rectangle (3 Points) Settings", "show_rectangle_settings", "rectangle_3pt")
+        ]
+        for prop_prefix, title, show_prop, tool_key in rectangle_tools:
+            col = self.draw_section_header(layout, title, show_prop, icon='MESH_PLANE', tool_key=tool_key)
+            if col:
+                self.draw_group_label(col, "Snapping Visuals:", icon='COLOR')
+                self.draw_property_row(col, "Use Axis Colors:", f"rectangle_{prop_prefix}_use_axis_colors")
+                self.draw_property_row(col, "Overlay Color:", f"color_rectangle_{prop_prefix}_overlay", enabled=not getattr(self, f"rectangle_{prop_prefix}_use_axis_colors"))
+
+        # 27. Curve Settings
+        self.draw_section_header(layout, "Curve Settings", "show_curve_settings", icon='CURVE_BEZCURVE', tool_key='curve_interpolate_points')
 
 def register():
     bpy.utils.register_class(RADCAD_Preferences)

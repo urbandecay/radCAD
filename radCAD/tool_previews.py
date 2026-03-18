@@ -129,7 +129,21 @@ def get_render_settings(ctx):
         "COL_OVERLAY_ELLIPSE_RADIUS": (0.1, 0.1, 0.1, 1.0),
         "ELLIPSE_ENDPOINTS_USE_AXIS_COLORS": True,
         "COL_OVERLAY_ELLIPSE_ENDPOINTS": (0.1, 0.1, 0.1, 1.0),
-        "ELLIPSE_CORNERS_COLOR": (0.0, 1.0, 0.0, 1.0)
+        "ELLIPSE_CORNERS_COLOR": (0.0, 1.0, 0.0, 1.0),
+        "POLYGON_CENTER_CORNER_USE_AXIS_COLORS": True,
+        "COL_OVERLAY_POLYGON_CENTER_CORNER": (0.1, 0.1, 0.1, 1.0),
+        "POLYGON_CENTER_TANGENT_USE_AXIS_COLORS": True,
+        "COL_OVERLAY_POLYGON_CENTER_TANGENT": (0.1, 0.1, 0.1, 1.0),
+        "POLYGON_CORNER_CORNER_USE_AXIS_COLORS": True,
+        "COL_OVERLAY_POLYGON_CORNER_CORNER": (0.1, 0.1, 0.1, 1.0),
+        "POLYGON_EDGE_USE_AXIS_COLORS": True,
+        "COL_OVERLAY_POLYGON_EDGE": (0.1, 0.1, 0.1, 1.0),
+        "RECTANGLE_CENTER_CORNER_USE_AXIS_COLORS": True,
+        "COL_OVERLAY_RECTANGLE_CENTER_CORNER": (0.1, 0.1, 0.1, 1.0),
+        "RECTANGLE_CORNER_CORNER_USE_AXIS_COLORS": True,
+        "COL_OVERLAY_RECTANGLE_CORNER_CORNER": (0.1, 0.1, 0.1, 1.0),
+        "RECTANGLE_3PT_USE_AXIS_COLORS": True,
+        "COL_OVERLAY_RECTANGLE_3PT": (0.1, 0.1, 0.1, 1.0)
     }
 
     system_prefs = ctx.preferences.system
@@ -216,6 +230,27 @@ def get_render_settings(ctx):
         prefs["COL_OVERLAY_ELLIPSE_ENDPOINTS"] = getattr(addon_prefs, "color_ellipse_endpoints_overlay", (0.1, 0.1, 0.1, 1.0))
 
         prefs["ELLIPSE_CORNERS_COLOR"] = getattr(addon_prefs, "ellipse_corners_color", (0.0, 1.0, 0.0, 1.0))
+
+        prefs["POLYGON_CENTER_CORNER_USE_AXIS_COLORS"] = getattr(addon_prefs, "polygon_center_corner_use_axis_colors", True)
+        prefs["COL_OVERLAY_POLYGON_CENTER_CORNER"] = getattr(addon_prefs, "color_polygon_center_corner_overlay", (0.1, 0.1, 0.1, 1.0))
+
+        prefs["POLYGON_CENTER_TANGENT_USE_AXIS_COLORS"] = getattr(addon_prefs, "polygon_center_tangent_use_axis_colors", True)
+        prefs["COL_OVERLAY_POLYGON_CENTER_TANGENT"] = getattr(addon_prefs, "color_polygon_center_tangent_overlay", (0.1, 0.1, 0.1, 1.0))
+
+        prefs["POLYGON_CORNER_CORNER_USE_AXIS_COLORS"] = getattr(addon_prefs, "polygon_corner_corner_use_axis_colors", True)
+        prefs["COL_OVERLAY_POLYGON_CORNER_CORNER"] = getattr(addon_prefs, "color_polygon_corner_corner_overlay", (0.1, 0.1, 0.1, 1.0))
+
+        prefs["POLYGON_EDGE_USE_AXIS_COLORS"] = getattr(addon_prefs, "polygon_edge_use_axis_colors", True)
+        prefs["COL_OVERLAY_POLYGON_EDGE"] = getattr(addon_prefs, "color_polygon_edge_overlay", (0.1, 0.1, 0.1, 1.0))
+
+        prefs["RECTANGLE_CENTER_CORNER_USE_AXIS_COLORS"] = getattr(addon_prefs, "rectangle_center_corner_use_axis_colors", True)
+        prefs["COL_OVERLAY_RECTANGLE_CENTER_CORNER"] = getattr(addon_prefs, "color_rectangle_center_corner_overlay", (0.1, 0.1, 0.1, 1.0))
+
+        prefs["RECTANGLE_CORNER_CORNER_USE_AXIS_COLORS"] = getattr(addon_prefs, "rectangle_corner_corner_use_axis_colors", True)
+        prefs["COL_OVERLAY_RECTANGLE_CORNER_CORNER"] = getattr(addon_prefs, "color_rectangle_corner_corner_overlay", (0.1, 0.1, 0.1, 1.0))
+
+        prefs["RECTANGLE_3PT_USE_AXIS_COLORS"] = getattr(addon_prefs, "rectangle_3pt_use_axis_colors", True)
+        prefs["COL_OVERLAY_RECTANGLE_3PT"] = getattr(addon_prefs, "color_rectangle_3pt_overlay", (0.1, 0.1, 0.1, 1.0))
 
         prefs["PREVIEW_VERTEX_SIZE"] = addon_prefs.preview_vertex_size
         
@@ -705,11 +740,28 @@ def draw_preview_polygon(ctx, shaders, prefs):
             draw_line(ctx, shaders, pv, pts[1], prefs["COL_START"], prefs)
         else:
             diff = state["current"] - pv
-            col = get_axis_aligned_color(diff, (0.5, 0.5, 0.5, 1.0))
             is_3pt_rect = tool_mode == "RECTANGLE_3_POINTS"
             is_other_rect = tool_mode in ["RECTANGLE_CENTER_CORNER", "RECTANGLE_CORNER_CORNER"]
+
+            # Map tool_mode to preference keys
+            tool_pref_map = {
+                "POLYGON_CENTER_CORNER": ("POLYGON_CENTER_CORNER_USE_AXIS_COLORS", "COL_OVERLAY_POLYGON_CENTER_CORNER"),
+                "POLYGON_CENTER_TANGENT": ("POLYGON_CENTER_TANGENT_USE_AXIS_COLORS", "COL_OVERLAY_POLYGON_CENTER_TANGENT"),
+                "POLYGON_CORNER_CORNER": ("POLYGON_CORNER_CORNER_USE_AXIS_COLORS", "COL_OVERLAY_POLYGON_CORNER_CORNER"),
+                "POLYGON_EDGE": ("POLYGON_EDGE_USE_AXIS_COLORS", "COL_OVERLAY_POLYGON_EDGE"),
+                "RECTANGLE_CENTER_CORNER": ("RECTANGLE_CENTER_CORNER_USE_AXIS_COLORS", "COL_OVERLAY_RECTANGLE_CENTER_CORNER"),
+                "RECTANGLE_CORNER_CORNER": ("RECTANGLE_CORNER_CORNER_USE_AXIS_COLORS", "COL_OVERLAY_RECTANGLE_CORNER_CORNER"),
+                "RECTANGLE_3_POINTS": ("RECTANGLE_3PT_USE_AXIS_COLORS", "COL_OVERLAY_RECTANGLE_3PT"),
+            }
+
+            if tool_mode in tool_pref_map:
+                toggle_key, color_key = tool_pref_map[tool_mode]
+                col = get_axis_aligned_color(diff, prefs[color_key], prefs, toggle_key)
+            else:
+                col = get_axis_aligned_color(diff, (0.5, 0.5, 0.5, 1.0))
+
             is_aligned = (col != (0.5, 0.5, 0.5, 1.0))
-            
+
             # Draw line for polygons and 3-point rectangle (if aligned)
             if not is_other_rect:
                 if not is_3pt_rect or is_aligned:
