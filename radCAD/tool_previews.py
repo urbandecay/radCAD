@@ -116,19 +116,19 @@ def get_render_settings(ctx):
         "CIRCLE_TAN2_WIDTH_TANGENT": 2.0,
         "ELLIPSE_FOCI_COL_FOCI": (0.0, 1.0, 0.0, 1.0),
         "ELLIPSE_FOCI_USE_AXIS_COLORS": True,
-        "COL_OVERLAY_ELLIPSE_FOCI": (0.2, 0.2, 0.2, 1.0),
+        "COL_OVERLAY_ELLIPSE_FOCI": (0.1, 0.1, 0.1, 1.0),
         "ARC_2PT_USE_AXIS_COLORS": True,
-        "COL_OVERLAY_2PT": (0.5, 0.5, 0.5, 0.5),
+        "COL_OVERLAY_2PT": (0.3, 0.3, 0.3, 0.5),
         "ARC_3PT_USE_AXIS_COLORS": True,
-        "COL_OVERLAY_3PT": (0.5, 0.5, 0.5, 0.5),
+        "COL_OVERLAY_3PT": (0.3, 0.3, 0.3, 0.5),
         "CIRCLE_2PT_USE_AXIS_COLORS": True,
-        "COL_OVERLAY_C2PT": (0.5, 0.5, 0.5, 0.5),
+        "COL_OVERLAY_C2PT": (0.3, 0.3, 0.3, 0.5),
         "CIRCLE_3PT_USE_AXIS_COLORS": True,
-        "COL_OVERLAY_C3PT": (0.5, 0.5, 0.5, 0.5),
+        "COL_OVERLAY_C3PT": (0.3, 0.3, 0.3, 0.5),
         "ELLIPSE_RADIUS_USE_AXIS_COLORS": True,
-        "COL_OVERLAY_ELLIPSE_RADIUS": (0.2, 0.2, 0.2, 1.0),
+        "COL_OVERLAY_ELLIPSE_RADIUS": (0.1, 0.1, 0.1, 1.0),
         "ELLIPSE_ENDPOINTS_USE_AXIS_COLORS": True,
-        "COL_OVERLAY_ELLIPSE_ENDPOINTS": (0.2, 0.2, 0.2, 1.0)
+        "COL_OVERLAY_ELLIPSE_ENDPOINTS": (0.1, 0.1, 0.1, 1.0)
     }
 
     system_prefs = ctx.preferences.system
@@ -179,7 +179,7 @@ def get_render_settings(ctx):
         
         prefs["ELLIPSE_FOCI_COL_FOCI"] = tuple(getattr(addon_prefs, "ellipse_foci_col_foci_lines", (0.0, 1.0, 0.0, 1.0)))
         prefs["ELLIPSE_FOCI_USE_AXIS_COLORS"] = getattr(addon_prefs, "ellipse_foci_use_axis_colors", True)
-        prefs["COL_OVERLAY_ELLIPSE_FOCI"] = getattr(addon_prefs, "color_ellipse_foci_overlay", (0.2, 0.2, 0.2, 1.0))
+        prefs["COL_OVERLAY_ELLIPSE_FOCI"] = getattr(addon_prefs, "color_ellipse_foci_overlay", (0.1, 0.1, 0.1, 1.0))
 
         prefs["LIFT_COMPASS"] = addon_prefs.lift_compass
         prefs["LIFT_ARC"] = addon_prefs.lift_arc
@@ -209,10 +209,10 @@ def get_render_settings(ctx):
         prefs["COL_OVERLAY_C3PT"] = addon_prefs.color_circle_3pt_overlay
 
         prefs["ELLIPSE_RADIUS_USE_AXIS_COLORS"] = getattr(addon_prefs, "ellipse_radius_use_axis_colors", True)
-        prefs["COL_OVERLAY_ELLIPSE_RADIUS"] = getattr(addon_prefs, "color_ellipse_radius_overlay", (0.2, 0.2, 0.2, 1.0))
+        prefs["COL_OVERLAY_ELLIPSE_RADIUS"] = getattr(addon_prefs, "color_ellipse_radius_overlay", (0.1, 0.1, 0.1, 1.0))
 
         prefs["ELLIPSE_ENDPOINTS_USE_AXIS_COLORS"] = getattr(addon_prefs, "ellipse_endpoints_use_axis_colors", True)
-        prefs["COL_OVERLAY_ELLIPSE_ENDPOINTS"] = getattr(addon_prefs, "color_ellipse_endpoints_overlay", (0.2, 0.2, 0.2, 1.0))
+        prefs["COL_OVERLAY_ELLIPSE_ENDPOINTS"] = getattr(addon_prefs, "color_ellipse_endpoints_overlay", (0.1, 0.1, 0.1, 1.0))
 
         prefs["PREVIEW_VERTEX_SIZE"] = addon_prefs.preview_vertex_size
         
@@ -647,14 +647,9 @@ def draw_preview_ellipse(ctx, shaders, prefs):
              draw_points(ctx, shaders, [state["f1"]], (0,0,0,1), pt_size, prefs)
              draw_points(ctx, shaders, [state["f2"]], (0,0,0,1), pt_size, prefs)
              if state["current"] is not None:
-                  # Use axis colors if enabled, otherwise use the foci line color
-                  diff_f1 = state["current"] - state["f1"]
-                  f_col = get_axis_aligned_color(diff_f1, prefs["COL_OVERLAY_ELLIPSE_FOCI"], prefs, "ELLIPSE_FOCI_USE_AXIS_COLORS")
+                  f_col = prefs.get("ELLIPSE_FOCI_COL_FOCI", (0.0, 1.0, 0.0, 1.0))
                   draw_line(ctx, shaders, state["f1"], state["current"], f_col, prefs)
-
-                  diff_f2 = state["current"] - state["f2"]
-                  f_col2 = get_axis_aligned_color(diff_f2, prefs["COL_OVERLAY_ELLIPSE_FOCI"], prefs, "ELLIPSE_FOCI_USE_AXIS_COLORS")
-                  draw_line(ctx, shaders, state["f2"], state["current"], f_col2, prefs)
+                  draw_line(ctx, shaders, state["f2"], state["current"], f_col, prefs)
         
         # Draw Major Axis (Ghosted/Reference)
         if mode == "ELLIPSE_RADIUS" and "Xp" in state and "rx" in state:

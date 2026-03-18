@@ -284,7 +284,7 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
         subtype='COLOR',
         size=4,
         min=0.0, max=1.0,
-        default=(0.2, 0.2, 0.2, 1.0),
+        default=(0.1, 0.1, 0.1, 1.0),
         description="The color for the guide lines when not using axis colors"
     )
 
@@ -300,7 +300,7 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
         subtype='COLOR',
         size=4,
         min=0.0, max=1.0,
-        default=(0.2, 0.2, 0.2, 1.0),
+        default=(0.1, 0.1, 0.1, 1.0),
         description="The color for the guide lines when not using axis colors"
     )
 
@@ -316,7 +316,7 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
         subtype='COLOR',
         size=4,
         min=0.0, max=1.0,
-        default=(0.2, 0.2, 0.2, 1.0),
+        default=(0.1, 0.1, 0.1, 1.0),
         description="The color for the guide lines when not using axis colors"
     )
 
@@ -393,7 +393,7 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
         subtype='COLOR',
         size=4,
         min=0.0, max=1.0,
-        default=(0.2, 0.2, 0.2, 1.0), # Dark Grey
+        default=(0.1, 0.1, 0.1, 1.0), # Darker Grey
         description="The color for the chord and height guide lines when not using axis colors"
     )
 
@@ -415,7 +415,7 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
         subtype='COLOR',
         size=4,
         min=0.0, max=1.0,
-        default=(0.2, 0.2, 0.2, 1.0), # Dark Grey
+        default=(0.1, 0.1, 0.1, 1.0), # Darker Grey
         description="The color for the guide lines when not using axis colors"
     )
 
@@ -437,7 +437,7 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
         subtype='COLOR',
         size=4,
         min=0.0, max=1.0,
-        default=(0.2, 0.2, 0.2, 1.0), # Dark Grey
+        default=(0.1, 0.1, 0.1, 1.0), # Darker Grey
         description="The color for the guide lines when not using axis colors"
     )
 
@@ -459,7 +459,7 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
         subtype='COLOR',
         size=4,
         min=0.0, max=1.0,
-        default=(0.2, 0.2, 0.2, 1.0), # Dark Grey
+        default=(0.1, 0.1, 0.1, 1.0), # Darker Grey
         description="The color for the guide lines when not using axis colors"
     )
 
