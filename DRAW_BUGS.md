@@ -15,6 +15,10 @@ The problem: the main draw callback (`draw_cb_3d`) is registered as `POST_VIEW`,
 
 The diameter **line** still worked because `draw_line` uses the `POLYLINE` shader with actual 3D world-space coordinates, which is correct for a POST_VIEW context.
 
+### Why this was hard to debug
+
+The dots were being drawn "somewhere" (you could see them in other tools), but not in the POST_VIEW callback for this specific tool. It looked like `draw_points` was broken, so naturally you'd rewrite the drawing function. But the real issue wasn't the function — it was the coordinate system mismatch. The dots were being drawn at (500, 300, 0) in 3D world space instead of pixel (500, 300) on screen.
+
 ### What was fixed
 
 Rewrote `draw_points` to use the `POLYLINE` shader in 3D world space (same as `draw_line` and `draw_crosshair`). Each dot is drawn as a small 3-axis cross centered on the point, sized using `world_radius_for_pixel_size` to stay consistent across zoom levels.
@@ -70,7 +74,7 @@ Removed axis snapping from `RectangleTool_CenterCorner` stage 1 and `RectangleTo
 
 ### Rule of thumb
 
-Axis snapping works for tools that define their shape with a single snapped point (polygons, circles, arcs). For tools that need multiple independent dimensions defined at once (like a 2D rectangle in one drag), axis snapping can collapse a dimension. Use vertex snapping instead.
+**Axis snapping is for single-point tools; avoid it for multi-dimensional tools.** Axis snapping works for tools that define their shape with a single snapped point (polygons, circles, arcs) because the "snap to axis" is just locking one parameter. For tools that need multiple independent dimensions defined at once (like a 2D rectangle in one drag), locking to a world axis forces one dimension to zero. Use vertex snapping instead — it preserves both dimensions.
 
 ---
 
@@ -152,6 +156,10 @@ The Polygon Edge tool had the vertical/Z-axis detection and plane reorientation 
 
 The plane projection at lines 600-603 was stripping the Z component from the snapped target **before** the vertical detection logic ran. So `is_vertical` would always be false because the Z had already been zeroed out.
 
+### Why this was hard to debug
+
+The vertical detection logic was RIGHT THERE in the code (lines 605-642), fully implemented and correct. But it never triggered because it was checking a stripped target. So you'd look at the logic and think "this should work" — and it SHOULD work, just not in this order. It only became obvious when tracing through frame-by-frame and seeing that the Z component was gone by the time the check ran.
+
 ### What was fixed
 
 Moved the vertical detection logic to run **before** the plane projection:
@@ -160,6 +168,10 @@ Moved the vertical detection logic to run **before** the plane projection:
 3. NOW project onto the (possibly updated) drawing plane
 
 This matches the Circle 2-Point tool behavior and enables proper Z-axis snapping with hysteresis-based plane reorientation.
+
+### Rule of thumb
+
+**For vertical/Z-axis detection, check the raw direction BEFORE projecting to plane.** Once you project onto a horizontal plane (stripping Z), you lose the information about whether the drag was vertical. Always detect vertical from the original snapped direction, then update your basis, then project.
 
 ---
 
@@ -178,6 +190,10 @@ The P key toggle was added (`self.state["is_perpendicular"] = not self.state.get
 
 Meanwhile, **PolygonTool_Edge** already had the full perpendicular+vertical hysteresis logic in its `update()` method, and the circle tools also had this. The other polygon tools were missing it.
 
+### Why this was hard to debug
+
+The P key handler was RIGHT THERE and functional. You could toggle `is_perpendicular` to your heart's content, but nothing in `update()` was reading it. So you'd press P, the flag would change, but visually nothing would happen — it FELT like the P key wasn't working at all. The fix wasn't adding a P key handler (it existed), it was adding the whole perpendicular basis recomputation logic to the update loop.
+
 ### What was fixed
 
 Added the full perpendicular plane computation block to `CenterCorner`, `CenterTangent`, and `CornerCorner` `update()` methods:
@@ -188,6 +204,10 @@ Added the full perpendicular plane computation block to `CenterCorner`, `CenterT
 4. When `is_perpendicular = False`: Restore `Zp = ref_normal` (flat plane)
 
 Also added vertical hysteresis (auto Z-snap) matching circle/edge tools: when drag is nearly vertical (dot > 0.98/0.995), automatically snap the plane perpendicular to the Z axis.
+
+### Rule of thumb
+
+**State flags don't change behavior by themselves — the update loop has to READ them.** Just toggling a flag (like `is_perpendicular`) doesn't do anything if `update()` never checks it. When adding a new mode toggle, make sure `update()` has logic that actually USES that flag to change computations (like recomputing Zp/Xp/Yp).
 
 ---
 
@@ -209,6 +229,10 @@ perp_dir = Vector((-edge_dir.y, edge_dir.x, 0)).normalized()
 
 This assumes the edge is in the XY plane. When the plane flips vertical (Zp points along X or Y axis), the edge is no longer in XY, but the code still computed the perpendicular as if it were. This gave a completely wrong direction.
 
+### Why this was hard to debug
+
+The code looked innocent — it was just a 90-degree rotation. The perpendicular direction is correct for any edge that lies in the XY plane (the floor case). It only breaks when the plane changes orientation, which is a somewhat rare edge case. You had to specifically press P during the edge definition AND watch the center jump erratically to notice something was wrong.
+
 ### What was fixed
 
 Changed to compute perpendicular in the actual drawing plane using cross product:
@@ -217,6 +241,10 @@ perp_dir = edge_dir.cross(self.Zp).normalized()
 ```
 
 This is perpendicular to both the edge and the plane normal, ensuring it's always in the plane regardless of plane orientation. Applied to both `update()` and `refresh_preview()`.
+
+### Rule of thumb
+
+**Never hardcode plane assumptions like XY. Use the current basis (Xp, Yp, Zp) for all perpendicular/direction computations.** If you hardcode `Vector((x, y, 0))` thinking "we're always on the floor", you'll break when the basis changes. Always use `vec.cross(self.Zp)` or decompose in the `self.Xp/self.Yp` plane.
 
 ---
 
