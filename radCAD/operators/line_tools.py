@@ -468,7 +468,7 @@ def solve_rhino_tangent(s1, s2, seed_u1, seed_u2):
     bestU1 = seed_u1
     bestU2 = seed_u2
     
-    # 1. Global Search (Prevent getting stuck at vertices)
+    # 1. Broad Search (Escape vertices)
     p1 = s1.evalCatmull(bestU1)
     bestU2 = s2.find_tangent_param_from_point(p1, bestU2, float('inf'))
     p2 = s2.evalCatmull(bestU2)
@@ -488,7 +488,7 @@ def solve_rhino_perp(s1, s2, seed_u1, seed_u2):
     bestU1 = seed_u1
     bestU2 = seed_u2
     
-    # 1. Global Search
+    # 1. Broad Search
     p1 = s1.evalCatmull(bestU1)
     bestU2 = s2.find_perp_param_from_point(p1, bestU2, float('inf'))
     p2 = s2.evalCatmull(bestU2)
@@ -1005,13 +1005,55 @@ class LineTool_TanTan(SurfaceDrawTool):
                 if best_idx2 != -1:
                     s1 = self.splines[best_idx]
                     s2 = self.splines[best_idx2]
-                    res_u1, res_u2 = solve_rhino_tangent(s1, s2, best_u, best_u2)
-                    p1_2d = s1.evalCatmull(res_u1)
-                    p2_2d = s2.evalCatmull(res_u2)
-                    start_3d = plane_to_world(p1_2d, self.Xp, self.Yp)
-                    end_3d = plane_to_world(p2_2d, self.Xp, self.Yp)
-                    self.preview_pts = [start_3d, end_3d]
-                    self.current = end_3d
+                    
+                    # Generate multiple seeds to find all distinct tangent lines
+                    seeds_1 = []
+                    step1 = max(1.0, len(s1.points) / 8.0)
+                    u1 = 0.0
+                    while u1 < len(s1.points):
+                        seeds_1.append(u1)
+                        u1 += step1
+                        
+                    seeds_2 = []
+                    step2 = max(1.0, len(s2.points) / 8.0)
+                    u2 = 0.0
+                    while u2 < len(s2.points):
+                        seeds_2.append(u2)
+                        u2 += step2
+                        
+                    best_tan_line = None
+                    best_tan_dist = float('inf')
+                    
+                    for su1 in seeds_1:
+                        for su2 in seeds_2:
+                            res_u1, res_u2 = solve_rhino_tangent(s1, s2, su1, su2)
+                            p1_2d = s1.evalCatmull(res_u1)
+                            p2_2d = s2.evalCatmull(res_u2)
+                            
+                            # Distance from mouse to segment
+                            line_vec = p2_2d - p1_2d
+                            l2 = line_vec.length_squared
+                            if l2 > 1e-6:
+                                t = max(0.0, min(1.0, (m_2d - p1_2d).dot(line_vec) / l2))
+                                proj = p1_2d + t * line_vec
+                                dist_to_mouse = (m_2d - proj).length
+                                
+                                if dist_to_mouse < best_tan_dist:
+                                    best_tan_dist = dist_to_mouse
+                                    best_tan_line = (p1_2d, p2_2d, res_u1, res_u2)
+
+                    if best_tan_line:
+                        p1_2d, p2_2d, final_u1, final_u2 = best_tan_line
+                        start_3d = plane_to_world(p1_2d, self.Xp, self.Yp)
+                        end_3d = plane_to_world(p2_2d, self.Xp, self.Yp)
+                        self.preview_pts = [start_3d, end_3d]
+                        self.current = end_3d
+                        self.current_candidate = {'idx': best_idx, 'u': final_u1} # Keep consistent state
+                    else:
+                        p2d = self.splines[best_idx].evalCatmull(best_u)
+                        p3d = plane_to_world(p2d, self.Xp, self.Yp)
+                        self.preview_pts = [p3d]
+                        self.current = p3d
                 else:
                     p2d = self.splines[best_idx].evalCatmull(best_u)
                     p3d = plane_to_world(p2d, self.Xp, self.Yp)
