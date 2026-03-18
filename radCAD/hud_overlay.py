@@ -301,6 +301,10 @@ def draw_bottom_bar():
         ("W: Weld", state.get("auto_weld", True), "weld_btn"),
     ]
     
+    # --- FIXED: Only show Weld for Tan Tan tool ---
+    if state.get("tool_mode") == "LINE_TAN_TAN":
+        buttons = [("W: Weld", state.get("auto_weld", True), "weld_btn")]
+    
     # === NEW: "Next Solution" Button ===
     if state.get("choosing_solution"):
          # Pink color to indicate action
@@ -348,7 +352,7 @@ def draw_hud_2d():
     if not state["active"]: return
     try:
         # --- NEW 2D SNAP MARKER (CUSTOMIZABLE) ---
-        if state.get("snap_point"):
+        if state.get("snap_point") and state.get("tool_mode") != "LINE_TAN_TAN":
             ctx = bpy.context
             reg, rv3d = ctx.region, ctx.region_data
             

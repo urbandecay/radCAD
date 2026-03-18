@@ -465,11 +465,18 @@ def get_disjoint_chains(bm):
     return chains
 
 def solve_rhino_tangent(s1, s2, seed_u1, seed_u2):
-    range_val = 1.0 
     bestU1 = seed_u1
     bestU2 = seed_u2
     
-    for _ in range(10):
+    # 1. Global Search (Prevent getting stuck at vertices)
+    p1 = s1.evalCatmull(bestU1)
+    bestU2 = s2.find_tangent_param_from_point(p1, bestU2, float('inf'))
+    p2 = s2.evalCatmull(bestU2)
+    bestU1 = s1.find_tangent_param_from_point(p2, bestU1, float('inf'))
+    
+    # 2. Local Refinement
+    range_val = 2.0
+    for _ in range(9):
         p1 = s1.evalCatmull(bestU1)
         bestU2 = s2.find_tangent_param_from_point(p1, bestU2, range_val)
         p2 = s2.evalCatmull(bestU2)
@@ -478,11 +485,18 @@ def solve_rhino_tangent(s1, s2, seed_u1, seed_u2):
     return bestU1, bestU2
 
 def solve_rhino_perp(s1, s2, seed_u1, seed_u2):
-    range_val = 1.0 
     bestU1 = seed_u1
     bestU2 = seed_u2
     
-    for _ in range(10):
+    # 1. Global Search
+    p1 = s1.evalCatmull(bestU1)
+    bestU2 = s2.find_perp_param_from_point(p1, bestU2, float('inf'))
+    p2 = s2.evalCatmull(bestU2)
+    bestU1 = s1.find_perp_param_from_point(p2, bestU1, float('inf'))
+    
+    # 2. Local Refinement
+    range_val = 2.0
+    for _ in range(9):
         p1 = s1.evalCatmull(bestU1)
         bestU2 = s2.find_perp_param_from_point(p1, bestU2, range_val)
         p2 = s2.evalCatmull(bestU2)
@@ -944,18 +958,16 @@ class LineTool_TanTan(SurfaceDrawTool):
         ray_origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, coord)
         ray_vector = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
         
-        # --- NEW: PRIORITIZE GEOMETRY SNAP ---
-        if self.state.get("geometry_snap", False) and snap_point:
-            raw_world_pos = snap_point
-        else:
-            ref_point = self.pivot if self.pivot else snap_point
-            if ref_point and self.Zp:
-                denom = ray_vector.dot(self.Zp)
-                if abs(denom) > 1e-6:
-                    t = (ref_point - ray_origin).dot(self.Zp) / denom
-                    raw_world_pos = ray_origin + ray_vector * t
-                else: raw_world_pos = snap_point
-            else: raw_world_pos = snap_point
+        # --- FIXED: IGNORE SNAP_POINT AND CALCULATE PURE RAY-PLANE INTERSECTION ---
+        # We need a reference point on the drawing plane for the intersection.
+        ref_p = self.pivot if self.pivot else self.state.get("locked_plane_point") or self.state.get("last_surface_hit") or Vector((0,0,0))
+        
+        raw_world_pos = snap_point # Fallback
+        if self.Zp:
+            denom = ray_vector.dot(self.Zp)
+            if abs(denom) > 1e-6:
+                t = (ref_p - ray_origin).dot(self.Zp) / denom
+                raw_world_pos = ray_origin + ray_vector * t
         
         m_2d = world_to_plane(raw_world_pos, self.Xp, self.Yp)
         
