@@ -67,12 +67,25 @@ class CircleTool_TanTan:
                     state["locked_normal"] = self.Zp
                     state["locked"] = True
                     state.update({"Xp": self.Xp, "Yp": self.Yp})
-                    
+
+                    # --- POPULATE CATMULL CURVE OVERLAYS ---
+                    catmull_previews = []
+                    for spline in [self.spline_1, self.spline_2]:
+                        curve_pts = []
+                        for seg in spline.segments:
+                            # Sample each segment
+                            curve_pts.extend([seg.eval(seg.t_start + t*seg.dt) for t in [0.0, 0.25, 0.5, 0.75]])
+                        # Add very last point
+                        if spline.segments:
+                            curve_pts.append(spline.segments[-1].eval(spline.segments[-1].t_end))
+                        catmull_previews.append(curve_pts)
+                    state["catmull_spline_previews"] = catmull_previews
+
                     # --- NO RAIL GENERATION ---
                     # Replaced heavy loop with simple visual curve smoothing
                     self.state["smooth_curve_1"] = [self.spline_1.segments[i].eval(self.spline_1.segments[i].t_start + t*self.spline_1.segments[i].dt) for i in range(len(self.spline_1.segments)) for t in [0.0, 0.33, 0.66]]
                     self.state["smooth_curve_2"] = [self.spline_2.segments[i].eval(self.spline_2.segments[i].t_start + t*self.spline_2.segments[i].dt) for i in range(len(self.spline_2.segments)) for t in [0.0, 0.33, 0.66]]
-                    
+
                     self.stage = 1
                     
                     # Simple default start point (Instantly sets pivot to start of curve 1)
@@ -112,22 +125,26 @@ class CircleTool_TanTan:
 
         # Stage 1: Live Solver
         if self.stage == 1:
+            # Early exit if splines aren't loaded
+            if not self.spline_1 or not self.spline_2:
+                return
+
             if mouse_moved:
                 self.last_mouse = snap_pt.copy()
                 mouse_pos = snap_pt
                 if self.pivot is None: self.pivot = mouse_pos
-                    
-                d = mouse_pos - self.pivot 
+
+                d = mouse_pos - self.pivot
                 d_plane = d - self.Zp * d.dot(self.Zp)
                 mouse_on_plane = self.pivot + d_plane
-                
+
                 # 1. Run Solver (The heavy part) - Only on mouse move
                 solved_c, solved_r = solve_medial_axis_point(mouse_on_plane, self.spline_1, self.spline_2, self.Zp)
-                
+
                 self.current = solved_c
                 self.radius = solved_r
                 self.pivot = solved_c
-                
+
                 # 2. Visualization of the tangency
                 p1_v, _, _ = self.spline_1.project(self.current)
                 p2_v, _, _ = self.spline_2.project(self.current)
@@ -145,9 +162,11 @@ class CircleTool_TanTan:
             if self.radius > 1e-5:
                 self.preview_pts = [self.current + self.Xp*math.cos(a)*self.radius + self.Yp*math.sin(a)*self.radius for a in [i*math.pi*2/self.segments for i in range(self.segments+1)]]
                 state["preview_pts"] = self.preview_pts
+                state["tan_solution_active"] = True
             else:
                 self.preview_pts = []
                 state["preview_pts"] = []
+                state["tan_solution_active"] = False
 
     def handle_click(self, context, event, snap_pt, snap_normal, button_id=None):
         if self.stage == 0:
