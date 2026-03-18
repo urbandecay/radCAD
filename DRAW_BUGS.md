@@ -231,14 +231,16 @@ When you pressed P to flip a rectangle from flat to perpendicular (vertical), th
 
 ### Why it happened
 
-The code was resolving the snap target BEFORE updating the orientation basis. When P flipped `is_perp = True`:
+**Root cause:** Orientation logic had to run AFTER target resolution, creating a fundamental ordering problem. When P flipped `is_perp = True`:
 1. Target was intersected with the OLD plane (floor, Zp = world Z)
 2. Result: target was on the floor with z≈0
 3. NEW orientation computed Zp as a horizontal axis (vertical plane normal)
 4. But target was already a floor point with z=0
 5. When dimensions were extracted: `dy = d_vec.dot(Yp_vertical) = 0` → collapse
 
-Even worse, if a vertex snap point (floor mesh vertex) was available, it would be used directly without raycast, guaranteeing z=0.
+**Additional layer of the problem:** If a vertex snap point (floor mesh vertex) was available, it bypassed the raycast entirely. Using that snap point directly guaranteed z=0 no matter what.
+
+**Why this was hard to debug:** The collapse looked like "the rectangle is losing its height dimension" but the real issue was that the target point itself had no Z component. Even though the new basis (Yp = world Z) was correct for measuring height, the input point was fundamentally 2D (floor point). No amount of basis changes fix a 2D point.
 
 ### What was fixed
 
@@ -251,3 +253,10 @@ Even worse, if a vertex snap point (floor mesh vertex) was available, it would b
 When `is_perpendicular = True`, always raycast to the vertical plane instead of using `snap_point` directly. Floor vertices always have z=0 and would collapse the height.
 
 Result: when P flips the rectangle perpendicular, the target is determined by where the camera ray hits the vertical plane, which depends on camera angle — giving proper Z extent for the height dimension.
+
+### Rule of thumb
+
+**Plane-sensitive operations must establish the plane before projecting targets onto it.** If your target point is resolved using one plane basis but then you flip to a different basis, the target doesn't magically gain new components — it stays 2D. Always:
+1. Compute the final basis first (set Zp/Xp/Yp for the mode you're in)
+2. THEN resolve the target using `intersect_line_plane(ray, anchor, Zp)` with that basis
+3. The resulting point will lie on your intended plane with the correct dimensionality
