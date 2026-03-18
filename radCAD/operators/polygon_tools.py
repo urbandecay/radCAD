@@ -597,12 +597,7 @@ class PolygonTool_Edge(SurfaceDrawTool):
                 inf_loc, _, _ = get_axis_snapped_location(p1, coord, context, snap_threshold=axis_thresh)
                 if inf_loc: target = inf_loc
 
-            # Keep target on drawing plane (project out the normal component)
-            if self.Zp:
-                offset = (target - p1).dot(self.Zp)
-                target = target - self.Zp * offset
-
-            # Perpendicular Logic
+            # Perpendicular Logic (must run BEFORE plane projection to detect Z-axis snaps)
             bridge = target - p1
             if bridge.length_squared > 1e-8:
                 b_vec = bridge.normalized()
@@ -621,7 +616,7 @@ class PolygonTool_Edge(SurfaceDrawTool):
                             new_Zp = ax_x if abs(view_fwd.dot(ax_x)) > abs(view_fwd.dot(ax_y)) else ax_y
                         else:
                             new_Zp = ax_x if self.vertical_override_axis == 'X' else ax_y
-                        
+
                         if new_Zp.length > 1e-4:
                             view_fwd = context.region_data.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
                             if new_Zp.dot(view_fwd) > 0: new_Zp = -new_Zp
@@ -640,6 +635,11 @@ class PolygonTool_Edge(SurfaceDrawTool):
                     self.Zp = up.copy()
                     self.Xp = b_vec
                     self.Yp = self.Zp.cross(self.Xp).normalized()
+
+            # Keep target on drawing plane using the (now updated) Zp
+            if self.Zp:
+                offset = (target - p1).dot(self.Zp)
+                target = target - self.Zp * offset
 
             self.current = target
 
