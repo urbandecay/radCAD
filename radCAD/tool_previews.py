@@ -464,12 +464,11 @@ def draw_preview_2point(ctx, shaders, prefs):
 
     # --- STAGE 1: Dragging Chord (or Diameter) ---
     if state["stage"] == 1 and state["current"] is not None:
-        draw_points(ctx, shaders, [pv], (0,0,0,1), pt_size, prefs)
-        draw_points(ctx, shaders, [state["current"]], (0,0,0,1), pt_size, prefs)
-        
         diff = state["current"] - pv
         # Handle Circle 2 Point separately
         if state.get("tool_mode") == "CIRCLE_2POINT":
+            draw_points(ctx, shaders, [pv], (0,0,0,1), pt_size, prefs)
+            draw_points(ctx, shaders, [state["current"]], (0,0,0,1), pt_size, prefs)
             col = get_axis_aligned_color(diff, prefs["COL_OVERLAY_C2PT"], prefs, "CIRCLE_2PT_USE_AXIS_COLORS")
             draw_line(ctx, shaders, pv, state["current"], col, prefs)
             pts = state.get("preview_pts", [])
@@ -477,6 +476,9 @@ def draw_preview_2point(ctx, shaders, prefs):
                 draw_polyline(ctx, shaders, pts, (0,0,0,1), prefs)
                 draw_points(ctx, shaders, pts, (0,0,0,1), pt_size, prefs)
         else:
+            # Arc 2Point: Draw endpoint dots
+            if pv: draw_points(ctx, shaders, [pv], (0,0,0,1), pt_size, prefs)
+            if state["current"]: draw_points(ctx, shaders, [state["current"]], (0,0,0,1), pt_size, prefs)
             # Default to Custom Overlay Color (Defaults to Grey)
             col = get_axis_aligned_color(diff, prefs["COL_OVERLAY_2PT"], prefs, "ARC_2PT_USE_AXIS_COLORS")
             draw_line(ctx, shaders, pv, state["current"], col, prefs)
