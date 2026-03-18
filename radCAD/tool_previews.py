@@ -115,6 +115,8 @@ def get_render_settings(ctx):
         "CIRCLE_TAN2_COL_TANGENT": (0.0, 0.8, 1.0, 0.5),
         "CIRCLE_TAN2_WIDTH_TANGENT": 2.0,
         "ELLIPSE_FOCI_COL_FOCI": (0.0, 1.0, 0.0, 1.0),
+        "ELLIPSE_FOCI_USE_AXIS_COLORS": True,
+        "COL_OVERLAY_ELLIPSE_FOCI": (0.2, 0.2, 0.2, 1.0),
         "ARC_2PT_USE_AXIS_COLORS": True,
         "COL_OVERLAY_2PT": (0.5, 0.5, 0.5, 0.5),
         "ARC_3PT_USE_AXIS_COLORS": True,
@@ -176,6 +178,8 @@ def get_render_settings(ctx):
         prefs["CIRCLE_TAN2_WIDTH_TANGENT"] = getattr(addon_prefs, "circle_tan2_width_tangent", 2.0)
         
         prefs["ELLIPSE_FOCI_COL_FOCI"] = tuple(getattr(addon_prefs, "ellipse_foci_col_foci_lines", (0.0, 1.0, 0.0, 1.0)))
+        prefs["ELLIPSE_FOCI_USE_AXIS_COLORS"] = getattr(addon_prefs, "ellipse_foci_use_axis_colors", True)
+        prefs["COL_OVERLAY_ELLIPSE_FOCI"] = getattr(addon_prefs, "color_ellipse_foci_overlay", (0.2, 0.2, 0.2, 1.0))
 
         prefs["LIFT_COMPASS"] = addon_prefs.lift_compass
         prefs["LIFT_ARC"] = addon_prefs.lift_arc
@@ -625,10 +629,14 @@ def draw_preview_ellipse(ctx, shaders, prefs):
             diff = state["current"] - pv
             col = get_axis_aligned_color(diff, prefs["COL_OVERLAY_ELLIPSE_ENDPOINTS"], prefs, "ELLIPSE_ENDPOINTS_USE_AXIS_COLORS")
             draw_line(ctx, shaders, pv, state["current"], col, prefs)
-        else:
-            # ELLIPSE_FOCI and ELLIPSE_CORNERS don't have axis colors
+        elif mode == "ELLIPSE_FOCI":
             diff = state["current"] - pv
-            col = get_axis_aligned_color(diff, (0.5, 0.5, 0.5, 1.0))
+            col = get_axis_aligned_color(diff, prefs["COL_OVERLAY_ELLIPSE_FOCI"], prefs, "ELLIPSE_FOCI_USE_AXIS_COLORS")
+            draw_line(ctx, shaders, pv, state["current"], col, prefs)
+        else:
+            # ELLIPSE_CORNERS doesn't have axis colors
+            diff = state["current"] - pv
+            col = (0.5, 0.5, 0.5, 1.0)
             draw_line(ctx, shaders, pv, state["current"], col, prefs)
         
     elif state["stage"] == 2:
@@ -639,9 +647,14 @@ def draw_preview_ellipse(ctx, shaders, prefs):
              draw_points(ctx, shaders, [state["f1"]], (0,0,0,1), pt_size, prefs)
              draw_points(ctx, shaders, [state["f2"]], (0,0,0,1), pt_size, prefs)
              if state["current"] is not None:
-                  f_col = prefs.get("ELLIPSE_FOCI_COL_FOCI", (0.0, 1.0, 0.0, 1.0))
+                  # Use axis colors if enabled, otherwise use the foci line color
+                  diff_f1 = state["current"] - state["f1"]
+                  f_col = get_axis_aligned_color(diff_f1, prefs["COL_OVERLAY_ELLIPSE_FOCI"], prefs, "ELLIPSE_FOCI_USE_AXIS_COLORS")
                   draw_line(ctx, shaders, state["f1"], state["current"], f_col, prefs)
-                  draw_line(ctx, shaders, state["f2"], state["current"], f_col, prefs)
+
+                  diff_f2 = state["current"] - state["f2"]
+                  f_col2 = get_axis_aligned_color(diff_f2, prefs["COL_OVERLAY_ELLIPSE_FOCI"], prefs, "ELLIPSE_FOCI_USE_AXIS_COLORS")
+                  draw_line(ctx, shaders, state["f2"], state["current"], f_col2, prefs)
         
         # Draw Major Axis (Ghosted/Reference)
         if mode == "ELLIPSE_RADIUS" and "Xp" in state and "rx" in state:

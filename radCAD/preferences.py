@@ -273,6 +273,21 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
         description="Color for the lines connecting foci to the mouse cursor"
     )
 
+    ellipse_foci_use_axis_colors: bpy.props.BoolProperty(
+        name="Use Axis Colors",
+        description="When snapped to X, Y, or Z, the guide lines will turn the axis color. If off, they stay the default color",
+        default=True
+    )
+
+    color_ellipse_foci_overlay: bpy.props.FloatVectorProperty(
+        name="Overlay Color",
+        subtype='COLOR',
+        size=4,
+        min=0.0, max=1.0,
+        default=(0.2, 0.2, 0.2, 1.0),
+        description="The color for the guide lines when not using axis colors"
+    )
+
     # --- Ellipse from Radius ---
     ellipse_radius_use_axis_colors: bpy.props.BoolProperty(
         name="Use Axis Colors",
@@ -876,6 +891,11 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
         if col:
             self.draw_group_label(col, "Visuals:", icon='COLOR')
             self.draw_property_row(col, "Foci Line Color:", "ellipse_foci_col_foci_lines")
+
+            col.separator(factor=2.0)
+            self.draw_group_label(col, "Snapping Visuals:", icon='COLOR')
+            self.draw_property_row(col, "Use Axis Colors:", "ellipse_foci_use_axis_colors")
+            self.draw_property_row(col, "Overlay Color:", "color_ellipse_foci_overlay", enabled=not self.ellipse_foci_use_axis_colors)
 
         # 16. Ellipse Corners (no snapping visuals)
         self.draw_section_header(layout, "Ellipse (From Corners) Settings", "show_ellipse_corners_settings", icon='CURVE_NCURVE', tool_key='ellipse_corners')
