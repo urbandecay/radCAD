@@ -28,18 +28,18 @@ class RectangleTool_CenterCorner(SurfaceDrawTool):
             # Start with the original surface basis
             up = self.ref_normal
             is_perp = self.state.get("is_perpendicular", False)
-            
+
             from ..orientation_utils import orthonormal_basis_from_normal
             if is_perp:
                 # Perpendicular Flip: Find a vertical plane aligned with view
                 ax_x, ax_y, _ = orthonormal_basis_from_normal(up)
                 rv3d = context.region_data
                 view_fwd = rv3d.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
-                
+
                 # Snap plane normal to view-aligned horizontal axis
                 new_Zp = ax_x if abs(view_fwd.dot(ax_x)) > abs(view_fwd.dot(ax_y)) else ax_y
                 if new_Zp.dot(view_fwd) > 0: new_Zp = -new_Zp
-                
+
                 self.Zp = new_Zp.normalized()
                 self.Yp = up.normalized()
                 self.Xp = self.Yp.cross(self.Zp).normalized()
@@ -48,15 +48,7 @@ class RectangleTool_CenterCorner(SurfaceDrawTool):
                 self.Zp = up.copy()
                 self.Xp, self.Yp, _ = orthonormal_basis_from_normal(self.Zp)
 
-            # 2. Project mouse to current plane
-            from bpy_extras import view3d_utils
-            from mathutils import geometry
-            ray_origin = view3d_utils.region_2d_to_origin_3d(context.region, context.region_data, coord)
-            ray_vector = view3d_utils.region_2d_to_vector_3d(context.region, context.region_data, coord)
-            hit = geometry.intersect_line_plane(ray_origin, ray_origin + ray_vector, center, self.Zp)
-            if hit: target = hit
-
-            # 3. Axis Snapping (Only when flat, ignore normal-axis snaps like Z)
+            # 2. Axis Snapping (Only when flat, ignore normal-axis snaps like Z)
             inf_loc = None
             if not is_perp:
                 from ..inference_utils import get_axis_snapped_location
@@ -67,7 +59,13 @@ class RectangleTool_CenterCorner(SurfaceDrawTool):
                     # Ignore snapping to the plane's normal (prevents collapse on Z-axis)
                     if inf_vec and abs(inf_vec.dot(self.Zp)) < 0.9:
                         target = inf_loc
-            
+
+            # 3. Project target onto plane (after snapping, to preserve snap direction)
+            # Keep target on drawing plane by removing only the normal component
+            if self.Zp:
+                offset = (target - center).dot(self.Zp)
+                target = target - self.Zp * offset
+
             self.current = target
             d_vec = target - center
 
@@ -136,16 +134,16 @@ class RectangleTool_CornerCorner(SurfaceDrawTool):
             # 1. ORIENTATION LOGIC (Stable Basis)
             up = self.ref_normal
             is_perp = self.state.get("is_perpendicular", False)
-            
+
             from ..orientation_utils import orthonormal_basis_from_normal
             if is_perp:
                 ax_x, ax_y, _ = orthonormal_basis_from_normal(up)
                 rv3d = context.region_data
                 view_fwd = rv3d.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
-                
+
                 new_Zp = ax_x if abs(view_fwd.dot(ax_x)) > abs(view_fwd.dot(ax_y)) else ax_y
                 if new_Zp.dot(view_fwd) > 0: new_Zp = -new_Zp
-                
+
                 self.Zp = new_Zp.normalized()
                 self.Yp = up.normalized()
                 self.Xp = self.Yp.cross(self.Zp).normalized()
@@ -153,15 +151,7 @@ class RectangleTool_CornerCorner(SurfaceDrawTool):
                 self.Zp = up.copy()
                 self.Xp, self.Yp, _ = orthonormal_basis_from_normal(self.Zp)
 
-            # 2. Project mouse to current plane
-            from bpy_extras import view3d_utils
-            from mathutils import geometry
-            ray_origin = view3d_utils.region_2d_to_origin_3d(context.region, context.region_data, coord)
-            ray_vector = view3d_utils.region_2d_to_vector_3d(context.region, context.region_data, coord)
-            hit = geometry.intersect_line_plane(ray_origin, ray_origin + ray_vector, c1, self.Zp)
-            if hit: target = hit
-
-            # 3. Axis Snapping (Only when flat, ignore normal-axis snaps like Z)
+            # 2. Axis Snapping (Only when flat, ignore normal-axis snaps like Z)
             inf_loc = None
             if not is_perp:
                 from ..inference_utils import get_axis_snapped_location
@@ -172,7 +162,13 @@ class RectangleTool_CornerCorner(SurfaceDrawTool):
                     # Ignore snapping to the plane's normal (prevents collapse on Z-axis)
                     if inf_vec and abs(inf_vec.dot(self.Zp)) < 0.9:
                         target = inf_loc
-            
+
+            # 3. Project target onto plane (after snapping, to preserve snap direction)
+            # Keep target on drawing plane by removing only the normal component
+            if self.Zp:
+                offset = (target - c1).dot(self.Zp)
+                target = target - self.Zp * offset
+
             self.current = target
             d_vec = target - c1
 
@@ -292,7 +288,10 @@ class RectangleTool_3Point(SurfaceDrawTool):
                 inf_loc, inf_vec, _ = get_axis_snapped_location(p2, coord, context, snap_threshold=axis_thresh)
                 if inf_loc and not event.alt:
                     if inf_vec and abs(inf_vec.dot(self.Zp)) < 0.9:
-                        height = (inf_loc - p2).dot(self.Yp)
+                        # Project snapped point onto plane, then extract height
+                        offset = (inf_loc - p2).dot(self.Zp)
+                        snapped_on_plane = inf_loc - self.Zp * offset
+                        height = (snapped_on_plane - p2).dot(self.Yp)
 
             height_vec = self.Yp * height
             
