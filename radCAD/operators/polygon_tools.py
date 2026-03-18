@@ -432,24 +432,40 @@ class PolygonTool_CornerCorner(SurfaceDrawTool):
 
             self.current = target
 
-            # 1. Midpoint is Center, Radius is half the distance
-            d_vec = target - corner1
-            center = corner1 + (d_vec * 0.5)
-            self.radius = d_vec.length * 0.5
-            self.state["radius"] = self.radius
-            
-            if self.radius < 1e-6:
+            # Edge-based polygon calculation
+            # Two adjacent corners define one edge of the polygon
+            edge_vec = target - corner1
+            edge_length = edge_vec.length
+
+            if edge_length < 1e-6:
                 self.preview_pts = []
                 return
 
             self.segments = max(3, self.state["segments"])
             self.state["segments"] = self.segments
-            
-            # 2. Angle from center to first click
+
+            # For a regular polygon with N sides:
+            # edge_length = 2 * radius * sin(pi/N)
+            # Therefore: radius = edge_length / (2 * sin(pi/N))
+            angle_step = math.pi / self.segments
+            self.radius = edge_length / (2.0 * math.sin(angle_step))
+            self.state["radius"] = self.radius
+
+            # Center is perpendicular to the edge at distance = radius * cos(pi/N)
+            edge_dir = edge_vec.normalized()
+            # Perpendicular direction in the plane (rotate 90 degrees)
+            perp_dir = Vector((-edge_dir.y, edge_dir.x, 0)).normalized()
+            # Distance from edge midpoint to center
+            dist_to_center = self.radius * math.cos(angle_step)
+            # Center location
+            edge_midpoint = corner1 + (edge_vec * 0.5)
+            center = edge_midpoint + (perp_dir * dist_to_center)
+
+            # Angle from center to first corner
             to_c1 = corner1 - center
             to_c1_2d = world_to_plane(to_c1, self.Xp, self.Yp)
             start_angle = math.atan2(to_c1_2d.y, to_c1_2d.x)
-            
+
             self.preview_pts = polygon_points_world(
                 center,
                 self.radius,
@@ -462,24 +478,30 @@ class PolygonTool_CornerCorner(SurfaceDrawTool):
     def refresh_preview(self):
         if self.stage == 1 and self.pivot:
             corner1 = self.pivot
-            d_vec = self.current - corner1
-            center = corner1 + (d_vec * 0.5)
-            self.radius = d_vec.length * 0.5 # Use current length from state
+            edge_vec = self.current - corner1
+            edge_length = edge_vec.length
 
-            # Update 'current' point to reflect the new typed radius (span)
-            dir_vec = d_vec.normalized()
-            # self.radius here is half-span, so total span is 2*radius
-            self.current = corner1 + (dir_vec * (self.radius * 2.0))
-            self.state["current"] = self.current
-            
-            if self.radius < 1e-6:
+            if edge_length < 1e-6:
                 self.preview_pts = []
                 return
 
+            # Calculate radius from edge length
+            angle_step = math.pi / self.segments
+            self.radius = edge_length / (2.0 * math.sin(angle_step))
+            self.state["radius"] = self.radius
+
+            # Calculate center from edge
+            edge_dir = edge_vec.normalized()
+            perp_dir = Vector((-edge_dir.y, edge_dir.x, 0)).normalized()
+            dist_to_center = self.radius * math.cos(angle_step)
+            edge_midpoint = corner1 + (edge_vec * 0.5)
+            center = edge_midpoint + (perp_dir * dist_to_center)
+
+            # Angle from center to first corner
             to_c1 = corner1 - center
             to_c1_2d = world_to_plane(to_c1, self.Xp, self.Yp)
             start_angle = math.atan2(to_c1_2d.y, to_c1_2d.x)
-            
+
             self.preview_pts = polygon_points_world(
                 center,
                 self.radius,
