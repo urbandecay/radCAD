@@ -122,7 +122,11 @@ def get_render_settings(ctx):
         "CIRCLE_2PT_USE_AXIS_COLORS": True,
         "COL_OVERLAY_C2PT": (0.5, 0.5, 0.5, 0.5),
         "CIRCLE_3PT_USE_AXIS_COLORS": True,
-        "COL_OVERLAY_C3PT": (0.5, 0.5, 0.5, 0.5)
+        "COL_OVERLAY_C3PT": (0.5, 0.5, 0.5, 0.5),
+        "ELLIPSE_RADIUS_USE_AXIS_COLORS": True,
+        "COL_OVERLAY_ELLIPSE_RADIUS": (0.2, 0.2, 0.2, 1.0),
+        "ELLIPSE_ENDPOINTS_USE_AXIS_COLORS": True,
+        "COL_OVERLAY_ELLIPSE_ENDPOINTS": (0.2, 0.2, 0.2, 1.0)
     }
 
     system_prefs = ctx.preferences.system
@@ -199,6 +203,12 @@ def get_render_settings(ctx):
         prefs["SNAP_LINE_COL_C3PT"] = addon_prefs.snap_line_color_c3pt
         prefs["CIRCLE_3PT_USE_AXIS_COLORS"] = addon_prefs.circle_3pt_use_axis_colors
         prefs["COL_OVERLAY_C3PT"] = addon_prefs.color_circle_3pt_overlay
+
+        prefs["ELLIPSE_RADIUS_USE_AXIS_COLORS"] = getattr(addon_prefs, "ellipse_radius_use_axis_colors", True)
+        prefs["COL_OVERLAY_ELLIPSE_RADIUS"] = getattr(addon_prefs, "color_ellipse_radius_overlay", (0.2, 0.2, 0.2, 1.0))
+
+        prefs["ELLIPSE_ENDPOINTS_USE_AXIS_COLORS"] = getattr(addon_prefs, "ellipse_endpoints_use_axis_colors", True)
+        prefs["COL_OVERLAY_ELLIPSE_ENDPOINTS"] = getattr(addon_prefs, "color_ellipse_endpoints_overlay", (0.2, 0.2, 0.2, 1.0))
 
         prefs["PREVIEW_VERTEX_SIZE"] = addon_prefs.preview_vertex_size
         
@@ -580,18 +590,19 @@ def draw_preview_ellipse(ctx, shaders, prefs):
             d_vec = cur - pv
             w = d_vec.dot(state["Xp"])
             h = d_vec.dot(state["Yp"])
-            
+
             p1 = pv
             p2 = pv + state["Xp"] * w
             p3 = pv + state["Xp"] * w + state["Yp"] * h
             p4 = pv + state["Yp"] * h
-            
-            # Draw Box
-            draw_line(ctx, shaders, p1, p2, prefs["COL_CHORD"], prefs)
-            draw_line(ctx, shaders, p2, p3, prefs["COL_CHORD"], prefs)
-            draw_line(ctx, shaders, p3, p4, prefs["COL_CHORD"], prefs)
-            draw_line(ctx, shaders, p4, p1, prefs["COL_CHORD"], prefs)
-            
+
+            # Draw Box (no axis colors for corners)
+            col_box = (0.2, 0.2, 0.2, 1.0)
+            draw_line(ctx, shaders, p1, p2, col_box, prefs)
+            draw_line(ctx, shaders, p2, p3, col_box, prefs)
+            draw_line(ctx, shaders, p3, p4, col_box, prefs)
+            draw_line(ctx, shaders, p4, p1, col_box, prefs)
+
             # Draw Ellipse
             pts = state.get("preview_pts", [])
             if pts:
@@ -604,13 +615,18 @@ def draw_preview_ellipse(ctx, shaders, prefs):
         draw_points(ctx, shaders, [pv], (0,0,0,1), pt_size, prefs)
         if mode == "ELLIPSE_FOCI":
              draw_points(ctx, shaders, [state["current"]], (0,0,0,1), pt_size, prefs)
-        
+
         pts = state.get("preview_pts", [])
         if mode == "ELLIPSE_RADIUS" and len(pts) >= 2:
             # Draw both halves of the symmetric diameter
-            col = get_axis_aligned_color(state["Xp"], prefs["COL_START"])
+            col = get_axis_aligned_color(state["Xp"], prefs["COL_OVERLAY_ELLIPSE_RADIUS"], prefs, "ELLIPSE_RADIUS_USE_AXIS_COLORS")
             draw_line(ctx, shaders, pts[0], pts[1], col, prefs)
+        elif mode == "ELLIPSE_ENDPOINTS":
+            diff = state["current"] - pv
+            col = get_axis_aligned_color(diff, prefs["COL_OVERLAY_ELLIPSE_ENDPOINTS"], prefs, "ELLIPSE_ENDPOINTS_USE_AXIS_COLORS")
+            draw_line(ctx, shaders, pv, state["current"], col, prefs)
         else:
+            # ELLIPSE_FOCI and ELLIPSE_CORNERS don't have axis colors
             diff = state["current"] - pv
             col = get_axis_aligned_color(diff, (0.5, 0.5, 0.5, 1.0))
             draw_line(ctx, shaders, pv, state["current"], col, prefs)
@@ -632,24 +648,28 @@ def draw_preview_ellipse(ctx, shaders, prefs):
             center = pv
             end_major = center + (state["Xp"] * state["rx"])
             start_major = center - (state["Xp"] * state["rx"])
-            col_m = get_axis_aligned_color(state["Xp"], prefs["COL_START"])
+            col_m = get_axis_aligned_color(state["Xp"], prefs["COL_OVERLAY_ELLIPSE_RADIUS"], prefs, "ELLIPSE_RADIUS_USE_AXIS_COLORS")
             draw_line(ctx, shaders, start_major, end_major, col_m, prefs)
-            
+
         # Draw Full Diameter for Endpoint Mode
         if mode == "ELLIPSE_ENDPOINTS" and "p1" in state and "p2" in state:
             if state["p1"] and state["p2"]:
                 diff = state["p2"] - state["p1"]
-                col_d = get_axis_aligned_color(diff, prefs["COL_START"])
+                col_d = get_axis_aligned_color(diff, prefs["COL_OVERLAY_ELLIPSE_ENDPOINTS"], prefs, "ELLIPSE_ENDPOINTS_USE_AXIS_COLORS")
                 draw_line(ctx, shaders, state["p1"], state["p2"], col_d, prefs)
-            
+
         # Draw Minor Axis line (to cursor)
         if state["current"] is not None:
-             # Only draw the center-to-cursor line for radius/endpoint modes
-             if mode in ["ELLIPSE_RADIUS", "ELLIPSE_ENDPOINTS"]:
-                  # Use pivot for center in Radius mode, or calculated center for Endpoints
-                  center = pv if mode == "ELLIPSE_RADIUS" else ((state["p1"] + state["p2"]) * 0.5)
+             # Only draw the center-to-cursor line for radius/endpoint modes (they have axis colors)
+             if mode == "ELLIPSE_RADIUS":
+                  center = pv
                   diff_h = state["current"] - center
-                  col_h = get_axis_aligned_color(diff_h, prefs["COL_HEIGHT"])
+                  col_h = get_axis_aligned_color(diff_h, prefs["COL_OVERLAY_ELLIPSE_RADIUS"], prefs, "ELLIPSE_RADIUS_USE_AXIS_COLORS")
+                  draw_line(ctx, shaders, center, state["current"], col_h, prefs)
+             elif mode == "ELLIPSE_ENDPOINTS":
+                  center = (state["p1"] + state["p2"]) * 0.5
+                  diff_h = state["current"] - center
+                  col_h = get_axis_aligned_color(diff_h, prefs["COL_OVERLAY_ELLIPSE_ENDPOINTS"], prefs, "ELLIPSE_ENDPOINTS_USE_AXIS_COLORS")
                   draw_line(ctx, shaders, center, state["current"], col_h, prefs)
 
         # Draw Ellipse Polyline

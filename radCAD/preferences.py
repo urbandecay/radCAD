@@ -29,8 +29,10 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
     show_line_tan_tan_settings: bpy.props.BoolProperty(name="Line Tangent to Two Curves Settings", default=True)
     show_circle_tan3_settings: bpy.props.BoolProperty(name="Circle Tangent to Three Curves Settings", default=True)
     show_circle_tan2_settings: bpy.props.BoolProperty(name="Circle Tangent to Two Curves Settings", default=True)
-    show_ellipse_foci_settings: bpy.props.BoolProperty(name="Ellipse from Foci Points Settings", default=True)
-    show_ellipse_settings: bpy.props.BoolProperty(name="Ellipse Settings", default=True)
+    show_ellipse_foci_settings: bpy.props.BoolProperty(name="Ellipse (Foci Point) Settings", default=True)
+    show_ellipse_corners_settings: bpy.props.BoolProperty(name="Ellipse (From Corners) Settings", default=True)
+    show_ellipse_endpoints_settings: bpy.props.BoolProperty(name="Ellipse (From Endpoints) Settings", default=True)
+    show_ellipse_radius_settings: bpy.props.BoolProperty(name="Ellipse (From Radius) Settings", default=True)
     show_polygon_settings: bpy.props.BoolProperty(name="Polygon Settings", default=True)
     show_rectangle_settings: bpy.props.BoolProperty(name="Rectangle Settings", default=True)
     show_curve_settings: bpy.props.BoolProperty(name="Curve Settings", default=True)
@@ -269,6 +271,38 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
         min=0.0, max=1.0,
         default=(0.0, 1.0, 0.0, 1.0),
         description="Color for the lines connecting foci to the mouse cursor"
+    )
+
+    # --- Ellipse from Radius ---
+    ellipse_radius_use_axis_colors: bpy.props.BoolProperty(
+        name="Use Axis Colors",
+        description="When snapped to X, Y, or Z, the guide lines will turn the axis color. If off, they stay the default color",
+        default=True
+    )
+
+    color_ellipse_radius_overlay: bpy.props.FloatVectorProperty(
+        name="Overlay Color",
+        subtype='COLOR',
+        size=4,
+        min=0.0, max=1.0,
+        default=(0.2, 0.2, 0.2, 1.0),
+        description="The color for the guide lines when not using axis colors"
+    )
+
+    # --- Ellipse from Endpoints ---
+    ellipse_endpoints_use_axis_colors: bpy.props.BoolProperty(
+        name="Use Axis Colors",
+        description="When snapped to X, Y, or Z, the guide lines will turn the axis color. If off, they stay the default color",
+        default=True
+    )
+
+    color_ellipse_endpoints_overlay: bpy.props.FloatVectorProperty(
+        name="Overlay Color",
+        subtype='COLOR',
+        size=4,
+        min=0.0, max=1.0,
+        default=(0.2, 0.2, 0.2, 1.0),
+        description="The color for the guide lines when not using axis colors"
     )
 
     axis_color_dim: bpy.props.FloatProperty(
@@ -843,9 +877,23 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
             self.draw_group_label(col, "Visuals:", icon='COLOR')
             self.draw_property_row(col, "Foci Line Color:", "ellipse_foci_col_foci_lines")
 
-        # 16-19. Shapes and Curves
+        # 16. Ellipse Corners (no snapping visuals)
+        self.draw_section_header(layout, "Ellipse (From Corners) Settings", "show_ellipse_corners_settings", icon='CURVE_NCURVE', tool_key='ellipse_corners')
+
+        # 17-18. Ellipse Tools (Endpoints & Radius with Snapping Visuals)
+        ellipse_tools = [
+            ("endpoints", "Ellipse (From Endpoints) Settings", "show_ellipse_endpoints_settings", "ellipse_from_radius"),
+            ("radius", "Ellipse (From Radius) Settings", "show_ellipse_radius_settings", "ellipse_from_radius")
+        ]
+        for prop_prefix, title, show_prop, tool_key in ellipse_tools:
+            col = self.draw_section_header(layout, title, show_prop, icon='CURVE_NCURVE', tool_key=tool_key)
+            if col:
+                self.draw_group_label(col, "Snapping Visuals:", icon='COLOR')
+                self.draw_property_row(col, "Use Axis Colors:", f"ellipse_{prop_prefix}_use_axis_colors")
+                self.draw_property_row(col, "Overlay Color:", f"color_ellipse_{prop_prefix}_overlay", enabled=not getattr(self, f"ellipse_{prop_prefix}_use_axis_colors"))
+
+        # 20-23. Other Shapes and Curves
         shape_tools = [
-            ("ellipse", "Ellipse Settings", "show_ellipse_settings", "ellipse_from_radius", "CURVE_EE"),
             ("poly", "Polygon Settings", "show_polygon_settings", "polygon_cen_cor", "MESH_CIRCLE"),
             ("rect", "Rectangle Settings", "show_rectangle_settings", "rectangle_from_center", "MESH_PLANE"),
             ("curve", "Curve Settings", "show_curve_settings", "curve_interpolate_points", "CURVE_BEZCURVE")
