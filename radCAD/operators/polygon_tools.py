@@ -40,6 +40,7 @@ class PolygonTool_CenterCorner(SurfaceDrawTool):
         self.ref_normal = Vector((0,0,1))
         self.vertical_override_axis = None
         self.major_axis = Vector((1,0,0))
+        self.constraint_axis = None
 
     def update(self, context, event, snap_point, snap_normal):
         # Stage 0: Let the Prep Chef find the wall/orientation
@@ -54,11 +55,29 @@ class PolygonTool_CenterCorner(SurfaceDrawTool):
             coord = (event.mouse_region_x, event.mouse_region_y)
             target = snap_point
 
-            # Snapping
-            strength_deg = self.state.get("snap_strength", 6.0)
-            axis_thresh = math.cos(math.radians(strength_deg))
-            inf_loc, _, _ = get_axis_snapped_location(pv, coord, context, snap_threshold=axis_thresh)
-            if inf_loc and not event.alt: target = inf_loc
+            # Snapping: Check constraint axis first, then axis-aligned snapping
+            if self.constraint_axis and not event.alt:
+                if self.state.get("geometry_snap", False):
+                    diff = target - pv
+                    proj = self.constraint_axis * diff.dot(self.constraint_axis)
+                    target = pv + proj
+                else:
+                    region = context.region
+                    rv3d = context.region_data
+                    ray_origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, coord)
+                    ray_vector = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
+                    res = geometry.intersect_line_line(
+                        ray_origin, ray_origin + ray_vector,
+                        pv, pv + self.constraint_axis
+                    )
+                    if res: target = res[1]
+
+            elif not self.state.get("geometry_snap", False) and not event.alt:
+                strength_deg = self.state.get("snap_strength", 6.0)
+                strength_deg = max(0.1, min(89.0, strength_deg))
+                axis_thresh = math.cos(math.radians(strength_deg))
+                inf_loc, _, _ = get_axis_snapped_location(pv, coord, context, snap_threshold=axis_thresh)
+                if inf_loc: target = inf_loc
 
             # Perpendicular Logic
             bridge = target - pv
@@ -190,6 +209,7 @@ class PolygonTool_CenterTangent(SurfaceDrawTool):
         self.ref_normal = Vector((0,0,1))
         self.vertical_override_axis = None
         self.major_axis = Vector((1,0,0))
+        self.constraint_axis = None
 
     def update(self, context, event, snap_point, snap_normal):
         if self.stage == 0:
@@ -202,11 +222,29 @@ class PolygonTool_CenterTangent(SurfaceDrawTool):
             coord = (event.mouse_region_x, event.mouse_region_y)
             target = snap_point
 
-            # Snapping
-            strength_deg = self.state.get("snap_strength", 6.0)
-            axis_thresh = math.cos(math.radians(strength_deg))
-            inf_loc, _, _ = get_axis_snapped_location(pv, coord, context, snap_threshold=axis_thresh)
-            if inf_loc and not event.alt: target = inf_loc
+            # Snapping: Check constraint axis first, then axis-aligned snapping
+            if self.constraint_axis and not event.alt:
+                if self.state.get("geometry_snap", False):
+                    diff = target - pv
+                    proj = self.constraint_axis * diff.dot(self.constraint_axis)
+                    target = pv + proj
+                else:
+                    region = context.region
+                    rv3d = context.region_data
+                    ray_origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, coord)
+                    ray_vector = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
+                    res = geometry.intersect_line_line(
+                        ray_origin, ray_origin + ray_vector,
+                        pv, pv + self.constraint_axis
+                    )
+                    if res: target = res[1]
+
+            elif not self.state.get("geometry_snap", False) and not event.alt:
+                strength_deg = self.state.get("snap_strength", 6.0)
+                strength_deg = max(0.1, min(89.0, strength_deg))
+                axis_thresh = math.cos(math.radians(strength_deg))
+                inf_loc, _, _ = get_axis_snapped_location(pv, coord, context, snap_threshold=axis_thresh)
+                if inf_loc: target = inf_loc
 
             # Perpendicular Logic
             bridge = target - pv
@@ -342,6 +380,7 @@ class PolygonTool_CornerCorner(SurfaceDrawTool):
         self.ref_normal = Vector((0,0,1))
         self.vertical_override_axis = None
         self.major_axis = Vector((1,0,0))
+        self.constraint_axis = None
 
     def update(self, context, event, snap_point, snap_normal):
         # Stage 0: Set First Corner
@@ -356,11 +395,29 @@ class PolygonTool_CornerCorner(SurfaceDrawTool):
             coord = (event.mouse_region_x, event.mouse_region_y)
             target = snap_point
 
-            # Snapping
-            strength_deg = self.state.get("snap_strength", 6.0)
-            axis_thresh = math.cos(math.radians(strength_deg))
-            inf_loc, _, _ = get_axis_snapped_location(corner1, coord, context, snap_threshold=axis_thresh)
-            if inf_loc and not event.alt: target = inf_loc
+            # Snapping: Check constraint axis first, then axis-aligned snapping
+            if self.constraint_axis and not event.alt:
+                if self.state.get("geometry_snap", False):
+                    diff = target - corner1
+                    proj = self.constraint_axis * diff.dot(self.constraint_axis)
+                    target = corner1 + proj
+                else:
+                    region = context.region
+                    rv3d = context.region_data
+                    ray_origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, coord)
+                    ray_vector = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
+                    res = geometry.intersect_line_line(
+                        ray_origin, ray_origin + ray_vector,
+                        corner1, corner1 + self.constraint_axis
+                    )
+                    if res: target = res[1]
+
+            elif not self.state.get("geometry_snap", False) and not event.alt:
+                strength_deg = self.state.get("snap_strength", 6.0)
+                strength_deg = max(0.1, min(89.0, strength_deg))
+                axis_thresh = math.cos(math.radians(strength_deg))
+                inf_loc, _, _ = get_axis_snapped_location(corner1, coord, context, snap_threshold=axis_thresh)
+                if inf_loc: target = inf_loc
 
             # Perpendicular Logic
             bridge = target - corner1
@@ -510,6 +567,7 @@ class PolygonTool_Edge(SurfaceDrawTool):
         self.ref_normal = Vector((0,0,1))
         self.vertical_override_axis = None
         self.major_axis = Vector((1,0,0))
+        self.constraint_axis = None
 
     def update(self, context, event, snap_point, snap_normal):
         # Stage 0: Set First Point of Edge
@@ -524,11 +582,29 @@ class PolygonTool_Edge(SurfaceDrawTool):
             coord = (event.mouse_region_x, event.mouse_region_y)
             target = snap_point
 
-            # Snapping
-            strength_deg = self.state.get("snap_strength", 6.0)
-            axis_thresh = math.cos(math.radians(strength_deg))
-            inf_loc, _, _ = get_axis_snapped_location(p1, coord, context, snap_threshold=axis_thresh)
-            if inf_loc and not event.alt: target = inf_loc
+            # Snapping: Check constraint axis first, then axis-aligned snapping
+            if self.constraint_axis and not event.alt:
+                if self.state.get("geometry_snap", False):
+                    diff = target - p1
+                    proj = self.constraint_axis * diff.dot(self.constraint_axis)
+                    target = p1 + proj
+                else:
+                    region = context.region
+                    rv3d = context.region_data
+                    ray_origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, coord)
+                    ray_vector = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
+                    res = geometry.intersect_line_line(
+                        ray_origin, ray_origin + ray_vector,
+                        p1, p1 + self.constraint_axis
+                    )
+                    if res: target = res[1]
+
+            elif not self.state.get("geometry_snap", False) and not event.alt:
+                strength_deg = self.state.get("snap_strength", 6.0)
+                strength_deg = max(0.1, min(89.0, strength_deg))
+                axis_thresh = math.cos(math.radians(strength_deg))
+                inf_loc, _, _ = get_axis_snapped_location(p1, coord, context, snap_threshold=axis_thresh)
+                if inf_loc: target = inf_loc
 
             # Perpendicular Logic
             bridge = target - p1
