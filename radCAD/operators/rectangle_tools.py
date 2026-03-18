@@ -23,34 +23,10 @@ class RectangleTool_CenterCorner(SurfaceDrawTool):
             center = self.pivot
             coord = (event.mouse_region_x, event.mouse_region_y)
 
-            # 1. ORIENTATION LOGIC (Stable Basis)
-            # Start with the original surface basis
-            up = self.ref_normal
-            is_perp = self.state.get("is_perpendicular", False)
-
-            from ..orientation_utils import orthonormal_basis_from_normal
-            if is_perp:
-                # Perpendicular Flip: Find a vertical plane aligned with view
-                ax_x, ax_y, _ = orthonormal_basis_from_normal(up)
-                rv3d = context.region_data
-                view_fwd = rv3d.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
-
-                # Snap plane normal to view-aligned horizontal axis
-                new_Zp = ax_x if abs(view_fwd.dot(ax_x)) > abs(view_fwd.dot(ax_y)) else ax_y
-                if new_Zp.dot(view_fwd) > 0: new_Zp = -new_Zp
-
-                self.Zp = new_Zp.normalized()
-                self.Yp = up.normalized()
-                self.Xp = self.Yp.cross(self.Zp).normalized()
-            else:
-                # Flat on Surface: Standard stable basis
-                self.Zp = up.copy()
-                self.Xp, self.Yp, _ = orthonormal_basis_from_normal(self.Zp)
-
-            # 2. Start with snap_point, but reject it if it snapped back to the anchor
-            # (snap_to_mesh_components can snap to the anchor vertex, collapsing the rectangle)
+            # 1. Resolve snap point (before orientation so we can detect vertical drag)
             from bpy_extras import view3d_utils
             from mathutils import geometry
+            from ..orientation_utils import orthonormal_basis_from_normal
             ray_origin = view3d_utils.region_2d_to_origin_3d(context.region, context.region_data, coord)
             ray_vector = view3d_utils.region_2d_to_vector_3d(context.region, context.region_data, coord)
             if snap_point and (snap_point - center).length > 1e-6:
@@ -59,11 +35,28 @@ class RectangleTool_CenterCorner(SurfaceDrawTool):
                 hit = geometry.intersect_line_plane(ray_origin, ray_origin + ray_vector, center, self.Zp)
                 target = hit if hit else snap_point
 
-            # NOTE: No axis snapping here — snapping to a world axis zeros out one rectangle
-            # dimension (dx or dy), collapsing the rectangle to a line.
-            # Vertex snapping (snap_point above) is sufficient for CenterCorner.
+            # NOTE: No axis snapping — snapping to a world axis zeros out dx or dy, collapsing to a line.
 
-            # 3. Project target onto plane (after snapping, to preserve snap direction)
+            # 2. ORIENTATION LOGIC — P key flip with view-aligned axis selection
+            up = self.ref_normal
+            is_perp = self.state.get("is_perpendicular", False)
+
+            if is_perp:
+                # Perpendicular mode: flip to view-aligned vertical plane
+                ax_x, ax_y, _ = orthonormal_basis_from_normal(up)
+                rv3d = context.region_data
+                view_fwd = rv3d.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
+                new_Zp = ax_x if abs(view_fwd.dot(ax_x)) > abs(view_fwd.dot(ax_y)) else ax_y
+                if new_Zp.dot(view_fwd) > 0: new_Zp = -new_Zp
+                self.Zp = new_Zp.normalized()
+                self.Yp = up.normalized()
+                self.Xp = self.Yp.cross(self.Zp).normalized()
+            else:
+                # Flat mode: stay on the surface
+                self.Zp = up.copy()
+                self.Xp, self.Yp, _ = orthonormal_basis_from_normal(self.Zp)
+
+            # 3. Project target onto (now updated) plane
             if self.Zp:
                 offset = (target - center).dot(self.Zp)
                 target = target - self.Zp * offset
@@ -132,29 +125,10 @@ class RectangleTool_CornerCorner(SurfaceDrawTool):
             c1 = self.pivot
             coord = (event.mouse_region_x, event.mouse_region_y)
 
-            # 1. ORIENTATION LOGIC (Stable Basis)
-            up = self.ref_normal
-            is_perp = self.state.get("is_perpendicular", False)
-
-            from ..orientation_utils import orthonormal_basis_from_normal
-            if is_perp:
-                ax_x, ax_y, _ = orthonormal_basis_from_normal(up)
-                rv3d = context.region_data
-                view_fwd = rv3d.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
-
-                new_Zp = ax_x if abs(view_fwd.dot(ax_x)) > abs(view_fwd.dot(ax_y)) else ax_y
-                if new_Zp.dot(view_fwd) > 0: new_Zp = -new_Zp
-
-                self.Zp = new_Zp.normalized()
-                self.Yp = up.normalized()
-                self.Xp = self.Yp.cross(self.Zp).normalized()
-            else:
-                self.Zp = up.copy()
-                self.Xp, self.Yp, _ = orthonormal_basis_from_normal(self.Zp)
-
-            # 2. Start with snap_point, but reject if it snapped back to the anchor
+            # 1. Resolve snap point (before orientation so we can detect vertical drag)
             from bpy_extras import view3d_utils
             from mathutils import geometry
+            from ..orientation_utils import orthonormal_basis_from_normal
             ray_origin = view3d_utils.region_2d_to_origin_3d(context.region, context.region_data, coord)
             ray_vector = view3d_utils.region_2d_to_vector_3d(context.region, context.region_data, coord)
             if snap_point and (snap_point - c1).length > 1e-6:
@@ -163,10 +137,28 @@ class RectangleTool_CornerCorner(SurfaceDrawTool):
                 hit = geometry.intersect_line_plane(ray_origin, ray_origin + ray_vector, c1, self.Zp)
                 target = hit if hit else snap_point
 
-            # NOTE: No axis snapping here — same reason as CenterCorner.
-            # Snapping to a world axis zeros out dx or dy, collapsing the rectangle to a line.
+            # NOTE: No axis snapping — snapping to a world axis zeros out dx or dy, collapsing to a line.
 
-            # 3. Project target onto plane (after snapping, to preserve snap direction)
+            # 2. ORIENTATION LOGIC — P key flip with view-aligned axis selection
+            up = self.ref_normal
+            is_perp = self.state.get("is_perpendicular", False)
+
+            if is_perp:
+                # Perpendicular mode: flip to view-aligned vertical plane
+                ax_x, ax_y, _ = orthonormal_basis_from_normal(up)
+                rv3d = context.region_data
+                view_fwd = rv3d.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
+                new_Zp = ax_x if abs(view_fwd.dot(ax_x)) > abs(view_fwd.dot(ax_y)) else ax_y
+                if new_Zp.dot(view_fwd) > 0: new_Zp = -new_Zp
+                self.Zp = new_Zp.normalized()
+                self.Yp = up.normalized()
+                self.Xp = self.Yp.cross(self.Zp).normalized()
+            else:
+                # Flat mode: stay on the surface
+                self.Zp = up.copy()
+                self.Xp, self.Yp, _ = orthonormal_basis_from_normal(self.Zp)
+
+            # 3. Project target onto (now updated) plane
             if self.Zp:
                 offset = (target - c1).dot(self.Zp)
                 target = target - self.Zp * offset
