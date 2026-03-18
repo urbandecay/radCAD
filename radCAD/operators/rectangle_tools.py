@@ -37,20 +37,35 @@ class RectangleTool_CenterCorner(SurfaceDrawTool):
 
             # NOTE: No axis snapping — snapping to a world axis zeros out dx or dy, collapsing to a line.
 
-            # 2. ORIENTATION LOGIC — P key flip with view-aligned axis selection
+            # 2. ORIENTATION LOGIC — P key flip with drag-direction-aware Xp
             up = self.ref_normal
             is_perp = self.state.get("is_perpendicular", False)
+            bridge = target - center
 
             if is_perp:
-                # Perpendicular mode: flip to view-aligned vertical plane
-                ax_x, ax_y, _ = orthonormal_basis_from_normal(up)
-                rv3d = context.region_data
-                view_fwd = rv3d.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
-                new_Zp = ax_x if abs(view_fwd.dot(ax_x)) > abs(view_fwd.dot(ax_y)) else ax_y
-                if new_Zp.dot(view_fwd) > 0: new_Zp = -new_Zp
-                self.Zp = new_Zp.normalized()
+                # Perpendicular mode: width follows drag direction (horizontal component),
+                # height becomes vertical
+                if bridge.length_squared > 1e-8:
+                    b_vec = bridge.normalized()
+                    # Keep Xp along the horizontal projection of the drag
+                    d_horiz = Vector((b_vec.x, b_vec.y, 0))
+                    if d_horiz.length > 1e-8:
+                        self.Xp = d_horiz.normalized()
+                    else:
+                        # Drag was nearly vertical, pick view-aligned axis
+                        ax_x, ax_y, _ = orthonormal_basis_from_normal(up)
+                        rv3d = context.region_data
+                        view_fwd = rv3d.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
+                        self.Xp = ax_x if abs(view_fwd.dot(ax_x)) > abs(view_fwd.dot(ax_y)) else ax_y
+                else:
+                    # No drag yet, pick view-aligned
+                    ax_x, ax_y, _ = orthonormal_basis_from_normal(up)
+                    rv3d = context.region_data
+                    view_fwd = rv3d.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
+                    self.Xp = ax_x if abs(view_fwd.dot(ax_x)) > abs(view_fwd.dot(ax_y)) else ax_y
+
                 self.Yp = up.normalized()
-                self.Xp = self.Yp.cross(self.Zp).normalized()
+                self.Zp = self.Xp.cross(self.Yp).normalized()
             else:
                 # Flat mode: stay on the surface
                 self.Zp = up.copy()
@@ -139,20 +154,35 @@ class RectangleTool_CornerCorner(SurfaceDrawTool):
 
             # NOTE: No axis snapping — snapping to a world axis zeros out dx or dy, collapsing to a line.
 
-            # 2. ORIENTATION LOGIC — P key flip with view-aligned axis selection
+            # 2. ORIENTATION LOGIC — P key flip with drag-direction-aware Xp
             up = self.ref_normal
             is_perp = self.state.get("is_perpendicular", False)
+            bridge = target - c1
 
             if is_perp:
-                # Perpendicular mode: flip to view-aligned vertical plane
-                ax_x, ax_y, _ = orthonormal_basis_from_normal(up)
-                rv3d = context.region_data
-                view_fwd = rv3d.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
-                new_Zp = ax_x if abs(view_fwd.dot(ax_x)) > abs(view_fwd.dot(ax_y)) else ax_y
-                if new_Zp.dot(view_fwd) > 0: new_Zp = -new_Zp
-                self.Zp = new_Zp.normalized()
+                # Perpendicular mode: width follows drag direction (horizontal component),
+                # height becomes vertical
+                if bridge.length_squared > 1e-8:
+                    b_vec = bridge.normalized()
+                    # Keep Xp along the horizontal projection of the drag
+                    d_horiz = Vector((b_vec.x, b_vec.y, 0))
+                    if d_horiz.length > 1e-8:
+                        self.Xp = d_horiz.normalized()
+                    else:
+                        # Drag was nearly vertical, pick view-aligned axis
+                        ax_x, ax_y, _ = orthonormal_basis_from_normal(up)
+                        rv3d = context.region_data
+                        view_fwd = rv3d.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
+                        self.Xp = ax_x if abs(view_fwd.dot(ax_x)) > abs(view_fwd.dot(ax_y)) else ax_y
+                else:
+                    # No drag yet, pick view-aligned
+                    ax_x, ax_y, _ = orthonormal_basis_from_normal(up)
+                    rv3d = context.region_data
+                    view_fwd = rv3d.view_matrix.inverted().to_3x3() @ Vector((0,0,-1))
+                    self.Xp = ax_x if abs(view_fwd.dot(ax_x)) > abs(view_fwd.dot(ax_y)) else ax_y
+
                 self.Yp = up.normalized()
-                self.Xp = self.Yp.cross(self.Zp).normalized()
+                self.Zp = self.Xp.cross(self.Yp).normalized()
             else:
                 # Flat mode: stay on the surface
                 self.Zp = up.copy()
