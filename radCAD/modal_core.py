@@ -602,11 +602,15 @@ def modal_arc_common(self, ctx, ev):
                     self.manager.on_move(ctx, ev)
             
             elif state["tool_mode"] == "CURVE_INTERPOLATE":
-                # Final commit: build clean preview from all chains (no dangling mouse point)
+                # Build final curve including current mouse pos (snapped target),
+                # then append a dummy copy of the last point so commit_arc_to_mesh's
+                # strip-one-from-end eats the dummy instead of the real last edge.
                 tool = self.manager.active_tool
                 num_segs = state.get("segments", 12)
                 if hasattr(tool, "_build_all_preview"):
-                    state["preview_pts"] = tool._build_all_preview(num_segs=num_segs)
+                    pts = tool._build_all_preview(extra_pt=tool.current, num_segs=num_segs)
+                    if pts:
+                        state["preview_pts"] = pts + [pts[-1]]
                 elif hasattr(tool, "control_points"):
                     from .operators.curve_tools import solve_catmull_rom_chain
                     state["preview_pts"] = solve_catmull_rom_chain(tool.control_points, num_segments=num_segs)
