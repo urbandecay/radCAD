@@ -181,14 +181,11 @@ def apply_input_value(ctx):
     # --- MIN DIST INPUT ---
     elif state["input_mode"] == 'MIN_DIST':
         try:
-            val = abs(bpy.utils.units.to_value(val_str, 'LENGTH', 'METERS'))
-        except Exception:
-            try:
-                val = abs(float(val_str))
-            except ValueError:
-                return
-        if val > 0:
-            state["min_dist"] = val
+            val = abs(float(val_str)) / 100.0
+            if val > 0:
+                state["min_dist"] = val
+        except ValueError:
+            pass
 
     # Update Preview Points immediately
     state["skip_mouse_update"] = True 

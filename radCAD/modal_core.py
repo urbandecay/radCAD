@@ -727,6 +727,8 @@ def modal_arc_common(self, ctx, ev):
                 
             if is_angle_stage:
                 target_mode = 'ANGLE'
+            elif tool_mode == "CURVE_FREEHAND":
+                target_mode = 'MIN_DIST'
             elif tool_mode != "ELLIPSE_CORNERS":
                 if tool_mode != "ELLIPSE_FOCI" or state["stage"] == 1:
                     target_mode = 'RADIUS' # Covers 2POINT Sagitta automatically as it's in Stage 2 but not an angle stage

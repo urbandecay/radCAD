@@ -633,7 +633,7 @@ def draw_hud_2d():
                     if tool_mode == "CURVE_FREEHAND":
                         is_input_m = (state["input_mode"] == 'MIN_DIST')
                         if is_input_m: m_txt = get_display_str("Min Dist:", state['input_string'], True)
-                        else: m_txt = f"Min Dist: {state.get('min_dist', 0.05):.4f}"
+                        else: m_txt = f"Min Dist: {int(state.get('min_dist', 0.05) * 100)}"
                         draw_ui_box_generic(px, current_y, m_txt, active=is_input_m)
                 elif tool_mode == "CIRCLE_TAN_TAN":
                     # Live radius display for Tan-Tan
