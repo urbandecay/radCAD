@@ -19,6 +19,7 @@ state = {
     "a0": 0.0, "a1": 0.0, "a_prev_raw": 0.0, "accum_angle": 0.0,
 
     "segments": 32,
+    "min_dist": 0.05,
     
     "snap_verts": True,        
     "snap_edges": False,       
@@ -252,6 +253,7 @@ def reset_state_from_context(ctx):
     keep_axis_c3pt = state.get("circle_3pt_use_axis_colors", True)
     keep_overlay_c3pt = state.get("circle_3pt_overlay_col", (0.2, 0.2, 0.2, 1.0))
     keep_weld    = state.get("auto_weld", True)
+    keep_min_dist = state.get("min_dist", 0.05)
     
     current_mode = state.get("tool_mode", "1POINT")
 
@@ -277,6 +279,7 @@ def reset_state_from_context(ctx):
         "circle_3pt_use_axis_colors": keep_axis_c3pt,
         "circle_3pt_overlay_col": keep_overlay_c3pt,
         "auto_weld": keep_weld,
+        "min_dist": keep_min_dist,
         
         "use_radians": use_rad, "snap_strength": strength,
         "use_axis_colors": use_axis_cols, "axis_color_dim": axis_dim,

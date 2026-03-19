@@ -365,6 +365,7 @@ class ModalManager:
         state["accum_angle"] = getattr(t, "accum_angle", 0.0)
         state["a_prev_raw"] = getattr(t, "a_prev_raw", 0.0)
         state["segments"] = getattr(t, "segments", 32)
+        state["min_dist"] = getattr(t, "min_dist", 0.05)
         state["rx"] = getattr(t, "rx", 0.0)
         state["ry"] = getattr(t, "ry", 0.0)
         state["preview_pts"] = getattr(t, "preview_pts", [])
@@ -389,6 +390,7 @@ class ModalManager:
         if "midpoint" in state: t.midpoint = state["midpoint"]
         if "current" in state: t.current = state["current"]
         if "segments" in state: t.segments = state["segments"]
+        if "min_dist" in state: t.min_dist = state["min_dist"]
         if "a0" in state: t.a0 = state["a0"]
         if "a1" in state: t.a1 = state["a1"]
         if "accum_angle" in state: t.accum_angle = state["accum_angle"]
@@ -705,6 +707,7 @@ def modal_arc_common(self, ctx, ev):
         tool_mode = state.get("tool_mode", "1POINT")
         
         if ev.type == 'S': target_mode = 'SEGMENTS'
+        elif ev.type == 'M' and tool_mode == "CURVE_FREEHAND": target_mode = 'MIN_DIST'
         elif ev.type == 'R' and tool_mode != "ELLIPSE_CORNERS":
             if tool_mode != "ELLIPSE_FOCI" or state["stage"] == 1:
                 target_mode = 'RADIUS'; state["input_target"] = 'RADIUS'

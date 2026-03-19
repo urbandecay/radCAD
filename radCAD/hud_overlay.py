@@ -178,7 +178,7 @@ def draw_ui_button(x, y, text, is_active, hitbox_id):
     # --- TOP RIGHT HOTKEYS ---
 def draw_hotkeys_panel():
     if not state.get("show_hotkeys", True): return
-    if state.get("tool_mode") == "LINE_TANGENT_FROM_CURVE": return
+    if state.get("tool_mode") in ["LINE_TANGENT_FROM_CURVE", "CURVE_FREEHAND"]: return
 
     perp_state = "ON" if state.get("is_perpendicular") else "OFF"
     perp_col = None 
@@ -628,8 +628,13 @@ def draw_hud_2d():
                     is_input_s = (state["input_mode"] == 'SEGMENTS')
                     if is_input_s: s_txt = get_display_str("Segments:", state['input_string'], True)
                     else: s_txt = f"Segments: {state['segments']}"
-                    draw_ui_box_generic(px, current_y, s_txt, active=is_input_s)
-                    current_y -= (40 * style["ui_scale"]) if "ui_scale" in style else 40
+                    h_s = draw_ui_box_generic(px, current_y, s_txt, active=is_input_s)
+                    current_y -= (h_s + 4)
+                    if tool_mode == "CURVE_FREEHAND":
+                        is_input_m = (state["input_mode"] == 'MIN_DIST')
+                        if is_input_m: m_txt = get_display_str("Min Dist:", state['input_string'], True)
+                        else: m_txt = f"Min Dist: {state.get('min_dist', 0.05):.4f}"
+                        draw_ui_box_generic(px, current_y, m_txt, active=is_input_m)
                 elif tool_mode == "CIRCLE_TAN_TAN":
                     # Live radius display for Tan-Tan
                     target = state.get("input_target", "RADIUS")
@@ -678,7 +683,7 @@ def draw_hud_2d():
             
             if state["stage"] == 2:
                 # --- HIDE ANGLE IF 2POINT, 3POINT, LINE_POLY, ELLIPSE_FOCI OR ELLIPSE_RADIUS ---
-                if tool_mode not in ["2POINT", "3POINT", "CIRCLE_3POINT", "CIRCLE_TAN_TAN_TAN", "LINE_POLY", "ELLIPSE_FOCI", "ELLIPSE_RADIUS", "ELLIPSE_ENDPOINTS"]:
+                if tool_mode not in ["2POINT", "3POINT", "CIRCLE_3POINT", "CIRCLE_TAN_TAN_TAN", "LINE_POLY", "ELLIPSE_FOCI", "ELLIPSE_RADIUS", "ELLIPSE_ENDPOINTS", "CURVE_FREEHAND"]:
                     is_input_a = (state["input_mode"] == 'ANGLE')
                     if is_input_a: a_txt = get_display_str("\u2220", state['input_string'], True)
                     else:
@@ -687,8 +692,8 @@ def draw_hud_2d():
                     h2 = draw_ui_box_generic(px, current_y, a_txt, active=is_input_a)
                     current_y -= (h2 + 4)
                 
-                # --- HIDE SEGMENTS FOR LINE_POLY ---
-                if tool_mode != "LINE_POLY":
+                # --- HIDE SEGMENTS FOR LINE_POLY AND CURVE_FREEHAND ---
+                if tool_mode not in ["LINE_POLY", "CURVE_FREEHAND"]:
                     is_input_s = (state["input_mode"] == 'SEGMENTS')
                     if is_input_s: s_txt = get_display_str("Segments:", state['input_string'], True)
                     else: s_txt = f"Segments: {state['segments']}"

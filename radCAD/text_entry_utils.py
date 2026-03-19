@@ -34,17 +34,28 @@ def apply_input_value(ctx):
             state["radius"] = abs(val_meters)
             pv = state["pivot"]
             if pv:
-                d = state["current"] - pv
-                if d.length > 1e-9: d.normalize()
-                else: d = Vector((1,0,0))
-                
-                state["start"] = pv + (d * state["radius"])
-                state["current"] = state["start"]
-                rvec2 = world_to_plane(state["start"] - pv, state["Xp"], state["Yp"])
-                a0 = math.atan2(rvec2.y, rvec2.x)
-                state["a0"] = a0; state["a1"] = a0; state["a_prev_raw"] = a0
-                state["accum_angle"] = 0.0
-                state["stage"] += 1
+                if state["stage"] == 2:
+                    # Already drawing — update radius but keep the angle
+                    Xp, Yp = state.get("Xp"), state.get("Yp")
+                    if Xp and Yp:
+                        a0 = state["a0"]
+                        new_start = pv + (Xp * math.cos(a0) + Yp * math.sin(a0)) * state["radius"]
+                        state["start"] = new_start
+                        state["current"] = new_start
+                        state["a1"] = state["a0"] + state["accum_angle"]
+                else:
+                    # Stage 1 — advance to stage 2
+                    d = state["current"] - pv
+                    if d.length > 1e-9: d.normalize()
+                    else: d = Vector((1,0,0))
+
+                    state["start"] = pv + (d * state["radius"])
+                    state["current"] = state["start"]
+                    rvec2 = world_to_plane(state["start"] - pv, state["Xp"], state["Yp"])
+                    a0 = math.atan2(rvec2.y, rvec2.x)
+                    state["a0"] = a0; state["a1"] = a0; state["a_prev_raw"] = a0
+                    state["accum_angle"] = 0.0
+                    state["stage"] += 1
 
         # === 2-POINT LOGIC ===
         elif tool_mode == "2POINT" or tool_mode == "CIRCLE_2POINT":
@@ -166,6 +177,18 @@ def apply_input_value(ctx):
             state["segments"] = max(3, min(1000, val))
         except ValueError:
             pass
+
+    # --- MIN DIST INPUT ---
+    elif state["input_mode"] == 'MIN_DIST':
+        try:
+            val = abs(bpy.utils.units.to_value(val_str, 'LENGTH', 'METERS'))
+        except Exception:
+            try:
+                val = abs(float(val_str))
+            except ValueError:
+                return
+        if val > 0:
+            state["min_dist"] = val
 
     # Update Preview Points immediately
     state["skip_mouse_update"] = True 
