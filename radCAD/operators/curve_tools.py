@@ -50,8 +50,12 @@ def solve_catmull_rom_chain(points, num_segments=16, cached_dists=None):
     
     if total_len < 1e-6: return [points[0], points[-1]]
 
-    # 2. Add boundary points for Catmull-Rom
-    chain = [points[0]] + points + [points[-1]]
+    # 2. Add extrapolated ghost boundary points for Catmull-Rom.
+    # Duplicate endpoints collapse centripetal parameterization (t0==t1==0),
+    # causing point bunching at start/end. Reflected ghosts fix that.
+    ghost_start = points[0] + (points[0] - points[1])
+    ghost_end   = points[-1] + (points[-1] - points[-2])
+    chain = [ghost_start] + points + [ghost_end]
     
     # 3. Sample exactly 'num_segments' points along the curve
     final_pts = []
@@ -101,11 +105,15 @@ class CurveTool_Interpolate(SurfaceDrawTool):
         pts_list  = [chain[:] for chain in self.chains]
         dists_list = [d[:]    for d in self.chain_dists]
 
-        # Tack the live mouse point onto the last chain
+        # Tack the live mouse point onto the last chain — but only if it's
+        # meaningfully far from the last anchor. Right after a click, self.current
+        # is still on the clicked point; adding it as a near-duplicate collapses
+        # the ghost-end extrapolation and bunches verts.
         if extra_pt is not None and pts_list[-1]:
             seg_len = (extra_pt - pts_list[-1][-1]).length
-            dists_list[-1] = dists_list[-1] + [dists_list[-1][-1] + seg_len]
-            pts_list[-1]   = pts_list[-1]   + [extra_pt]
+            if seg_len > 1e-4:
+                dists_list[-1] = dists_list[-1] + [dists_list[-1][-1] + seg_len]
+                pts_list[-1]   = pts_list[-1]   + [extra_pt]
 
         total_len = sum(d[-1] for d in dists_list if d)
         if total_len < 1e-6:

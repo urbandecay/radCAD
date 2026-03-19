@@ -241,9 +241,9 @@ class ModalManager:
                 preview_pts = state.get("preview_pts", [])
                 if len(preview_pts) > 1: self_snap_targets = preview_pts[:-1]
             elif state.get("tool_mode") == "CURVE_INTERPOLATE":
-                tool = self.active_tool
-                if tool and hasattr(tool, "chains"):
-                    self_snap_targets = [pt for chain in tool.chains for pt in chain]
+                # Snap to the full smooth curve preview (vertices and edges)
+                preview_pts = state.get("preview_pts", [])
+                if len(preview_pts) > 1: self_snap_targets = preview_pts[:-1]
             elif state.get("tool_mode") == "POINT_BY_ARCS":
                 self_snap_targets = getattr(self.active_tool, "endpoints_1", [])
 
@@ -260,7 +260,34 @@ class ModalManager:
                         if d2 < limit_sq and d2 < best_self_dist:
                             best_self_dist = d2
                             best_self_pt = pt
-                
+
+                # For CURVE_INTERPOLATE, snap to edges/edge-centers if enabled
+                if state.get("tool_mode") == "CURVE_INTERPOLATE":
+                    preview_pts = state.get("preview_pts", [])
+                    for i in range(len(preview_pts) - 2):
+                        p0, p1 = preview_pts[i], preview_pts[i+1]
+                        p0_2d = location_3d_to_region_2d(reg, rv3d, p0)
+                        p1_2d = location_3d_to_region_2d(reg, rv3d, p1)
+                        if p0_2d and p1_2d:
+                            edge_2d = p1_2d - p0_2d
+                            edge_len_sq = edge_2d.length_squared
+                            if edge_len_sq > 1e-8:
+                                # Snap to edge center if that button is on
+                                if state.get("snap_edge_center", False):
+                                    center_2d = p0_2d + edge_2d * 0.5
+                                    d2 = (mvec - center_2d).length_squared
+                                    if d2 < limit_sq and d2 < best_self_dist:
+                                        best_self_dist = d2
+                                        best_self_pt = (p0 + p1) * 0.5
+                                # Snap to closest point on edge if that button is on
+                                elif state.get("snap_edges", True):
+                                    t = max(0, min(1, (mvec - p0_2d).dot(edge_2d) / edge_len_sq))
+                                    closest_2d = p0_2d + edge_2d * t
+                                    d2 = (mvec - closest_2d).length_squared
+                                    if d2 < limit_sq and d2 < best_self_dist:
+                                        best_self_dist = d2
+                                        best_self_pt = p0 + (p1 - p0) * t
+
                 if best_self_pt:
                     use_self = True
                     if snapped_pos:
