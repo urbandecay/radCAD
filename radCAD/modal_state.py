@@ -23,10 +23,9 @@ state = {
     
     "snap_verts": True,        
     "snap_edges": False,       
-    "snap_edge_center": False, 
-    "snap_face_center": False, 
+    "snap_edge_center": False,
+    "snap_face_center": False,
     "use_angle_snap": True,
-    "use_axis_inference": True,
     "arc_2pt_use_axis_colors": True,
     "arc_2pt_overlay_col": (0.2, 0.2, 0.2, 1.0),
     "arc_3pt_use_axis_colors": True,
@@ -243,7 +242,6 @@ def reset_state_from_context(ctx):
     keep_s_ecen  = state.get("snap_edge_center", False)
     keep_s_fcen  = state.get("snap_face_center", False)
     keep_compass = state.get("use_angle_snap", True)
-    keep_axis    = state.get("use_axis_inference", True)
     keep_axis_2pt = state.get("arc_2pt_use_axis_colors", True)
     keep_overlay_2pt = state.get("arc_2pt_overlay_col", (0.2, 0.2, 0.2, 1.0))
     keep_axis_3pt = state.get("arc_3pt_use_axis_colors", True)
@@ -269,7 +267,6 @@ def reset_state_from_context(ctx):
         "snap_edge_center": keep_s_ecen,
         "snap_face_center": keep_s_fcen,
         "use_angle_snap": keep_compass,
-        "use_axis_inference": keep_axis,
         "arc_2pt_use_axis_colors": keep_axis_2pt,
         "arc_2pt_overlay_col": keep_overlay_2pt,
         "arc_3pt_use_axis_colors": keep_axis_3pt,

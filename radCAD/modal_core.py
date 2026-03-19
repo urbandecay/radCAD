@@ -719,8 +719,7 @@ def modal_arc_common(self, ctx, ev):
         if ev.type == 'F2': state["snap_edges"] = not state.get("snap_edges", False); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
         if ev.type == 'F3': state["snap_edge_center"] = not state.get("snap_edge_center", False); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
         if ev.type == 'F4': state["snap_face_center"] = not state.get("snap_face_center", False); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
-        if ev.type == 'F5': state["use_axis_inference"] = not state.get("use_axis_inference", True); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
-        
+
         if ev.type == 'C': state["use_angle_snap"] = not state.get("use_angle_snap", True); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
         if ev.type == 'W': state["auto_weld"] = not state.get("auto_weld", True); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
         
@@ -795,7 +794,6 @@ def modal_arc_common(self, ctx, ev):
                     elif k == "snap_edges": state["snap_edges"] = not state.get("snap_edges", False)
                     elif k == "snap_edge_center": state["snap_edge_center"] = not state.get("snap_edge_center", False)
                     elif k == "snap_face_center": state["snap_face_center"] = not state.get("snap_face_center", False)
-                    elif k == "toggle_axis": state["use_axis_inference"] = not state.get("use_axis_inference", True)
                     elif k == "toggle_angle": state["use_angle_snap"] = not state.get("use_angle_snap", True)
                     elif k == "weld_btn": state["auto_weld"] = not state.get("auto_weld", True)
                     ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
