@@ -1,9 +1,10 @@
 import math
-from mathutils import Vector
+import bmesh
+from mathutils import Vector, Matrix
 from ..geometry_utils import snap_angle_soft, unwrap, arc_points_world
 from ..plane_utils import world_to_plane, plane_to_world
 from ..orientation_utils import orthonormal_basis_from_normal
-from .base_tool import SurfaceDrawTool 
+from .base_tool import SurfaceDrawTool, CAD_BaseTool
 
 def intersect_circles_3d(c1, r1, c2, r2, Xp, Yp):
     """
@@ -471,5 +472,153 @@ class PointTool_ByArcs(SurfaceDrawTool):
         # Stage 5: Finish
         if self.stage == 5:
             return 'FINISHED'
-            
+
         return None
+
+
+def fit_circle_to_points_3d(world_pts):
+    """Best-fit circle through 3D points that roughly lie on a plane.
+    Returns (center_3d, radius) or (None, 0.0) on failure."""
+    if len(world_pts) < 3:
+        return None, 0.0
+
+    n = len(world_pts)
+    centroid = sum(world_pts, Vector()) / n
+
+    # Estimate plane normal via averaged cross products of consecutive edges
+    normal = Vector((0.0, 0.0, 0.0))
+    for i in range(n):
+        a = world_pts[i] - centroid
+        b = world_pts[(i + 1) % n] - centroid
+        normal += a.cross(b)
+
+    if normal.length_squared < 1e-12:
+        return None, 0.0
+    normal.normalize()
+
+    # Build orthonormal plane basis
+    temp = Vector((1.0, 0.0, 0.0)) if abs(normal.x) < 0.9 else Vector((0.0, 1.0, 0.0))
+    Xp = normal.cross(temp).normalized()
+    Yp = normal.cross(Xp).normalized()
+
+    # Project points to 2D plane
+    pts2d = []
+    for wp in world_pts:
+        v = wp - centroid
+        pts2d.append((v.dot(Xp), v.dot(Yp)))
+
+    # Algebraic least squares circle fit: x^2 + y^2 = a*x + b*y + c
+    # Normal equations: (A^T A) [a, b, c]^T = A^T rhs
+    s_xx = s_xy = s_yy = s_x = s_y = s_n = 0.0
+    s_xr = s_yr = s_r = 0.0
+    for (x, y) in pts2d:
+        r2 = x * x + y * y
+        s_xx += x * x;  s_xy += x * y;  s_yy += y * y
+        s_x  += x;      s_y  += y;      s_n  += 1.0
+        s_xr += x * r2; s_yr += y * r2; s_r  += r2
+
+    M = Matrix(((s_xx, s_xy, s_x),
+                (s_xy, s_yy, s_y),
+                (s_x,  s_y,  s_n)))
+    rhs = Vector((s_xr, s_yr, s_r))
+
+    try:
+        sol = M.inverted() @ rhs
+    except Exception:
+        return None, 0.0
+
+    cx2d = sol[0] / 2.0
+    cy2d = sol[1] / 2.0
+    r = math.sqrt(max(0.0, sol[2] + cx2d * cx2d + cy2d * cy2d))
+    center_3d = centroid + Xp * cx2d + Yp * cy2d
+    return center_3d, r, Xp, Yp
+
+
+class PointTool_Center(CAD_BaseTool):
+    """Fits a best-fit circle to the selected mesh polygon and places a vertex at the center."""
+
+    def __init__(self, core):
+        super().__init__(core)
+        self.stage = 0
+        # Required by sync_tool_from_state
+        self.pivot = None
+        self.current = None
+        self.Xp = None
+        self.Yp = None
+        self.Zp = None
+        self.intersection_pts = []
+        self.catmull_preview = []
+        self.state["catmull_center_pts"] = []
+        self._compute()
+
+    def _compute(self):
+        import bpy
+        from .circle_tools import get_selected_edge_chains, CatmullRomSpline
+
+        obj = bpy.context.edit_object
+        if not obj:
+            return
+
+        chains = get_selected_edge_chains(obj)
+        if chains:
+            raw_pts, is_closed = chains[0]
+        else:
+            bm = bmesh.from_edit_mesh(obj.data)
+            mw = obj.matrix_world
+            raw_pts = [mw @ v.co for v in bm.verts if v.select]
+            is_closed = False
+
+        if len(raw_pts) < 3:
+            return
+
+        center, radius, Xp, Yp = fit_circle_to_points_3d(raw_pts)
+        if center is None:
+            return
+
+        # Store on self so sync_tool_from_state doesn't wipe it
+        self.intersection_pts = [center]
+
+        # Check if all verts lie on the same circle (perfect polygon/arc)
+        is_perfect = False
+        if radius > 1e-6:
+            dists = [(wp - center).length for wp in raw_pts]
+            avg = sum(dists) / len(dists)
+            max_dev = max(abs(d - avg) for d in dists)
+            is_perfect = (max_dev / avg) < 0.001  # 0.1% tolerance
+
+        if is_perfect:
+            # Generate smooth arc using arc_points_world (battle-tested in this codebase)
+            n_steps = max(128, 16 * len(raw_pts))
+            angles = sorted(math.atan2((wp - center).dot(Yp), (wp - center).dot(Xp)) for wp in raw_pts)
+            n = len(angles)
+            # Check if wrap-around gap matches the per-vertex gap → closed polygon
+            gaps = [angles[i+1] - angles[i] for i in range(n - 1)]
+            wrap_gap = (2 * math.pi) - (angles[-1] - angles[0])
+            avg_gap = 2 * math.pi / n
+            is_closed_polygon = wrap_gap < avg_gap * 1.5
+            if is_closed or is_closed_polygon:
+                preview = arc_points_world(center, radius, 0.0, 2 * math.pi, n_steps, Xp, Yp)
+            else:
+                preview = arc_points_world(center, radius, angles[0], angles[-1], n_steps, Xp, Yp)
+        else:
+            # Irregular shape — use Catmull-Rom
+            spline = CatmullRomSpline(raw_pts, is_closed=is_closed)
+            preview = []
+            steps = 24
+            for seg in spline.segments:
+                for i in range(steps + 1):
+                    t = seg.t_start + (i / steps) * seg.dt
+                    preview.append(seg.eval(t))
+
+        self.catmull_preview = preview
+        self.state["catmull_center_pts"] = preview
+
+    def handle_input(self, context, event):
+        return False
+
+    def update(self, context, event, snap_point, snap_normal):
+        # Keep catmull preview in state (not auto-synced by sync_tool_from_state)
+        self.state["catmull_center_pts"] = self.catmull_preview
+
+    def handle_click(self, context, event, snap_point, snap_normal, button_id=None):
+        return 'FINISHED'

@@ -48,6 +48,7 @@ IMPLEMENTED_TOOLS = {
     "curve_interpolate_points",
     "curve_freehand",
     "point_by_arcs",
+    "point_center",
     "rectangle_from_center",
     "rectangle_from_corners",
     "rectangle_3_points", 
@@ -172,6 +173,8 @@ class RADCAD_OT_generic(bpy.types.Operator):
         elif self.panel == "point":
             if self.name == "point_by_arcs":
                 bpy.ops.view3d.point_by_arcs('INVOKE_DEFAULT')
+            elif self.name == "point_center":
+                bpy.ops.view3d.point_center('INVOKE_DEFAULT')
 
         elif self.panel == "rectangle":
             if self.name == "rectangle_from_center":
@@ -229,6 +232,7 @@ class RADCAD_PT_Point(bpy.types.Panel):
     def draw(self, context):
         draw_header(self.layout, context.scene.radcad_point_icon)
         draw_tool_button(self.layout, "point_by_arcs", "point")
+        draw_tool_button(self.layout, "point_center", "point")
 
 class RADCAD_PT_Line(bpy.types.Panel):
     bl_label = "Line"

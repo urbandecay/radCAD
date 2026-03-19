@@ -46,6 +46,7 @@ op_line_tangent_from_curve = _import("operators.op_line_tangent_from_curve")
 op_curve_interpolate = _import("operators.op_curve_interpolate")
 op_curve_freehand = _import("operators.op_curve_freehand")
 op_point_by_arcs = _import("operators.op_point_by_arcs")
+op_point_center = _import("operators.op_point_center")
 
 def register():
     bpy.utils.register_class(prefs.RADCAD_Preferences)
@@ -86,6 +87,7 @@ def register():
     bpy.utils.register_class(op_curve_interpolate.VIEW3D_OT_curve_interpolate)
     bpy.utils.register_class(op_curve_freehand.VIEW3D_OT_curve_freehand)
     bpy.utils.register_class(op_point_by_arcs.VIEW3D_OT_point_by_arcs)
+    bpy.utils.register_class(op_point_center.VIEW3D_OT_point_center)
 
     if hasattr(panel, "register"):
         panel.register()
@@ -94,6 +96,7 @@ def unregister():
     if hasattr(panel, "unregister"):
         panel.unregister()
 
+    bpy.utils.unregister_class(op_point_center.VIEW3D_OT_point_center)
     bpy.utils.unregister_class(op_point_by_arcs.VIEW3D_OT_point_by_arcs)
     bpy.utils.unregister_class(op_curve_freehand.VIEW3D_OT_curve_freehand)
     bpy.utils.unregister_class(op_curve_interpolate.VIEW3D_OT_curve_interpolate)

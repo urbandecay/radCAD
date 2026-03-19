@@ -197,9 +197,13 @@ class ModalManager:
             from .operators import curve_tools
             self.active_tool = curve_tools.CurveTool_Freehand(self)
             
-        elif t_mode == "POINT_BY_ARCS": 
+        elif t_mode == "POINT_BY_ARCS":
             from .operators import point_tools
             self.active_tool = point_tools.PointTool_ByArcs(self)
+
+        elif t_mode == "POINT_CENTER":
+            from .operators import point_tools
+            self.active_tool = point_tools.PointTool_Center(self)
             
         else: 
             from .operators import arc_tools
@@ -465,7 +469,7 @@ def commit_arc_to_mesh(ctx):
     bm = bmesh.from_edit_mesh(obj.data)
     imw = obj.matrix_world.inverted()
     
-    if state["tool_mode"] == "POINT_BY_ARCS":
+    if state["tool_mode"] in ("POINT_BY_ARCS", "POINT_CENTER"):
         int_pts = state.get("intersection_pts", [])
         if not int_pts: return
         bpy.ops.mesh.select_all(action='DESELECT')

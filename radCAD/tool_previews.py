@@ -1000,6 +1000,16 @@ def draw_cb_3d():
                     if pts:
                         draw_line(ctx, shaders, pv, pts[-1], end_col, settings)
                 
+        elif mode == "POINT_CENTER":
+            # Draw the Catmull-Rom curve over the selected polygon
+            catmull_pts = state.get("catmull_center_pts", [])
+            if catmull_pts:
+                draw_polyline(ctx, shaders, catmull_pts, (0, 0, 0, 1), settings)
+            # Draw the computed center vertex preview
+            center_pts = state.get("intersection_pts", [])
+            if center_pts:
+                draw_points(ctx, shaders, center_pts, (0, 0, 0, 1), settings.get("PREVIEW_VERTEX_SIZE", 5), settings, custom_lift=settings.get("LIFT_ARC", 20.0) + 50.0)
+
         # UPDATED: Added all Line Curve Tools
         elif mode in ["LINE_POLY", "CURVE_INTERPOLATE", "CURVE_FREEHAND", "LINE_PERP_FROM_CURVE", "LINE_PERP_TO_TWO_CURVES", "LINE_TANGENT_FROM_CURVE", "LINE_TAN_TAN"]:
             
