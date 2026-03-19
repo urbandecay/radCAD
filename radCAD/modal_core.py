@@ -598,12 +598,14 @@ def modal_arc_common(self, ctx, ev):
                     self.manager.on_move(ctx, ev)
             
             elif state["tool_mode"] == "CURVE_INTERPOLATE":
-                # Clear preview_pts so it doesn't include the mouse point during final commit
-                if hasattr(self.manager.active_tool, "control_points"):
-                    pts = self.manager.active_tool.control_points
-                    num_segs = state.get("segments", 12)
+                # Final commit: build clean preview from all chains (no dangling mouse point)
+                tool = self.manager.active_tool
+                num_segs = state.get("segments", 12)
+                if hasattr(tool, "_build_all_preview"):
+                    state["preview_pts"] = tool._build_all_preview(num_segs=num_segs)
+                elif hasattr(tool, "control_points"):
                     from .operators.curve_tools import solve_catmull_rom_chain
-                    state["preview_pts"] = solve_catmull_rom_chain(pts, num_segments=num_segs)
+                    state["preview_pts"] = solve_catmull_rom_chain(tool.control_points, num_segments=num_segs)
 
         commit_arc_to_mesh(ctx)
         finish_modal(self, ctx)

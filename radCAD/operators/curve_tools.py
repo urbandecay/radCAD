@@ -83,10 +83,47 @@ class CurveTool_Interpolate(SurfaceDrawTool):
     def __init__(self, core):
         super().__init__(core)
         self.mode = "CURVE_INTERPOLATE"
-        self.control_points = [] 
+        self.chains = [[]]        # each Ctrl+click starts a new chain = sharp kink
+        self.chain_dists = [[0.0]]
         self.current = None
         self.constraint_axis = None
-        self.dists = [0.0] # Cached for speed
+
+    @property
+    def control_points(self):
+        return self.chains[-1]
+
+    @property
+    def dists(self):
+        return self.chain_dists[-1]
+
+    def _build_all_preview(self, extra_pt=None, num_segs=12):
+        """Stitch all chains into one preview, distributing segments by chord length."""
+        pts_list  = [chain[:] for chain in self.chains]
+        dists_list = [d[:]    for d in self.chain_dists]
+
+        # Tack the live mouse point onto the last chain
+        if extra_pt is not None and pts_list[-1]:
+            seg_len = (extra_pt - pts_list[-1][-1]).length
+            dists_list[-1] = dists_list[-1] + [dists_list[-1][-1] + seg_len]
+            pts_list[-1]   = pts_list[-1]   + [extra_pt]
+
+        total_len = sum(d[-1] for d in dists_list if d)
+        if total_len < 1e-6:
+            return [p for chain in pts_list for p in chain]
+
+        all_pts = []
+        for i, (pts, dists) in enumerate(zip(pts_list, dists_list)):
+            if len(pts) < 2:
+                if pts and not all_pts:
+                    all_pts.append(pts[0])
+                continue
+            chain_segs = max(2, round(num_segs * dists[-1] / total_len))
+            solved = solve_catmull_rom_chain(pts, num_segments=chain_segs, cached_dists=dists)
+            # Skip the first point of every chain after the first — it's the kink point
+            # which is already the last point of the previous chain
+            all_pts.extend(solved if not all_pts else solved[1:])
+
+        return all_pts
 
     def update(self, context, event, snap_point, snap_normal):
         if self.stage == 0:
@@ -96,9 +133,9 @@ class CurveTool_Interpolate(SurfaceDrawTool):
             return
 
         if self.stage >= 1:
-            ref_point = self.control_points[-1] if self.control_points else self.pivot
+            ref_point = self.chains[-1][-1] if self.chains[-1] else self.pivot
             target = snap_point
-            
+
             if self.constraint_axis:
                 if self.state.get("geometry_snap", False):
                     diff = target - ref_point
@@ -117,37 +154,38 @@ class CurveTool_Interpolate(SurfaceDrawTool):
 
             self.current = target
             num_segs = self.state.get("segments", 12)
-            # Temporary distances for the point under mouse
-            temp_pts = self.control_points + [self.current]
-            temp_len = self.dists[-1] + (self.current - self.control_points[-1]).length
-            temp_dists = self.dists + [temp_len]
-            self.preview_pts = solve_catmull_rom_chain(temp_pts, num_segments=num_segs, cached_dists=temp_dists)
+            self.preview_pts = self._build_all_preview(extra_pt=self.current, num_segs=num_segs)
 
     def refresh_preview(self):
         if self.stage >= 1 and self.current:
             num_segs = self.state.get("segments", 12)
-            temp_pts = self.control_points + [self.current]
-            temp_len = self.dists[-1] + (self.current - self.control_points[-1]).length
-            temp_dists = self.dists + [temp_len]
-            self.preview_pts = solve_catmull_rom_chain(temp_pts, num_segments=num_segs, cached_dists=temp_dists)
+            self.preview_pts = self._build_all_preview(extra_pt=self.current, num_segs=num_segs)
 
     def handle_click(self, context, event, snap_point, snap_normal, button_id=None):
         if self.stage == 0:
             self.pivot = snap_point
-            self.control_points.append(snap_point)
-            self.dists = [0.0]
+            self.chains = [[snap_point]]
+            self.chain_dists = [[0.0]]
             self.state["locked"], self.state["locked_normal"] = True, self.Zp
             self.stage = 1
             return 'NEXT_STAGE'
+
         if self.stage >= 1:
-            if (self.current - self.control_points[-1]).length < 1e-5: return None
-            # Update distance cache
-            seg_len = (self.current - self.control_points[-1]).length
-            self.dists.append(self.dists[-1] + seg_len)
-            self.control_points.append(self.current)
+            if (self.current - self.chains[-1][-1]).length < 1e-5: return None
+            # Commit current point to active chain
+            seg_len = (self.current - self.chains[-1][-1]).length
+            self.chain_dists[-1].append(self.chain_dists[-1][-1] + seg_len)
+            self.chains[-1].append(self.current.copy())
+
+            if event.ctrl:
+                # Kink! Seal this chain and start a fresh one from the same point
+                self.chains.append([self.current.copy()])
+                self.chain_dists.append([0.0])
+
             self.constraint_axis = self.state["constraint_axis"] = None
-            self.pivot = self.current 
+            self.pivot = self.current
             return 'NEXT_STAGE'
+
         return None
 
     def handle_input(self, context, event):
@@ -156,12 +194,26 @@ class CurveTool_Interpolate(SurfaceDrawTool):
             axes = {'X': Vector((1, 0, 0)), 'Y': Vector((0, 1, 0)), 'Z': Vector((0, 0, 1))}
             self.constraint_axis = self.state["constraint_axis"] = None if self.constraint_axis == axes[event.type] else axes[event.type]
             return True
-        if event.type == 'BACK_SPACE' and event.value == 'PRESS' and len(self.control_points) > 1:
-            self.control_points.pop()
-            self.dists.pop()
-            self.pivot = self.control_points[-1]
-            self.refresh_preview()
-            return True
+        if event.type == 'BACK_SPACE' and event.value == 'PRESS':
+            chain = self.chains[-1]
+            dists = self.chain_dists[-1]
+            if len(chain) > 1:
+                # Normal undo: pop last point
+                chain.pop()
+                dists.pop()
+                self.pivot = chain[-1]
+                self.refresh_preview()
+                return True
+            elif len(self.chains) > 1:
+                # Undo the kink: ditch the fresh chain, pop kink point from previous chain
+                self.chains.pop()
+                self.chain_dists.pop()
+                if len(self.chains[-1]) > 1:
+                    self.chains[-1].pop()
+                    self.chain_dists[-1].pop()
+                self.pivot = self.chains[-1][-1]
+                self.refresh_preview()
+                return True
         return False
 
 class CurveTool_Freehand(SurfaceDrawTool):
