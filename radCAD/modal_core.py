@@ -240,6 +240,10 @@ class ModalManager:
             if state.get("tool_mode") == "LINE_POLY":
                 preview_pts = state.get("preview_pts", [])
                 if len(preview_pts) > 1: self_snap_targets = preview_pts[:-1]
+            elif state.get("tool_mode") == "CURVE_INTERPOLATE":
+                tool = self.active_tool
+                if tool and hasattr(tool, "chains"):
+                    self_snap_targets = [pt for chain in tool.chains for pt in chain]
             elif state.get("tool_mode") == "POINT_BY_ARCS":
                 self_snap_targets = getattr(self.active_tool, "endpoints_1", [])
 
