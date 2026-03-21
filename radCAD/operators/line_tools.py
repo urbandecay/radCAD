@@ -581,6 +581,11 @@ class LineTool_Poly(SurfaceDrawTool):
                     dist = v.dot(self.shift_lock_vec)
                     target = ref + self.shift_lock_vec * dist
 
+                # --- SNAP + SHIFT LOCK: Project snap_point onto the locked axis ---
+                if self.state.get("geometry_snap") and snap_point is not None:
+                    diff = snap_point - ref
+                    target = ref + self.shift_lock_vec * diff.dot(self.shift_lock_vec)
+
                 self.state["current_axis_vector"] = self.shift_lock_vec
         else:
             self.shift_lock_vec = None
