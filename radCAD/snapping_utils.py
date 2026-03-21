@@ -83,7 +83,7 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
     bm.faces.ensure_lookup_table()
 
     mw = obj.matrix_world
-    
+
     # Check for X-Ray / Wireframe
     allow_occluded = False
     if ctx.space_data.type == 'VIEW_3D':
@@ -91,31 +91,62 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
         if shading.type == 'WIREFRAME' or shading.show_xray:
             allow_occluded = True
 
+    # --- WORLD-SPACE RADIUS PRE-FILTER ---
+    # Estimate how big max_px pixels is in world space at the current view depth.
+    # This lets us do a cheap 3D distance check BEFORE the expensive 2D projection.
+    ray_origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, (x, y))
+    ray_dir = view3d_utils.region_2d_to_vector_3d(region, rv3d, (x, y))
+    ws_radius = None
+    obj_center = mw.translation
+    p_center = location_3d_to_region_2d(region, rv3d, obj_center)
+    if p_center:
+        view_inv = rv3d.view_matrix.inverted()
+        cam_right = view_inv.to_3x3() @ Vector((1.0, 0.0, 0.0))
+        p_right = location_3d_to_region_2d(region, rv3d, obj_center + cam_right)
+        if p_right:
+            px_per_meter = (p_right - p_center).length
+            if px_per_meter > 0.1:
+                ws_radius = (max_px * 2.0) / px_per_meter  # 2x generous so we don't miss edge cases
+
+    def near_ray(wco):
+        """Fast 3D check: is this world-space point within ws_radius of the mouse ray?"""
+        if ws_radius is None:
+            return True
+        t = max(0.0, (wco - ray_origin).dot(ray_dir))
+        closest = ray_origin + ray_dir * t
+        return (wco - closest).length <= ws_radius
+
     # Candidates list stores: (PRIORITY, DIST_SQ, WORLD_CO)
     # Lower Priority number wins.
     candidates = []
     limit_sq = max_px * max_px
+    found_vert = False
 
     # 1. Verts (Priority 0)
     if do_verts:
         for v in bm.verts:
             if v.hide: continue
             wco = mw @ v.co
+            if not near_ray(wco): continue  # cheap 3D cull before expensive 2D projection
+
             p2d = location_3d_to_region_2d(region, rv3d, wco)
             if p2d is None: continue
-            
+
             d2 = (mouse - p2d).length_squared
             if d2 < limit_sq:
                 candidates.append((0, d2, wco))
+                found_vert = True
 
     # 2. Edge Centers (Priority 1)
     if do_edge_center:
         for e in bm.edges:
             if e.hide: continue
             wco = mw @ ((e.verts[0].co + e.verts[1].co) * 0.5)
+            if not near_ray(wco): continue  # cheap 3D cull
+
             p2d = location_3d_to_region_2d(region, rv3d, wco)
             if p2d is None: continue
-            
+
             d2 = (mouse - p2d).length_squared
             if d2 < limit_sq:
                 candidates.append((1, d2, wco))
@@ -125,42 +156,55 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
         for f in bm.faces:
             if f.hide: continue
             wco = mw @ f.calc_center_median()
+            if not near_ray(wco): continue  # cheap 3D cull
+
             p2d = location_3d_to_region_2d(region, rv3d, wco)
             if p2d is None: continue
-            
+
             d2 = (mouse - p2d).length_squared
             if d2 < limit_sq:
                 candidates.append((1, d2, wco))
 
     # 4. Nearest Point on Edge (Priority 2)
-    # Only checks if do_edges is True
-    if do_edges:
+    # Skip entirely if a vertex was already found — verts always win over edges anyway
+    if do_edges and not found_vert:
         for e in bm.edges:
             if e.hide: continue
-            
+
             v1_world = mw @ e.verts[0].co
             v2_world = mw @ e.verts[1].co
-            
+
+            # Cheap 3D cull on edge midpoint before projecting either endpoint
+            edge_mid = (v1_world + v2_world) * 0.5
+            if not near_ray(edge_mid): continue
+
             p1_2d = location_3d_to_region_2d(region, rv3d, v1_world)
             p2_2d = location_3d_to_region_2d(region, rv3d, v2_world)
-            
+
             if p1_2d and p2_2d:
+                # Fast bounding box cull — skip expensive intersection math if edge is clearly out of range
+                if (min(p1_2d.x, p2_2d.x) - max_px > mouse.x or
+                    max(p1_2d.x, p2_2d.x) + max_px < mouse.x or
+                    min(p1_2d.y, p2_2d.y) - max_px > mouse.y or
+                    max(p1_2d.y, p2_2d.y) + max_px < mouse.y):
+                    continue
+
                 # 2D Intersection
                 intersect_2d = geometry.intersect_point_line(mouse, p1_2d, p2_2d)
-                
+
                 if intersect_2d:
                     pt_on_seg_2d = intersect_2d[0]
-                    
+
                     # Bound check (is point actually on the segment?)
                     # Add a tiny buffer (5px) to handle corner cases
                     min_x, max_x = min(p1_2d.x, p2_2d.x), max(p1_2d.x, p2_2d.x)
                     min_y, max_y = min(p1_2d.y, p2_2d.y), max(p1_2d.y, p2_2d.y)
-                    
+
                     if (min_x - 5 <= pt_on_seg_2d.x <= max_x + 5) and \
                        (min_y - 5 <= pt_on_seg_2d.y <= max_y + 5):
-                        
+
                         dist2 = (mouse - pt_on_seg_2d).length_squared
-                        
+
                         if dist2 < limit_sq:
                             # Calculate 3D point via interpolation
                             seg_len = (p2_2d - p1_2d).length

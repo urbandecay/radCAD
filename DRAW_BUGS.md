@@ -2,6 +2,132 @@
 
 ---
 
+## Bug: Snapping glacially slow with large geometry (million+ verts)
+
+**Date:** 2026-03-21
+**Affected tool:** All tools with snapping enabled (Line, Arc, Circle, etc.) when scene contains dense geometry
+
+### What was wrong
+
+When a scene had a million verts/edges/faces bunched up in one corner and you were working on a simple cube elsewhere, snapping would be painfully slow — taking half a second or more per frame. But if you deleted the dense geometry bundle, snapping was instant again.
+
+### Why it happened
+
+The snapping code was doing a **Python loop through every single vertex, edge, and face** to check if it was near the cursor. Even with a fast per-element check (world-space distance culling), looping through 1 million elements in Python each frame is inherently slow. Python can iterate ~1-2 million times per second, so 1M elements = 0.5-1 second per frame. The `near_ray()` pre-filter helped when geometry was clustered far away, but it still had to iterate through everything to reject it.
+
+### Why this was hard to debug
+
+The snapping *worked* — it just felt sluggish. You'd initially think "weird, it's slow when snap is on" but the real issue wasn't snap logic, it was the algorithmic approach of checking all geometry every frame. The pre-filter optimization (`near_ray()`) helped but couldn't solve the fundamental bottleneck: **Python looping over millions of elements**.
+
+### What was fixed
+
+Replaced the Python loops with **cached KD-trees** (C-level spatial data structures):
+1. Build KD-trees for verts, edge centers, and face centers when the tool starts
+2. Cache them aggressively — only rebuild when mesh topology changes (vert/edge/face count)
+3. Every frame, query the KD-tree instead of looping: "give me geometry near my cursor" returns only ~5-10 candidates instead of 1M
+4. Run expensive 2D projection and pixel checks only on those candidates
+
+For edge snapping (nearest point on edge), query the edge center KD-tree to find candidate edges, then do the full intersection math only on those.
+
+**Result:** Snapping stays blazing fast even with a million verts because we're doing spatial queries (O(log n)) instead of loops (O(n)).
+
+### Rule of thumb
+
+**Never iterate through potentially millions of elements in Python per frame.** Use spatial data structures (KD-trees, BVH trees, voxel grids) to cull to relevant candidates first, then iterate only on those. For Blender: `mathutils.kdtree.KDTree` builds in C and queries in O(log n) — use it aggressively for performance-critical loops.
+
+The trade-off: KD-tree builds have upfront cost (~100-500ms for 1M elements), but that's one-time. Queries are instant. Cache the trees and only rebuild when the mesh changes.
+
+---
+
+## Bug: Shift lock completely ignored snap points
+
+**Date:** 2026-03-21
+**Affected tool:** LineTool_Poly (polyline tool) when shift lock is held
+
+### What was wrong
+
+When holding shift to lock the line direction (constraining to a locked axis), any geometry snaps nearby would be completely ignored. The cursor would just follow the locked axis, bypassing snapping entirely.
+
+### Why it happened
+
+In `LineTool_Poly.update()`, the shift lock logic calculated the target position using `geometry.intersect_line_line()` to find where the mouse ray intersected the locked axis line. But it never checked the `snap_point` parameter that was already passed in! So even if you were hovering directly over a snappable vertex, shift lock would override it and project to the raw axis instead.
+
+The code was:
+```python
+if self.shift_lock_vec:
+    # Calculate target from mouse ray ∩ locked axis
+    res = geometry.intersect_line_line(ray_o, ray_o + ray_v, ref, ref + self.shift_lock_vec)
+    if res:
+        target = res[1]  # <-- snap_point completely ignored!
+```
+
+### Why this was hard to debug
+
+The behavior seemed correct at first — shift lock was constraining the direction. But the snap behavior felt "off" when you expected to snap to geometry while shift-locked. You'd naturally think "shift lock is working, snapping should still work" but didn't realize the code was completely discarding the snap point.
+
+### What was fixed
+
+After calculating the shift-locked target position, check if a geometry snap point exists. If it does, project that snap point onto the locked axis instead of using the raw ray intersection:
+
+```python
+if self.state.get("geometry_snap") and snap_point is not None:
+    # Project snap_point onto the locked axis
+    diff = snap_point - ref
+    target = ref + self.shift_lock_vec * diff.dot(self.shift_lock_vec)
+```
+
+Now shift lock **and** snapping work together: you get axis-constrained snapping, not axis-constrained mouse position.
+
+### Rule of thumb
+
+When you have multiple input sources (snapped geometry, user input constraints, etc.), don't silently override one with another. Instead, **apply constraints to the snapped result**. Project/transform the snap point through the constraint rather than discarding it.
+
+---
+
+## Bug: Line tool edge snapping didn't work
+
+**Date:** 2026-03-21
+**Affected tool:** LineTool_Poly (polyline tool)
+
+### What was wrong
+
+When drawing polylines, you could snap to vertices (the endpoints of previous line segments) but NOT to the edges between them (the line segments themselves). Edge snapping only worked for the CURVE_INTERPOLATE tool.
+
+### Why it happened
+
+The edge snapping code in `modal_core.py` (lines 268-293) was gated by a condition that ONLY ran for CURVE_INTERPOLATE:
+
+```python
+if state.get("tool_mode") == "CURVE_INTERPOLATE":
+    # ...check edges and edge centers...
+```
+
+LINE_POLY was building preview geometry (like CURVE_INTERPOLATE) but wasn't included in this condition. So while LINE_POLY had self-snapping to previous vertices, it was missing the more sophisticated edge/edge-center snapping that would let you snap to points along the preview line segments.
+
+### Why this was hard to debug
+
+The snapping appeared to "work" — you could snap to vertex endpoints. It only became obvious there was a bug when you tried snapping to the middle of a line segment and nothing happened. But then you'd check the edge snapping code and see it was only enabled for CURVE_INTERPOLATE, making it look intentional rather than an oversight.
+
+### What was fixed
+
+Changed the condition from:
+```python
+if state.get("tool_mode") == "CURVE_INTERPOLATE":
+```
+
+To:
+```python
+if state.get("tool_mode") in ["LINE_POLY", "CURVE_INTERPOLATE"]:
+```
+
+Now both tools get edge center and edge snapping for their preview geometry.
+
+### Rule of thumb
+
+When you add a feature to one tool class (like preview edge snapping), check if other tools with similar structure would benefit. Tools that build multi-segment previews (`preview_pts`) and have self-snapping enabled should probably share the same snapping logic — don't leave features isolated to a single tool unless there's a specific reason.
+
+---
+
 ## Bug: Vertex dots invisible in POST_VIEW draw callback
 
 **Date:** 2026-03-18
