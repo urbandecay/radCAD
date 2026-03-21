@@ -292,9 +292,9 @@ class ModalManager:
                                         best_self_dist = d2
                                         best_self_pt = p0 + (p1 - p0) * t
 
-                if best_self_pt:
+                if best_self_pt is not None:
                     use_self = True
-                    if snapped_pos:
+                    if snapped_pos is not None:
                         p2d_mesh = location_3d_to_region_2d(reg, rv3d, snapped_pos)
                         if p2d_mesh:
                             dist_mesh = (mvec - p2d_mesh).length_squared

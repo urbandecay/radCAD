@@ -351,7 +351,7 @@ def draw_hud_2d():
     if not state["active"]: return
     try:
         # --- NEW 2D SNAP MARKER (CUSTOMIZABLE) ---
-        if state.get("snap_point") and state.get("tool_mode") != "LINE_TAN_TAN":
+        if state.get("snap_point") is not None and state.get("tool_mode") != "LINE_TAN_TAN":
             ctx = bpy.context
             reg, rv3d = ctx.region, ctx.region_data
             

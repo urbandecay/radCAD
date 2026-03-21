@@ -2,6 +2,23 @@
 
 ---
 
+## Bug: First placed vert (at origin) not snappable in LINE_POLY
+
+**What was wrong:** When drawing a polyline starting at or near the world origin `(0,0,0)`, the snap indicator wouldn't appear when hovering back over the first vert to close the shape. Clicking also wouldn't snap to it functionally.
+
+**Why it happened:** Python treats `Vector((0,0,0))` as falsy (like `0` or `[]`). The self-snap logic stored the found vert in `best_self_pt` then checked `if best_self_pt:` — which evaluated to `False` at the origin. The snap result was silently discarded. Same issue in `hud_overlay.py` and `tool_previews.py` where `if state.get("snap_point")` also missed the zero-vector case.
+
+**Why this was hard to debug:** The zero-vector falsiness trap is non-obvious because `Vector((0,0,0))` *looks* like a valid snap result — it's not `None`, it's not empty. The snap loop correctly found A, stored it in `best_self_pt`, and then immediately threw it away on the truthy check. The bug only manifests when starting a drawing at the origin, which is by far the most common starting position.
+
+**What was fixed:**
+- `modal_core.py`: `if best_self_pt:` → `if best_self_pt is not None:` and `if snapped_pos:` → `if snapped_pos is not None:`
+- `hud_overlay.py`: `if state.get("snap_point") and` → `if state.get("snap_point") is not None and`
+- `tool_previews.py`: all `if state.get("snap_point")` ternary checks → `is not None` variants; same for `if target` and `if state.get("current")`
+
+**Rule of thumb:** Never use a raw `if vector:` or `if state.get("snap_point")` truthiness check on a Blender `Vector`. Always use `if vector is not None` or `if vec.length > 0` depending on intent. The zero vector is a completely valid position.
+
+---
+
 ## Bug: Snapping glacially slow with large geometry (million+ verts)
 
 **Date:** 2026-03-21

@@ -496,7 +496,7 @@ def draw_preview_2point(ctx, shaders, prefs):
 
     # --- STAGE 0: Initial Cursor Dot ---
     if state["stage"] == 0:
-        target = state.get("snap_point") if state.get("snap_point") else state.get("current")
+        target = state.get("snap_point") if state.get("snap_point") is not None else state.get("current")
         if target:
             draw_points(ctx, shaders, [target], (0,0,0,1), pt_size, prefs)
     
@@ -554,7 +554,7 @@ def draw_preview_2point(ctx, shaders, prefs):
 def draw_preview_3point(ctx, shaders, prefs):
     pt_size = prefs.get("PREVIEW_VERTEX_SIZE", 5)
     if state["stage"] == 0:
-        target = state.get("snap_point") if state.get("snap_point") else state.get("current")
+        target = state.get("snap_point") if state.get("snap_point") is not None else state.get("current")
         if target:
             draw_points(ctx, shaders, [target], (0,0,0,1), pt_size, prefs)
 
@@ -786,7 +786,7 @@ def draw_preview_circle_3point(ctx, shaders, prefs):
     
     # --- STAGE 0: Initial Cursor Dot ---
     if state["stage"] == 0:
-        target = state.get("snap_point") if state.get("snap_point") else state.get("current")
+        target = state.get("snap_point") if state.get("snap_point") is not None else state.get("current")
         if target:
             draw_points(ctx, shaders, [target], (0,0,0,1), pt_size, prefs)
 
@@ -1045,9 +1045,9 @@ def draw_cb_3d():
             # EXCLUDE POINT_BY_ARCS from generic dot logic
             if mode != "POINT_BY_ARCS":
                 if state.get("stage", 0) == 0:
-                    target = state.get("snap_point") if state.get("snap_point") else state.get("current")
-                    if target: draw_points(ctx, shaders, [target], (0.0, 0.0, 0.0, 1.0), settings.get("PREVIEW_VERTEX_SIZE", 5), settings)
-                if state.get("current"):
+                    target = state.get("snap_point") if state.get("snap_point") is not None else state.get("current")
+                    if target is not None: draw_points(ctx, shaders, [target], (0.0, 0.0, 0.0, 1.0), settings.get("PREVIEW_VERTEX_SIZE", 5), settings)
+                if state.get("current") is not None:
                     draw_points(ctx, shaders, [state["current"]], (0.0, 0.0, 0.0, 1.0), settings.get("PREVIEW_VERTEX_SIZE", 5), settings)
 
         elif mode == "CIRCLE_TAN_TAN_TAN":
