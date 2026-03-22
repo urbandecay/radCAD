@@ -581,14 +581,21 @@ def begin_modal(self, ctx, ev):
     return {'RUNNING_MODAL'}
 
 def finish_modal(self, ctx):
+    _ft0 = time.perf_counter()
     current_id = getattr(ctx.scene, "active_cad_tool_id", "")
     if current_id == self.tool_instance_id:
         # --- RESTORE CURSOR ---
         ctx.window.cursor_modal_restore()
+        _ft1 = time.perf_counter()
         DrawManager.clear_all()
+        _ft2 = time.perf_counter()
         state["active"] = False
         ctx.scene.active_cad_tool_id = ""
+        print(f"  [FINISH] cursor={(_ft1-_ft0)*1000:.0f}ms  clear_handlers={(_ft2-_ft1)*1000:.0f}ms")
+    _ft3 = time.perf_counter()
     ctx.area.tag_redraw()
+    _ft4 = time.perf_counter()
+    print(f"  [FINISH] total={(_ft4-_ft0)*1000:.0f}ms  tag_redraw={(_ft4-_ft3)*1000:.0f}ms")
 
 def modal_arc_common(self, ctx, ev):
     from .text_entry_utils import handle_text_input
@@ -653,7 +660,10 @@ def modal_arc_common(self, ctx, ev):
                     from .operators.curve_tools import solve_catmull_rom_chain
                     state["preview_pts"] = solve_catmull_rom_chain(tool.control_points, num_segments=num_segs)
 
+        _ct0 = time.perf_counter()
         commit_arc_to_mesh(ctx)
+        _ct1 = time.perf_counter()
+        print(f"  [COMMIT] commit_arc_to_mesh={(_ct1-_ct0)*1000:.0f}ms")
         finish_modal(self, ctx)
         return {'FINISHED'}
 

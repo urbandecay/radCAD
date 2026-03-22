@@ -1,4 +1,4 @@
-# snapping_utils.py  —  numpy-accelerated grid build, zero-alloc hot path
+# snapping_utils.py  —  numpy-accelerated grid build, zero-alloc snap hot path
 
 import bmesh
 import numpy as np
@@ -18,45 +18,71 @@ _debug = {
     'all_cells': set(),   # all occupied cells (union of vg+eg+fg)
 }
 
+# Empty grid constant
+_EMPTY_GRID = {'wco': np.empty((0, 3)), 'wnm': np.empty((0, 3)),
+               'idx': np.empty(0, dtype=np.int64), 'cells': {}}
 
-def _bin_to_grid(indices, wco, wnm, gs):
-    """Bin elements into spatial grid cells. Returns dict of cell -> list of tuples."""
-    grid = {}
-    # Convert numpy → Python lists BEFORE the loop.
-    # numpy element access (wco[i, 0]) has huge per-call overhead.
-    # .tolist() does one bulk C conversion, then we iterate pure Python.
-    cx_list = np.floor(wco[:, 0] / gs).astype(np.int64).tolist()
-    cy_list = np.floor(wco[:, 1] / gs).astype(np.int64).tolist()
-    cz_list = np.floor(wco[:, 2] / gs).astype(np.int64).tolist()
-    idx_list = indices.tolist()
-    wco_list = wco.tolist()
-    wnm_list = wnm.tolist()
-    for i in range(len(idx_list)):
-        cell = (cx_list[i], cy_list[i], cz_list[i])
-        w = wco_list[i]; n = wnm_list[i]
-        entry = (idx_list[i], w[0], w[1], w[2], n[0], n[1], n[2])
-        try:
-            grid[cell].append(entry)
-        except KeyError:
-            grid[cell] = [entry]
-    return grid
+
+def _bin_sorted(indices, wco, wnm, gs):
+    """Bin elements into cells using numpy sort. No Python loop over elements.
+    Returns {'wco': Nx3, 'wnm': Nx3, 'idx': N, 'cells': {(cx,cy,cz): (start,end)}}
+    """
+    if len(indices) == 0:
+        return dict(_EMPTY_GRID)
+
+    # Compute cell coords (pure numpy)
+    cx = np.floor(wco[:, 0] / gs).astype(np.int64)
+    cy = np.floor(wco[:, 1] / gs).astype(np.int64)
+    cz = np.floor(wco[:, 2] / gs).astype(np.int64)
+
+    # Hash cells to single int for sorting (use large primes to avoid collisions)
+    cell_hash = cx * np.int64(73856093) ^ cy * np.int64(19349663) ^ cz * np.int64(83492791)
+
+    # Sort everything by cell hash
+    order = np.argsort(cell_hash)
+    sorted_wco = wco[order]
+    sorted_wnm = wnm[order]
+    sorted_idx = indices[order]
+    sorted_cx = cx[order]
+    sorted_cy = cy[order]
+    sorted_cz = cz[order]
+    sorted_hash = cell_hash[order]
+
+    # Find cell boundaries (where hash changes)
+    n = len(sorted_hash)
+    if n == 1:
+        cells = {(int(sorted_cx[0]), int(sorted_cy[0]), int(sorted_cz[0])): (0, 1)}
+    else:
+        diff = np.diff(sorted_hash)
+        breaks = np.where(diff != 0)[0] + 1
+        starts = np.concatenate(([0], breaks))
+        ends = np.concatenate((breaks, [n]))
+
+        # Build tiny cell dict (one entry per occupied cell, not per element)
+        cells = {}
+        for i in range(len(starts)):
+            s = int(starts[i])
+            cell = (int(sorted_cx[s]), int(sorted_cy[s]), int(sorted_cz[s]))
+            cells[cell] = (s, int(ends[i]))
+
+    return {'wco': sorted_wco, 'wnm': sorted_wnm, 'idx': sorted_idx, 'cells': cells}
 
 
 def _build_grid(obj, bm, mw, gs):
     """Build or return cached spatial grid using foreach_get + numpy.
-    foreach_get extracts data in C (no Python loop), numpy does bulk math.
-    Format per element: (index, wx, wy, wz, nx, ny, nz)
+    No Python loops over elements — all heavy work is C/numpy.
     """
+    import time as _t
     key = (id(obj.data), len(bm.verts), len(bm.edges), len(bm.faces), gs)
     cached = _snap_cache.get(key)
     if cached is not None:
         return cached
 
-    # Sync bmesh → mesh so foreach_get sees current data
+    _t0 = _t.perf_counter()
     obj.update_from_editmode()
+    _t1 = _t.perf_counter()
     mesh = obj.data
 
-    # Matrix setup (numpy, one-time)
     mw_np = np.array(mw, dtype=np.float64).reshape(4, 4).T
     rot = mw.to_3x3().normalized()
     rot_np = np.array(rot, dtype=np.float64).reshape(3, 3).T
@@ -65,7 +91,8 @@ def _build_grid(obj, bm, mw, gs):
     n_edges = len(mesh.edges)
     n_faces = len(mesh.polygons)
 
-    # ── BULK EXTRACT all vert data once (C-level, no Python loop) ──
+    # ── VERTS ──
+    _t2 = _t.perf_counter()
     if n_verts > 0:
         co_flat = np.empty(n_verts * 3, dtype=np.float64)
         nm_flat = np.empty(n_verts * 3, dtype=np.float64)
@@ -77,31 +104,26 @@ def _build_grid(obj, bm, mw, gs):
         co = co_flat.reshape(n_verts, 3)
         nm = nm_flat.reshape(n_verts, 3)
 
-        # World transform ALL verts at once (single numpy matmul)
         full_wco = co @ mw_np[:3, :3].T + mw_np[3, :3]
         full_wnm = nm @ rot_np.T
         lengths = np.linalg.norm(full_wnm, axis=1, keepdims=True)
         lengths[lengths < 1e-8] = 1.0
         full_wnm /= lengths
 
-        # Filter hidden for vert grid
         vis = ~hide_v
         if not vis.all():
-            v_wco = full_wco[vis]
-            v_wnm = full_wnm[vis]
+            v_wco = full_wco[vis]; v_wnm = full_wnm[vis]
             v_idx = np.where(vis)[0].astype(np.int64)
         else:
-            v_wco = full_wco
-            v_wnm = full_wnm
+            v_wco = full_wco; v_wnm = full_wnm
             v_idx = np.arange(n_verts, dtype=np.int64)
 
-        vg = _bin_to_grid(v_idx, v_wco, v_wnm, gs)
+        vg = _bin_sorted(v_idx, v_wco, v_wnm, gs)
     else:
-        full_wco = np.empty((0, 3))
-        full_wnm = np.empty((0, 3))
-        vg = {}
+        full_wco = np.empty((0, 3)); full_wnm = np.empty((0, 3))
+        vg = dict(_EMPTY_GRID)
 
-    # ── EDGES (midpoints from already-computed vert world coords) ──
+    # ── EDGES (midpoints) ──
     if n_edges > 0 and n_verts > 0:
         ev = np.empty(n_edges * 2, dtype=np.int32)
         hide_e = np.empty(n_edges, dtype=bool)
@@ -109,7 +131,6 @@ def _build_grid(obj, bm, mw, gs):
         mesh.edges.foreach_get('hide', hide_e)
         ev = ev.reshape(n_edges, 2)
 
-        # Midpoints and averaged normals via numpy fancy indexing
         mid_wco = (full_wco[ev[:, 0]] + full_wco[ev[:, 1]]) * 0.5
         mid_wnm = (full_wnm[ev[:, 0]] + full_wnm[ev[:, 1]]) * 0.5
         ml = np.linalg.norm(mid_wnm, axis=1, keepdims=True)
@@ -118,17 +139,16 @@ def _build_grid(obj, bm, mw, gs):
 
         vis_e = ~hide_e
         if not vis_e.all():
-            mid_wco = mid_wco[vis_e]
-            mid_wnm = mid_wnm[vis_e]
+            mid_wco = mid_wco[vis_e]; mid_wnm = mid_wnm[vis_e]
             e_idx = np.where(vis_e)[0].astype(np.int64)
         else:
             e_idx = np.arange(n_edges, dtype=np.int64)
 
-        eg = _bin_to_grid(e_idx, mid_wco, mid_wnm, gs)
+        eg = _bin_sorted(e_idx, mid_wco, mid_wnm, gs)
     else:
-        eg = {}
+        eg = dict(_EMPTY_GRID)
 
-    # ── FACES (centers + normals, foreach_get in C) ──
+    # ── FACES ──
     if n_faces > 0:
         fc_flat = np.empty(n_faces * 3, dtype=np.float64)
         fn_flat = np.empty(n_faces * 3, dtype=np.float64)
@@ -139,7 +159,6 @@ def _build_grid(obj, bm, mw, gs):
 
         fc = fc_flat.reshape(n_faces, 3)
         fn = fn_flat.reshape(n_faces, 3)
-
         wfc = fc @ mw_np[:3, :3].T + mw_np[3, :3]
         wfn = fn @ rot_np.T
         fl = np.linalg.norm(wfn, axis=1, keepdims=True)
@@ -148,18 +167,19 @@ def _build_grid(obj, bm, mw, gs):
 
         vis_f = ~hide_f
         if not vis_f.all():
-            wfc = wfc[vis_f]
-            wfn = wfn[vis_f]
+            wfc = wfc[vis_f]; wfn = wfn[vis_f]
             f_idx = np.where(vis_f)[0].astype(np.int64)
         else:
             f_idx = np.arange(n_faces, dtype=np.int64)
 
-        fg = _bin_to_grid(f_idx, wfc, wfn, gs)
+        fg = _bin_sorted(f_idx, wfc, wfn, gs)
     else:
-        fg = {}
+        fg = dict(_EMPTY_GRID)
 
+    _t3 = _t.perf_counter()
     result = (vg, eg, fg)
     _snap_cache[key] = result
+    print(f"  [GRID BUILD] update_from_editmode={(_t1-_t0)*1000:.0f}ms  foreach+numpy+sort={(_t3-_t2)*1000:.0f}ms  total={(_t3-_t0)*1000:.0f}ms  verts={n_verts} edges={n_edges} faces={n_faces}")
     return result
 
 
@@ -194,8 +214,6 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
     limit_sq = max_px * max_px
 
     # ── adaptive grid size based on mesh density ──
-    # With grid_size=10, a dense mesh puts 300K+ verts in 9 cells.
-    # We need cells small enough that each one has ~50-100 verts max.
     n_verts = len(bm.verts)
     if n_verts > 50000:
         gs = 0.5
@@ -207,7 +225,6 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
         gs = 10.0
 
     # Cap grid size to half the object's largest WORLD-SPACE dimension
-    # so cells are never larger than the object itself
     bb = obj.bound_box
     bb_world = [mw @ Vector(c) for c in bb]
     wx = [v.x for v in bb_world]
@@ -224,23 +241,17 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
     print(f"  [SNAP DETAIL] bmesh={(_tb-_ta)*1000:.2f}ms  setup={(_tc-_tb)*1000:.2f}ms  grid={(_td-_tc)*1000:.2f}ms  cache={'HIT' if (_td-_tc)<1 else 'MISS'}")
 
     # ── screen-space cell culling ──
-    # Instead of searching a 3D cube (wrong depth = missed verts),
-    # project each occupied cell center to screen and keep cells
-    # that project near the cursor. Works at ANY depth.
     ro = view3d_utils.region_2d_to_origin_3d(region, rv3d, (x, y))
     rd = view3d_utils.region_2d_to_vector_3d(region, rv3d, (x, y))
 
     half_gs = gs * 0.5
-    # Screen radius for cell culling (pixels) — only include cells that
-    # project close to cursor. 50px is ~3x the snap radius (15px)
     cell_px_limit = 50.0 * 50.0  # 50px radius
 
-    # No 3D cull needed — screen-space projection handles filtering
     cull_sq = 1e18
 
-    def _nearby(subgrid):
+    def _nearby(cell_dict):
         result = []
-        for cell in subgrid:
+        for cell in cell_dict:
             cx, cy, cz = cell
             wcx = cx * gs + half_gs
             wcy = cy * gs + half_gs
@@ -256,9 +267,8 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
                 result.append(cell)
         return result
 
-    # Query cell for debug vis (use BB center depth)
-    bb = obj.bound_box
-    bb_world = [mw @ Vector(c) for c in bb]
+    # Query cell for debug vis
+    bb_world = [mw @ Vector(c) for c in obj.bound_box]
     bb_cx = sum(v.x for v in bb_world) / 8.0
     bb_cy = sum(v.y for v in bb_world) / 8.0
     bb_cz = sum(v.z for v in bb_world) / 8.0
@@ -272,28 +282,31 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
     ccy = int(qy // gs)
     ccz = int(qz // gs)
 
-    # Store debug info for grid visualization
-    # Show green cubes for ALL nearby cells (verts + edges + faces),
-    # so visualization updates correctly when snap mode changes
     _debug['query_cell'] = (ccx, ccy, ccz)
     _debug['gs'] = gs
-    _debug['nearby_cells'] = list(set(_nearby(vg)) | set(_nearby(eg)) | set(_nearby(fg)))
-    _debug['all_cells'] = set(vg.keys()) | set(eg.keys()) | set(fg.keys())
+    _debug['nearby_cells'] = list(set(_nearby(vg['cells'])) | set(_nearby(eg['cells'])) | set(_nearby(fg['cells'])))
+    _debug['all_cells'] = set(vg['cells'].keys()) | set(eg['cells'].keys()) | set(fg['cells'].keys())
 
     _te = _time.perf_counter()
 
     # ── VERT SNAP (highest priority, early-return) ────────────────
-    if do_verts and vg:
+    if do_verts and vg['cells']:
         best_d2 = limit_sq
         bwx = bwy = bwz = bnx = bny = bnz = 0.0
         found = False
-        _nearby_v = _nearby(vg)
+        _nearby_v = _nearby(vg['cells'])
         _n_cells = len(_nearby_v)
-        _n_elems = sum(len(vg[c]) for c in _nearby_v)
+        _n_elems = sum(vg['cells'][c][1] - vg['cells'][c][0] for c in _nearby_v)
         _n_cull = 0; _n_behind = 0; _n_offscreen = 0; _n_checked = 0; _best_px_dist = 1e6
+        g_wco = vg['wco']; g_wnm = vg['wnm']
         for cell in _nearby_v:
-            for elem in vg[cell]:
-                _, wx, wy, wz, nx, ny, nz = elem
+            s, e = vg['cells'][cell]
+            # Convert cell slice to Python lists for fast inner loop
+            wco_s = g_wco[s:e].tolist()
+            wnm_s = g_wnm[s:e].tolist()
+            for i in range(len(wco_s)):
+                wx, wy, wz = wco_s[i]
+                nx, ny, nz = wnm_s[i]
                 dx = wx - qx; dy = wy - qy; dz = wz - qz
                 if dx * dx + dy * dy + dz * dz > cull_sq:
                     _n_cull += 1
@@ -331,11 +344,16 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
     bwx = bwy = bwz = bnx = bny = bnz = 0.0
     found = False
     for subgrid, enabled in ((eg, do_edge_center), (fg, do_face_center)):
-        if not enabled or not subgrid:
+        if not enabled or not subgrid['cells']:
             continue
-        for cell in _nearby(subgrid):
-            for elem in subgrid[cell]:
-                _, wx, wy, wz, nx, ny, nz = elem
+        g_wco = subgrid['wco']; g_wnm = subgrid['wnm']
+        for cell in _nearby(subgrid['cells']):
+            s, e = subgrid['cells'][cell]
+            wco_s = g_wco[s:e].tolist()
+            wnm_s = g_wnm[s:e].tolist()
+            for i in range(len(wco_s)):
+                wx, wy, wz = wco_s[i]
+                nx, ny, nz = wnm_s[i]
                 dx = wx - qx; dy = wy - qy; dz = wz - qz
                 if dx * dx + dy * dy + dz * dz > cull_sq:
                     continue
@@ -360,41 +378,44 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
         return (Vector((bwx, bwy, bwz)), Vector((bnx, bny, bnz)))
 
     # ── EDGE CLOSEST-POINT SNAP ──────────────────────────────────
-    if do_edges and eg:
+    if do_edges and eg['cells']:
         _th0 = _time.perf_counter()
         bm.verts.ensure_lookup_table()
         bm.edges.ensure_lookup_table()
         _th1 = _time.perf_counter()
         best_d2 = limit_sq
         best_edge = None
-        for cell in _nearby(eg):
-            for elem in eg[cell]:
-                idx, ewx, ewy, ewz, enx, eny, enz = elem
+        g_wco = eg['wco']; g_wnm = eg['wnm']; g_idx = eg['idx']
+        for cell in _nearby(eg['cells']):
+            s, e = eg['cells'][cell]
+            idx_s = g_idx[s:e].tolist()
+            wco_s = g_wco[s:e].tolist()
+            wnm_s = g_wnm[s:e].tolist()
+            for i in range(len(idx_s)):
+                ewx, ewy, ewz = wco_s[i]
+                enx, eny, enz = wnm_s[i]
                 dx = ewx - qx; dy = ewy - qy; dz = ewz - qz
                 if dx * dx + dy * dy + dz * dz > cull_sq:
                     continue
-                e = bm.edges[idx]
-                if e.hide:
+                edge = bm.edges[idx_s[i]]
+                if edge.hide:
                     continue
-                v1w = mw @ e.verts[0].co
-                v2w = mw @ e.verts[1].co
+                v1w = mw @ edge.verts[0].co
+                v2w = mw @ edge.verts[1].co
                 v1x, v1y, v1z = v1w.x, v1w.y, v1w.z
                 v2x, v2y, v2z = v2w.x, v2w.y, v2w.z
-                # project endpoint 1
                 w1 = p30 * v1x + p31 * v1y + p32 * v1z + p33
                 if w1 <= 0.0:
                     continue
                 iw1 = 1.0 / w1
                 s1x = W * (1.0 + (p00 * v1x + p01 * v1y + p02 * v1z + p03) * iw1) * 0.5
                 s1y = H * (1.0 + (p10 * v1x + p11 * v1y + p12 * v1z + p13) * iw1) * 0.5
-                # project endpoint 2
                 w2 = p30 * v2x + p31 * v2y + p32 * v2z + p33
                 if w2 <= 0.0:
                     continue
                 iw2 = 1.0 / w2
                 s2x = W * (1.0 + (p00 * v2x + p01 * v2y + p02 * v2z + p03) * iw2) * 0.5
                 s2y = H * (1.0 + (p10 * v2x + p11 * v2y + p12 * v2z + p13) * iw2) * 0.5
-                # closest point on segment (inline, no Vector allocs)
                 ex = s2x - s1x; ey = s2y - s1y
                 elen_sq = ex * ex + ey * ey
                 if elen_sq < 0.001:
@@ -404,9 +425,9 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
                     t_edge = 0.0
                 elif t_edge > 1.0:
                     t_edge = 1.0
-                cx = s1x + t_edge * ex
-                cy = s1y + t_edge * ey
-                sdx = mx - cx; sdy = my - cy
+                cpx = s1x + t_edge * ex
+                cpy = s1y + t_edge * ey
+                sdx = mx - cpx; sdy = my - cpy
                 d2 = sdx * sdx + sdy * sdy
                 if d2 < best_d2:
                     best_d2 = d2
