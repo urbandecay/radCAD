@@ -117,18 +117,20 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
     R = 3
     cull_sq = (gs * 3.0) ** 2
 
-    # ── adaptive cell search: set intersection ───────────────────────
-    # Always iterate occupied cells and check if in search volume.
-    # This is fastest for sparse grids AND for mixed-density objects
-    # where most of the 343-cell search volume is empty.
+    # ── cell search: iterate search volume, NOT occupied cells ──────
+    # Precompute the 343 search cells once, reuse for all sub-grids.
+    # _nearby checks each search cell against the subgrid dict (O(1)).
+    # This means a 1M-vert dense mesh elsewhere costs NOTHING — we
+    # only ever touch the cells near the mouse.
+    search_cells = [
+        (ccx + dx, ccy + dy, ccz + dz)
+        for dx in range(-R, R + 1)
+        for dy in range(-R, R + 1)
+        for dz in range(-R, R + 1)
+    ]
+
     def _nearby(subgrid):
-        # Generate search volume as set and intersect with occupied cells
-        search = set()
-        for dx in range(-R, R + 1):
-            for dy in range(-R, R + 1):
-                for dz in range(-R, R + 1):
-                    search.add((ccx + dx, ccy + dy, ccz + dz))
-        return [c for c in subgrid if c in search]
+        return [c for c in search_cells if c in subgrid]
 
     # ── VERT SNAP (highest priority, early-return) ────────────────
     if do_verts and vg:
