@@ -143,9 +143,9 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
     rd = view3d_utils.region_2d_to_vector_3d(region, rv3d, (x, y))
 
     half_gs = gs * 0.5
-    # Generous screen radius for cell culling (pixels) — cells are small,
-    # so a cell center could be far from a vertex at its edge
-    cell_px_limit = 200.0 * 200.0  # 200px radius
+    # Screen radius for cell culling (pixels) — only include cells that
+    # project close to cursor. 50px is ~3x the snap radius (15px)
+    cell_px_limit = 50.0 * 50.0  # 50px radius
 
     # No 3D cull needed — screen-space projection handles filtering
     cull_sq = 1e18
