@@ -144,7 +144,10 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
         best_d2 = limit_sq
         bwx = bwy = bwz = bnx = bny = bnz = 0.0
         found = False
-        for cell in _nearby(vg):
+        _nearby_v = _nearby(vg)
+        _n_cells = len(_nearby_v)
+        _n_elems = sum(len(vg[c]) for c in _nearby_v)
+        for cell in _nearby_v:
             for elem in vg[cell]:
                 _, wx, wy, wz, nx, ny, nz = elem
                 dx = wx - qx; dy = wy - qy; dz = wz - qz
@@ -167,9 +170,9 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
                     found = True
         _tf = _time.perf_counter()
         if found:
-            print(f"  [SNAP DETAIL2] ray+cells={(_te-_td)*1000:.2f}ms  verts={(_tf-_te)*1000:.2f}ms  VERT_HIT")
+            print(f"  [SNAP DETAIL2] ray+cells={(_te-_td)*1000:.2f}ms  verts={(_tf-_te)*1000:.2f}ms  cells={_n_cells}  elems={_n_elems}  VERT_HIT")
             return (Vector((bwx, bwy, bwz)), Vector((bnx, bny, bnz)))
-        print(f"  [SNAP DETAIL2] ray+cells={(_te-_td)*1000:.2f}ms  verts={(_tf-_te)*1000:.2f}ms")
+        print(f"  [SNAP DETAIL2] ray+cells={(_te-_td)*1000:.2f}ms  verts={(_tf-_te)*1000:.2f}ms  cells={_n_cells}  elems={_n_elems}")
     else:
         _tf = _te
 
