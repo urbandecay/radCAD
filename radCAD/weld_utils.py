@@ -66,18 +66,112 @@ def safe_edge_split_vert_only(bm, edge, split_from_vert, fac):
 # --- SEARCH HELPERS ---
 
 def find_nearby_geometry(bm, arc_verts, radius, mw):
+    import time as _t
+    _t0 = _t.perf_counter()
+
     arc_vert_set = set(arc_verts)
-    
-    # 1. Verts (KDTree)
+    arc_world = []
+    for av in arc_verts:
+        if av.is_valid:
+            arc_world.append(mw @ av.co)
+    if not arc_world:
+        return [], []
+
+    # ── Try snap grid cache (avoids KDTree build + edge AABB scan) ──
+    from . import snapping_utils
+    import numpy as np
+
+    grid_data = None
+    gs = 0.5
+    for key, cached in snapping_utils._snap_cache.items():
+        grid_data = cached
+        gs = key[4]
+        break
+
+    if grid_data is not None:
+        vg, eg, fg = grid_data
+        search_r = radius * 2.0
+        r2 = search_r * search_r
+        inv_gs = 1.0 / gs
+
+        bm.verts.ensure_lookup_table()
+        bm.edges.ensure_lookup_table()
+
+        # ── VERTS: cell-based lookup ──
+        target_verts = []
+        found_v = set()
+
+        for aw in arc_world:
+            awx, awy, awz = float(aw.x), float(aw.y), float(aw.z)
+            cx0 = int(math.floor((awx - search_r) * inv_gs))
+            cy0 = int(math.floor((awy - search_r) * inv_gs))
+            cz0 = int(math.floor((awz - search_r) * inv_gs))
+            cx1 = int(math.floor((awx + search_r) * inv_gs))
+            cy1 = int(math.floor((awy + search_r) * inv_gs))
+            cz1 = int(math.floor((awz + search_r) * inv_gs))
+
+            for cx in range(cx0, cx1 + 1):
+                for cy in range(cy0, cy1 + 1):
+                    for cz in range(cz0, cz1 + 1):
+                        bounds = vg['cells'].get((cx, cy, cz))
+                        if not bounds: continue
+                        s, e = bounds
+                        cell_wco = vg['wco'][s:e]
+                        diffs = cell_wco - np.array([awx, awy, awz])
+                        dist_sq = (diffs * diffs).sum(axis=1)
+                        hits = np.where(dist_sq <= r2)[0]
+                        cell_idx = vg['idx'][s:e]
+                        for h in hits.tolist():
+                            idx = int(cell_idx[h])
+                            if idx not in found_v and idx < len(bm.verts):
+                                v = bm.verts[idx]
+                                if v not in arc_vert_set and not v.hide:
+                                    found_v.add(idx)
+                                    target_verts.append(v)
+
+        # ── EDGES: cell-based lookup (edge midpoints in grid) ──
+        target_edges = []
+        found_e = set()
+
+        for aw in arc_world:
+            awx, awy, awz = float(aw.x), float(aw.y), float(aw.z)
+            # Search wider for edges (midpoint offset from endpoints)
+            er = search_r + gs
+            cx0 = int(math.floor((awx - er) * inv_gs))
+            cy0 = int(math.floor((awy - er) * inv_gs))
+            cz0 = int(math.floor((awz - er) * inv_gs))
+            cx1 = int(math.floor((awx + er) * inv_gs))
+            cy1 = int(math.floor((awy + er) * inv_gs))
+            cz1 = int(math.floor((awz + er) * inv_gs))
+
+            for cx in range(cx0, cx1 + 1):
+                for cy in range(cy0, cy1 + 1):
+                    for cz in range(cz0, cz1 + 1):
+                        bounds = eg['cells'].get((cx, cy, cz))
+                        if not bounds: continue
+                        s, e = bounds
+                        for i in range(s, e):
+                            idx = int(eg['idx'][i])
+                            if idx in found_e or idx >= len(bm.edges): continue
+                            edge = bm.edges[idx]
+                            if not edge.hide and not (edge.verts[0] in arc_vert_set and edge.verts[1] in arc_vert_set):
+                                found_e.add(idx)
+                                target_edges.append(edge)
+
+        _t1 = _t.perf_counter()
+        print(f"  [FIND_NEARBY grid] {(_t1-_t0)*1000:.1f}ms  verts={len(target_verts)}  edges={len(target_edges)}")
+        return target_verts, target_edges
+
+    # ── Fallback: KDTree (only if snap grid not cached) ──
     bg_verts = [v for v in bm.verts if v not in arc_vert_set and not v.hide]
     target_verts = []
-    
+
     if bg_verts:
         kd = KDTree(len(bg_verts))
         for i, v in enumerate(bg_verts):
             kd.insert(mw @ v.co, i)
         kd.balance()
-        
+
         found_v_idxs = set()
         for av in arc_verts:
             if not av.is_valid: continue
@@ -86,10 +180,9 @@ def find_nearby_geometry(bm, arc_verts, radius, mw):
                 found_v_idxs.add(index)
         target_verts = [bg_verts[i] for i in found_v_idxs]
 
-    # 2. Edges (AABB)
+    # Edges (AABB fallback)
     min_v = Vector((float('inf'),)*3)
     max_v = Vector((float('-inf'),)*3)
-    
     valid_arc = False
     for av in arc_verts:
         if av.is_valid:
@@ -97,29 +190,27 @@ def find_nearby_geometry(bm, arc_verts, radius, mw):
             p = mw @ av.co
             min_v.x = min(min_v.x, p.x); min_v.y = min(min_v.y, p.y); min_v.z = min(min_v.z, p.z)
             max_v.x = max(max_v.x, p.x); max_v.y = max(max_v.y, p.y); max_v.z = max(max_v.z, p.z)
-            
+
     target_edges = set()
     if valid_arc:
-        margin = max(radius * 2.0, 0.01) 
+        margin = max(radius * 2.0, 0.01)
         min_v -= Vector((margin, margin, margin))
         max_v += Vector((margin, margin, margin))
-        
         for e in bm.edges:
             if e.hide: continue
             if e.verts[0] in arc_vert_set and e.verts[1] in arc_vert_set: continue
-            
             p1 = mw @ e.verts[0].co
             p2 = mw @ e.verts[1].co
-            
             e_min_x = min(p1.x, p2.x); e_max_x = max(p1.x, p2.x)
             if e_max_x < min_v.x or e_min_x > max_v.x: continue
             e_min_y = min(p1.y, p2.y); e_max_y = max(p1.y, p2.y)
             if e_max_y < min_v.y or e_min_y > max_v.y: continue
             e_min_z = min(p1.z, p2.z); e_max_z = max(p1.z, p2.z)
             if e_max_z < min_v.z or e_min_z > max_v.z: continue
-            
             target_edges.add(e)
-            
+
+    _t1 = _t.perf_counter()
+    print(f"  [FIND_NEARBY fallback] {(_t1-_t0)*1000:.1f}ms  verts={len(target_verts)}  edges={len(target_edges)}")
     return list(set(target_verts)), list(target_edges)
 
 

@@ -35,9 +35,11 @@ def find_view3d():
 # --- MAIN EXECUTION ---
 
 def run(ctx, arc_verts, arc_edges):
+    import time as _t
     if not state.get("auto_weld", True):
         return
 
+    _w0 = _t.perf_counter()
     dbg("--- STARTING WELD RUN ---")
 
     # 1. SNAPSHOT
@@ -46,71 +48,133 @@ def run(ctx, arc_verts, arc_edges):
     me = obj.data
     bm = bmesh.from_edit_mesh(me)
     mw = obj.matrix_world
-    
+
     # Get user preference for weld radius
     base_radius = state.get("weld_radius", 0.001)
     radius = max(base_radius, 0.0001)
-    
+
     # 2. ENSURE SELECTION
     bpy.ops.mesh.select_all(action='DESELECT')
-    for v in arc_verts: 
+    for v in arc_verts:
         if v.is_valid: v.select = True
-    for e in arc_edges: 
+    for e in arc_edges:
         if e.is_valid: e.select = True
-        
+
     dbg(f"Initial Arc Verts Selected: {len([v for v in arc_verts if v.select])}")
 
     # --- PHASE 1: PRE-WELD (Snap Arc Ends to Existing Geometry) ---
+    _pre_vert_count = len(bm.verts)  # snapshot before splits
+    _p1_0 = _t.perf_counter()
     # This phase moves the ARC to the MESH. It is generally safe.
     target_verts, target_edges = weld_utils.find_nearby_geometry(bm, arc_verts, radius * 2.0, mw)
-    
+    _p1_1 = _t.perf_counter()
+
     # CRITICAL: Snap endpoints to vertices/edges FIRST
     weld_utils.perform_heavy_weld(bm, arc_verts, (target_verts, target_edges), radius, mw)
+    _p1_2 = _t.perf_counter()
 
     # NEW: SELF-INTERSECTION PASS
     # Detect if the new drawing crosses itself and create junctions.
     weld_utils.perform_self_x_weld(bm, arc_edges, radius, mw)
-    
+    _p1_3 = _t.perf_counter()
+
     # Standard intersection weld
     weld_utils.perform_x_weld(bm, arc_edges, target_edges, radius * 1.5, mw)
-    
+    _p1_4 = _t.perf_counter()
+
     for v in target_verts:
         if v.is_valid: v.select = True
-    
-    bmesh.ops.remove_doubles(bm, verts=[v for v in bm.verts if v.select], dist=radius)
+
+    # Only pass verts we care about — not all 327k
+    merge_verts = [v for v in arc_verts if v.is_valid]
+    merge_verts += [v for v in target_verts if v.is_valid]
+    # Include any verts created by edge splits (index >= pre-weld count)
+    bm.verts.ensure_lookup_table()
+    for i in range(_pre_vert_count, len(bm.verts)):
+        v = bm.verts[i]
+        if v.is_valid: merge_verts.append(v)
+    bmesh.ops.remove_doubles(bm, verts=merge_verts, dist=radius)
     bmesh.update_edit_mesh(me)
-    
+    _p1_5 = _t.perf_counter()
+
+    print(f"  [WELD P1] find_nearby={(_p1_1-_p1_0)*1000:.0f}ms  heavy_weld={(_p1_2-_p1_1)*1000:.0f}ms  self_x={(_p1_3-_p1_2)*1000:.0f}ms  x_weld={(_p1_4-_p1_3)*1000:.0f}ms  doubles={(_p1_5-_p1_4)*1000:.0f}ms  total={(_p1_5-_p1_0)*1000:.0f}ms")
     dbg("Phase 1 (Endpoint Weld) Complete.")
     
     # --- PHASE 2: KNIFE PROJECT ---
     if state.get("weld_to_faces", True):
+        _p2_0 = _t.perf_counter()
         bm = bmesh.from_edit_mesh(me)
         bm.verts.ensure_lookup_table()
         bm.edges.ensure_lookup_table()
-        
-        # Save indices and coords to find them after the cut
-        final_arc_edge_indices = [e.index for e in bm.edges if e.select]
-        
-        # CRITICAL: These are the "Ideal" coordinates where the vertices SHOULD be.
-        final_arc_coords = [v.co.copy() for v in bm.verts if v.select]
-        
-        dbg(f"Preparing Knife Project for {len(final_arc_edge_indices)} edges.")
-        
-        if final_arc_edge_indices:
-            _run_knife_project_final(ctx, obj, final_arc_edge_indices, final_arc_coords)
+
+        # Quick check: any faces parallel to drawing plane near the arc?
+        # Uses snap grid's pre-computed face normals/centers (numpy) instead of
+        # iterating 655k faces with matrix multiplies.
+        import numpy as np
+        from . import snapping_utils
+
+        Zp = state.get("Zp", mathutils.Vector((0,0,1)))
+        has_candidate_face = False
+        arc_sample_world = mw @ arc_verts[0].co if arc_verts and arc_verts[0].is_valid else None
+
+        if arc_sample_world:
+            # Try snap grid first
+            grid_data = None
+            for key, cached in snapping_utils._snap_cache.items():
+                grid_data = cached
+                break
+
+            if grid_data is not None:
+                fg = grid_data[2]  # face grid
+                if len(fg['wco']) > 0:
+                    zp_np = np.array(Zp[:], dtype=np.float64)
+                    dots = np.abs(fg['wnm'] @ zp_np)
+                    aligned_mask = dots > 0.9
+                    if aligned_mask.any():
+                        sample_np = np.array(arc_sample_world[:], dtype=np.float64)
+                        diffs = sample_np - fg['wco'][aligned_mask]
+                        plane_dists = np.abs(np.sum(diffs * fg['wnm'][aligned_mask], axis=1))
+                        has_candidate_face = bool(np.any(plane_dists <= 0.3))
+            else:
+                # Fallback: bmesh scan
+                mw_rot = mw.to_3x3()
+                bm.faces.ensure_lookup_table()
+                for f in bm.faces:
+                    if f.hide or f.select: continue
+                    f_norm_world = mw_rot @ f.normal
+                    if abs(f_norm_world.dot(Zp)) < 0.9: continue
+                    plane_co_world = mw @ f.verts[0].co
+                    dist = abs(mathutils.geometry.distance_point_to_plane(arc_sample_world, plane_co_world, f_norm_world))
+                    if dist <= 0.3:
+                        has_candidate_face = True
+                        break
+
+        if has_candidate_face:
+            # Only scan selected edges/verts when we know there's a face to cut
+            final_arc_edge_indices = [e.index for e in bm.edges if e.select]
+            final_arc_coords = [v.co.copy() for v in bm.verts if v.select]
+            dbg(f"Preparing Knife Project for {len(final_arc_edge_indices)} edges.")
+            if final_arc_edge_indices:
+                _run_knife_project_final(ctx, obj, final_arc_edge_indices, final_arc_coords)
+        else:
+            dbg("No candidate faces near arc — skipping knife project.")
+
+        _p2_1 = _t.perf_counter()
+        print(f"  [WELD P2] knife_project_total={(_p2_1-_p2_0)*1000:.0f}ms  faces={'YES' if has_candidate_face else 'SKIP'}")
 
     try:
         ctx.tool_settings.mesh_select_mode = original_select_mode
     except Exception:
         pass
-    
+
+    _w1 = _t.perf_counter()
+    print(f"  [WELD TOTAL] {(_w1-_w0)*1000:.0f}ms")
     dbg("--- RUN COMPLETE ---")
 
 
 def _run_knife_project_final(ctx, obj, arc_edge_indices, arc_coords_to_find):
-    # FIXED: Removed the guard clause that prevented cutting in Perpendicular mode.
-    # if state.get("is_perpendicular", False):
-    #    return
+    import time as _t
+    _kp0 = _t.perf_counter()
 
     bm = bmesh.from_edit_mesh(obj.data)
     bm.verts.ensure_lookup_table()
@@ -223,6 +287,7 @@ def _run_knife_project_final(ctx, obj, arc_edge_indices, arc_coords_to_find):
         bmesh.update_edit_mesh(obj.data)
         
         # 4. ALIGN VIEW
+        _kp1 = _t.perf_counter()
         area, space = find_view3d()
         orig_rot, orig_loc, orig_persp = None, None, None
         if space:
@@ -234,15 +299,18 @@ def _run_knife_project_final(ctx, obj, arc_edge_indices, arc_coords_to_find):
             try: bpy.ops.wm.redraw_timer(type='DRAW_WIN', iterations=1)
             except Exception: pass
             ctx.view_layer.update()
-        
+        _kp2 = _t.perf_counter()
+
         # 5. KNIFE PROJECT
         cutter_obj.select_set(True)
         obj.select_set(True)
         ctx.view_layer.objects.active = obj
-        
+
         try:
             dbg("Executing Knife Project (Cut Through=True)...")
+            _kp3 = _t.perf_counter()
             res = bpy.ops.mesh.knife_project(cut_through=True)
+            _kp4 = _t.perf_counter()
             
             # 6. MERGE LOGIC (The Teleporter)
             bm_final = bmesh.from_edit_mesh(obj.data)
@@ -284,7 +352,9 @@ def _run_knife_project_final(ctx, obj, arc_edge_indices, arc_coords_to_find):
             # Now remove doubles. Since we teleported them to EXACTLY 0.0 distance,
             # this will 100% succeed for the intended verts only.
             ret = bpy.ops.mesh.remove_doubles(threshold=weld_rad)
+            _kp5 = _t.perf_counter()
             dbg(f"Remove Doubles Result: {ret}")
+            print(f"  [KNIFE] setup={(_kp1-_kp0)*1000:.0f}ms  align_view={(_kp2-_kp1)*1000:.0f}ms  knife_op={(_kp4-_kp3)*1000:.0f}ms  merge+cleanup={(_kp5-_kp4)*1000:.0f}ms  total={(_kp5-_kp0)*1000:.0f}ms")
 
             # 7. CLEANUP VISIBILITY
             bm_clean = bmesh.from_edit_mesh(obj.data)
