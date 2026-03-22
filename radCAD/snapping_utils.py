@@ -1,6 +1,7 @@
-# snapping_utils.py  —  zero-alloc hot path, no raycasts
+# snapping_utils.py  —  numpy-accelerated grid build, zero-alloc hot path
 
 import bmesh
+import numpy as np
 from mathutils import Vector
 from bpy_extras import view3d_utils
 
@@ -18,11 +19,32 @@ _debug = {
 }
 
 
+def _bin_to_grid(indices, wco, wnm, gs):
+    """Bin elements into spatial grid cells. Returns dict of cell -> list of tuples."""
+    grid = {}
+    # Convert numpy → Python lists BEFORE the loop.
+    # numpy element access (wco[i, 0]) has huge per-call overhead.
+    # .tolist() does one bulk C conversion, then we iterate pure Python.
+    cx_list = np.floor(wco[:, 0] / gs).astype(np.int64).tolist()
+    cy_list = np.floor(wco[:, 1] / gs).astype(np.int64).tolist()
+    cz_list = np.floor(wco[:, 2] / gs).astype(np.int64).tolist()
+    idx_list = indices.tolist()
+    wco_list = wco.tolist()
+    wnm_list = wnm.tolist()
+    for i in range(len(idx_list)):
+        cell = (cx_list[i], cy_list[i], cz_list[i])
+        w = wco_list[i]; n = wnm_list[i]
+        entry = (idx_list[i], w[0], w[1], w[2], n[0], n[1], n[2])
+        try:
+            grid[cell].append(entry)
+        except KeyError:
+            grid[cell] = [entry]
+    return grid
+
+
 def _build_grid(obj, bm, mw, gs):
-    """Build or return cached spatial grid.  Three separate sub-grids
-    (verts, edge-centers, face-centers) so the inner loop never does
-    a string comparison.  Elements stored as raw-float tuples so the
-    inner loop never allocates a Vector.
+    """Build or return cached spatial grid using foreach_get + numpy.
+    foreach_get extracts data in C (no Python loop), numpy does bulk math.
     Format per element: (index, wx, wy, wz, nx, ny, nz)
     """
     key = (id(obj.data), len(bm.verts), len(bm.edges), len(bm.faces), gs)
@@ -30,45 +52,111 @@ def _build_grid(obj, bm, mw, gs):
     if cached is not None:
         return cached
 
+    # Sync bmesh → mesh so foreach_get sees current data
+    obj.update_from_editmode()
+    mesh = obj.data
+
+    # Matrix setup (numpy, one-time)
+    mw_np = np.array(mw, dtype=np.float64).reshape(4, 4).T
     rot = mw.to_3x3().normalized()
-    vg, eg, fg = {}, {}, {}
+    rot_np = np.array(rot, dtype=np.float64).reshape(3, 3).T
 
-    for v in bm.verts:
-        if v.hide:
-            continue
-        wco = mw @ v.co
-        wnm = (rot @ v.normal).normalized()
-        cell = (int(wco.x // gs), int(wco.y // gs), int(wco.z // gs))
-        entry = (v.index, wco.x, wco.y, wco.z, wnm.x, wnm.y, wnm.z)
-        try:
-            vg[cell].append(entry)
-        except KeyError:
-            vg[cell] = [entry]
+    n_verts = len(mesh.vertices)
+    n_edges = len(mesh.edges)
+    n_faces = len(mesh.polygons)
 
-    for e in bm.edges:
-        if e.hide:
-            continue
-        wco = mw @ ((e.verts[0].co + e.verts[1].co) * 0.5)
-        avg_n = (e.verts[0].normal + e.verts[1].normal) * 0.5
-        wnm = (rot @ avg_n).normalized()
-        cell = (int(wco.x // gs), int(wco.y // gs), int(wco.z // gs))
-        entry = (e.index, wco.x, wco.y, wco.z, wnm.x, wnm.y, wnm.z)
-        try:
-            eg[cell].append(entry)
-        except KeyError:
-            eg[cell] = [entry]
+    # ── BULK EXTRACT all vert data once (C-level, no Python loop) ──
+    if n_verts > 0:
+        co_flat = np.empty(n_verts * 3, dtype=np.float64)
+        nm_flat = np.empty(n_verts * 3, dtype=np.float64)
+        hide_v = np.empty(n_verts, dtype=bool)
+        mesh.vertices.foreach_get('co', co_flat)
+        mesh.vertices.foreach_get('normal', nm_flat)
+        mesh.vertices.foreach_get('hide', hide_v)
 
-    for f in bm.faces:
-        if f.hide:
-            continue
-        wco = mw @ f.calc_center_median()
-        wnm = (rot @ f.normal).normalized()
-        cell = (int(wco.x // gs), int(wco.y // gs), int(wco.z // gs))
-        entry = (f.index, wco.x, wco.y, wco.z, wnm.x, wnm.y, wnm.z)
-        try:
-            fg[cell].append(entry)
-        except KeyError:
-            fg[cell] = [entry]
+        co = co_flat.reshape(n_verts, 3)
+        nm = nm_flat.reshape(n_verts, 3)
+
+        # World transform ALL verts at once (single numpy matmul)
+        full_wco = co @ mw_np[:3, :3].T + mw_np[3, :3]
+        full_wnm = nm @ rot_np.T
+        lengths = np.linalg.norm(full_wnm, axis=1, keepdims=True)
+        lengths[lengths < 1e-8] = 1.0
+        full_wnm /= lengths
+
+        # Filter hidden for vert grid
+        vis = ~hide_v
+        if not vis.all():
+            v_wco = full_wco[vis]
+            v_wnm = full_wnm[vis]
+            v_idx = np.where(vis)[0].astype(np.int64)
+        else:
+            v_wco = full_wco
+            v_wnm = full_wnm
+            v_idx = np.arange(n_verts, dtype=np.int64)
+
+        vg = _bin_to_grid(v_idx, v_wco, v_wnm, gs)
+    else:
+        full_wco = np.empty((0, 3))
+        full_wnm = np.empty((0, 3))
+        vg = {}
+
+    # ── EDGES (midpoints from already-computed vert world coords) ──
+    if n_edges > 0 and n_verts > 0:
+        ev = np.empty(n_edges * 2, dtype=np.int32)
+        hide_e = np.empty(n_edges, dtype=bool)
+        mesh.edges.foreach_get('vertices', ev)
+        mesh.edges.foreach_get('hide', hide_e)
+        ev = ev.reshape(n_edges, 2)
+
+        # Midpoints and averaged normals via numpy fancy indexing
+        mid_wco = (full_wco[ev[:, 0]] + full_wco[ev[:, 1]]) * 0.5
+        mid_wnm = (full_wnm[ev[:, 0]] + full_wnm[ev[:, 1]]) * 0.5
+        ml = np.linalg.norm(mid_wnm, axis=1, keepdims=True)
+        ml[ml < 1e-8] = 1.0
+        mid_wnm /= ml
+
+        vis_e = ~hide_e
+        if not vis_e.all():
+            mid_wco = mid_wco[vis_e]
+            mid_wnm = mid_wnm[vis_e]
+            e_idx = np.where(vis_e)[0].astype(np.int64)
+        else:
+            e_idx = np.arange(n_edges, dtype=np.int64)
+
+        eg = _bin_to_grid(e_idx, mid_wco, mid_wnm, gs)
+    else:
+        eg = {}
+
+    # ── FACES (centers + normals, foreach_get in C) ──
+    if n_faces > 0:
+        fc_flat = np.empty(n_faces * 3, dtype=np.float64)
+        fn_flat = np.empty(n_faces * 3, dtype=np.float64)
+        hide_f = np.empty(n_faces, dtype=bool)
+        mesh.polygons.foreach_get('center', fc_flat)
+        mesh.polygons.foreach_get('normal', fn_flat)
+        mesh.polygons.foreach_get('hide', hide_f)
+
+        fc = fc_flat.reshape(n_faces, 3)
+        fn = fn_flat.reshape(n_faces, 3)
+
+        wfc = fc @ mw_np[:3, :3].T + mw_np[3, :3]
+        wfn = fn @ rot_np.T
+        fl = np.linalg.norm(wfn, axis=1, keepdims=True)
+        fl[fl < 1e-8] = 1.0
+        wfn /= fl
+
+        vis_f = ~hide_f
+        if not vis_f.all():
+            wfc = wfc[vis_f]
+            wfn = wfn[vis_f]
+            f_idx = np.where(vis_f)[0].astype(np.int64)
+        else:
+            f_idx = np.arange(n_faces, dtype=np.int64)
+
+        fg = _bin_to_grid(f_idx, wfc, wfn, gs)
+    else:
+        fg = {}
 
     result = (vg, eg, fg)
     _snap_cache[key] = result
