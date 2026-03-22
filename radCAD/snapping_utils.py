@@ -1,43 +1,11 @@
 # snapping_utils.py
 
 import bmesh
-from mathutils import Vector, geometry, kdtree
+from mathutils import Vector, geometry
 from bpy_extras import view3d_utils
 from bpy_extras.view3d_utils import location_3d_to_region_2d
 
 ELEMENT_SNAP_RADIUS_PX = 15.0
-
-# --- KD-TREE CACHE ---
-# Built once per mesh state, reused every frame until topology changes.
-# Key: (mesh data id, vert count, edge count, face count)
-_snap_cache = {}
-
-def _get_snap_cache(obj, bm, mw):
-    key = (id(obj.data), len(bm.verts), len(bm.edges), len(bm.faces))
-    if key in _snap_cache:
-        return _snap_cache[key]
-
-    kd_v = kdtree.KDTree(max(1, len(bm.verts)))
-    for v in bm.verts:
-        if not v.hide:
-            kd_v.insert(mw @ v.co, v.index)
-    kd_v.balance()
-
-    kd_ec = kdtree.KDTree(max(1, len(bm.edges)))
-    for e in bm.edges:
-        if not e.hide:
-            kd_ec.insert(mw @ ((e.verts[0].co + e.verts[1].co) * 0.5), e.index)
-    kd_ec.balance()
-
-    kd_fc = kdtree.KDTree(max(1, len(bm.faces)))
-    for f in bm.faces:
-        if not f.hide:
-            kd_fc.insert(mw @ f.calc_center_median(), f.index)
-    kd_fc.balance()
-
-    _snap_cache.clear()
-    _snap_cache[key] = {'kd_v': kd_v, 'kd_ec': kd_ec, 'kd_fc': kd_fc}
-    return _snap_cache[key]
 
 
 def raycast_under_mouse(ctx, x, y):
@@ -94,12 +62,12 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
                             do_face_center=True,
                             **kwargs):
     """
-    Snap logic with strict Priority:
+    Pure brute force snap logic:
     0. Verts (Top Priority)
     1. Edge/Face Centers
-    2. Nearest Edge (Bottom Priority)
+    2. Nearest Point on Edge (Bottom Priority)
 
-    Uses cached KD-trees for fast proximity lookup — no Python loops over all geometry.
+    Loops through ALL geometry, checks screen-space distance only.
     """
     if obj is None or obj.type != 'MESH':
         return None
@@ -114,98 +82,66 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
 
     mw = obj.matrix_world
 
-    # Check for X-Ray / Wireframe
-    allow_occluded = False
-    if ctx.space_data.type == 'VIEW_3D':
-        shading = ctx.space_data.shading
-        if shading.type == 'WIREFRAME' or shading.show_xray:
-            allow_occluded = True
+    # Fast 2D projection using perspective matrix (avoids expensive API calls)
+    pm = rv3d.perspective_matrix
+    W = region.width
+    H = region.height
 
-    # Get/build cached KD-trees
-    cache = _get_snap_cache(obj, bm, mw)
-
-    # --- 3D QUERY POINT & SEARCH RADIUS ---
-    # Project orbit target onto mouse ray for depth estimate (no expensive raycast).
-    ray_origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, (x, y))
-    ray_dir = view3d_utils.region_2d_to_vector_3d(region, rv3d, (x, y))
-    view_center = Vector(rv3d.view_location)
-    t = max(0.01, (view_center - ray_origin).dot(ray_dir))
-    query_pt = ray_origin + ray_dir * t
-
-    # Calculate world-space radius
-    ws_radius = None
-    p_center = location_3d_to_region_2d(region, rv3d, query_pt)
-    if p_center:
-        view_inv = rv3d.view_matrix.inverted()
-        cam_right = view_inv.to_3x3() @ Vector((1.0, 0.0, 0.0))
-        p_right = location_3d_to_region_2d(region, rv3d, query_pt + cam_right)
-        if p_right:
-            px_per_meter = (p_right - p_center).length
-            if px_per_meter > 0.1:
-                ws_radius = (max_px * 10.0) / px_per_meter  # 10x = sticky snapping, KD-tree still fast
-
-    if ws_radius is None:
-        ws_radius = rv3d.view_distance * 2.0
+    def project_fast(wco):
+        v = pm @ wco.to_4d()
+        if v.w <= 0:
+            return None
+        return Vector((W * (1 + v.x / v.w) * 0.5, H * (1 + v.y / v.w) * 0.5))
 
     # Candidates list stores: (PRIORITY, DIST_SQ, WORLD_CO)
     candidates = []
     limit_sq = max_px * max_px
-    found_vert = False
 
-    # 1. Verts (Priority 0) — KD-tree query, no Python loop over all verts
+    # 1. Verts (Priority 0) — Brute force loop
     if do_verts:
-        for wco, idx, _ in cache['kd_v'].find_range(query_pt, ws_radius):
-            p2d = location_3d_to_region_2d(region, rv3d, wco)
+        for v in bm.verts:
+            if v.hide: continue
+            wco = mw @ v.co
+            p2d = project_fast(wco)
             if p2d is None: continue
             d2 = (mouse - p2d).length_squared
             if d2 < limit_sq:
                 candidates.append((0, d2, wco))
-                found_vert = True
 
-    # 2. Edge Centers (Priority 1) — KD-tree query
+    # 2. Edge Centers (Priority 1) — Brute force loop
     if do_edge_center:
-        for wco, idx, _ in cache['kd_ec'].find_range(query_pt, ws_radius):
-            p2d = location_3d_to_region_2d(region, rv3d, wco)
+        for e in bm.edges:
+            if e.hide: continue
+            wco = mw @ ((e.verts[0].co + e.verts[1].co) * 0.5)
+            p2d = project_fast(wco)
             if p2d is None: continue
             d2 = (mouse - p2d).length_squared
             if d2 < limit_sq:
                 candidates.append((1, d2, wco))
 
-    # 3. Face Centers (Priority 1) — KD-tree query
+    # 3. Face Centers (Priority 1) — Brute force loop
     if do_face_center:
-        for wco, idx, _ in cache['kd_fc'].find_range(query_pt, ws_radius):
-            p2d = location_3d_to_region_2d(region, rv3d, wco)
+        for f in bm.faces:
+            if f.hide: continue
+            wco = mw @ f.calc_center_median()
+            p2d = project_fast(wco)
             if p2d is None: continue
             d2 = (mouse - p2d).length_squared
             if d2 < limit_sq:
                 candidates.append((1, d2, wco))
 
-    # 4. Nearest Point on Edge (Priority 2)
-    # Skip entirely if a vertex was already found — verts always win anyway.
-    # Use edge center KD-tree to find candidate edges, then do full intersection on just those.
-    if do_edges and not found_vert:
-        checked_edges = set()
-        for _, idx, _ in cache['kd_ec'].find_range(query_pt, ws_radius):
-            if idx in checked_edges: continue
-            checked_edges.add(idx)
-
-            e = bm.edges[idx]
+    # 4. Nearest Point on Edge (Priority 2) — Brute force loop
+    if do_edges:
+        for e in bm.edges:
             if e.hide: continue
 
             v1_world = mw @ e.verts[0].co
             v2_world = mw @ e.verts[1].co
 
-            p1_2d = location_3d_to_region_2d(region, rv3d, v1_world)
-            p2_2d = location_3d_to_region_2d(region, rv3d, v2_world)
+            p1_2d = project_fast(v1_world)
+            p2_2d = project_fast(v2_world)
 
             if p1_2d and p2_2d:
-                # Fast bounding box cull before expensive intersection math
-                if (min(p1_2d.x, p2_2d.x) - max_px > mouse.x or
-                    max(p1_2d.x, p2_2d.x) + max_px < mouse.x or
-                    min(p1_2d.y, p2_2d.y) - max_px > mouse.y or
-                    max(p1_2d.y, p2_2d.y) + max_px < mouse.y):
-                    continue
-
                 intersect_2d = geometry.intersect_point_line(mouse, p1_2d, p2_2d)
 
                 if intersect_2d:
@@ -226,13 +162,31 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
                                 pt_3d = v1_world + (v2_world - v1_world) * factor
                                 candidates.append((2, dist2, pt_3d))
 
-    # 5. Sort & Select
+    # 5. Sort & Select with Two-Tier Snapping
     candidates.sort(key=lambda item: (item[0], item[1]))
 
+    # Tight bubble (0-5px) = snap instantly, outer bubble (5-15px) = only if tight is empty
+    TIGHT_BUBBLE_PX = 5.0
+    tight_bubble_sq = TIGHT_BUBBLE_PX * TIGHT_BUBBLE_PX
+
+    tight_candidates = []
+    outer_candidates = []
+
+    # Split candidates
     for prio, dist_sq, co in candidates:
-        if allow_occluded:
-            return co
-        if is_visible_to_view(ctx, co):
-            return co
+        if dist_sq < tight_bubble_sq:
+            tight_candidates.append((prio, dist_sq, co))
+        else:
+            outer_candidates.append((prio, dist_sq, co))
+
+    # Snap to closest candidate in tight bubble, no occlusion check
+    if tight_candidates:
+        prio, dist_sq, co = tight_candidates[0]
+        return co
+
+    # If nothing in tight bubble, snap to closest in outer bubble, no occlusion check
+    if outer_candidates:
+        prio, dist_sq, co = outer_candidates[0]
+        return co
 
     return None

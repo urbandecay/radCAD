@@ -296,6 +296,7 @@ def draw_bottom_bar():
         ("F2: Edge", state.get("snap_edges", False), "snap_edges"),
         ("F3: Edge Center", state.get("snap_edge_center", False), "snap_edge_center"),
         ("F4: Face Center", state.get("snap_face_center", False), "snap_face_center"),
+        ("F5: Axis", state.get("use_axis_inference", True), "toggle_axis"),
         ("C: Compass", state.get("use_angle_snap", True), "toggle_angle"),
         ("W: Weld", state.get("auto_weld", True), "weld_btn"),
     ]
