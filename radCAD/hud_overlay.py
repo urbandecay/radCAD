@@ -700,3 +700,19 @@ def draw_hud_2d():
                     draw_ui_box_generic(px, current_y, s_txt, active=is_input_s)
     except Exception as e:
         print(f"HUD DRAW ERROR: {e}")
+
+
+# Register/unregister draw handler
+_draw_handle = None
+
+def register_handlers():
+    global _draw_handle
+
+def unregister_handlers():
+    global _draw_handle
+    if _draw_handle:
+        try:
+            bpy.types.SpaceView3D.draw_handler_remove(_draw_handle, 'WINDOW')
+        except:
+            pass
+        _draw_handle = None

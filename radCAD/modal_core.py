@@ -218,7 +218,8 @@ class ModalManager:
 
     def get_snap_data(self, ctx, x, y):
         snapped_pos = None
-        
+        snapped_normal = None
+
         reg, rv3d = self.region, self.rv3d
         if not reg or not rv3d: return Vector((0,0,0)), Vector((0,0,1))
         snap_radius = self.state.get("snap_strength", 6.0) * 2.0
@@ -230,14 +231,16 @@ class ModalManager:
             except ImportError:
                 def snap_to_mesh_components(**kwargs): return None
 
-            snapped_pos = snap_to_mesh_components(
+            snap_result = snap_to_mesh_components(
                 ctx, ctx.edit_object, x, y, max_px=snap_radius,
                 do_verts=state.get("snap_verts", True),
                 do_edges=state.get("snap_edges", True),
                 do_edge_center=state.get("snap_edge_center", True),
-                do_faces=False, 
+                do_faces=False,
                 do_face_center=state.get("snap_face_center", True)
             )
+            if snap_result is not None:
+                snapped_pos, snapped_normal = snap_result
 
             # --- PREVIEW SNAPPING (SELF-SNAP) ---
             self_snap_targets = []
@@ -304,7 +307,7 @@ class ModalManager:
                         snapped_pos = best_self_pt
 
         # --- FALLBACK TO SURFACE/PLANE (STILL ACTIVE FOR FREEHAND) ---
-        state["snap_point"] = None 
+        state["snap_point"] = None
         if snapped_pos is not None:
             state["geometry_snap"] = True
             state["snap_point"] = snapped_pos
@@ -312,8 +315,8 @@ class ModalManager:
             locked_normal = state.get("locked_normal")
             if locked_normal and state.get("locked"):
                 return snapped_pos, locked_normal
-            _, nrm, _ = raycast_under_mouse(ctx, x, y)
-            return snapped_pos, nrm if nrm else Vector((0,0,1))
+            # Use element normal from snap — no expensive scene raycast needed
+            return snapped_pos, snapped_normal if snapped_normal else Vector((0,0,1))
         
         is_locked = state.get("locked")
         locked_normal = state.get("locked_normal")
