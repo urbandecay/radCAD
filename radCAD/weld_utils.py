@@ -52,16 +52,16 @@ def safe_edge_split_vert_only(bm, edge, split_from_vert, fac):
     try:
         res = bmesh.utils.edge_split(edge, split_from_vert, fac)
         if isinstance(res, tuple) and len(res) == 2:
-            a, b = res
-            if isinstance(a, bmesh.types.BMVert): 
-                a.select = True
-                return a
-            if isinstance(b, bmesh.types.BMVert): 
-                b.select = True
-                return b
+            new_vert, new_edge = res
+            if isinstance(new_vert, bmesh.types.BMVert):
+                new_vert.select = True
+                return new_vert, new_edge
+            if isinstance(new_edge, bmesh.types.BMVert):
+                new_edge.select = True
+                return new_edge, new_vert
     except Exception:
         pass
-    return None
+    return None, None
 
 # --- SEARCH HELPERS ---
 
@@ -88,7 +88,14 @@ def find_nearby_geometry(bm, arc_verts, radius, mw, obj=None):
         aabb_min = arc_np.min(axis=0) - search_r
         aabb_max = arc_np.max(axis=0) + search_r
 
+        # Narrow search for vert snapping
         cache_result = snapping_utils.query_nearby_from_cache(obj, aabb_min, aabb_max)
+        # Wide search for edge walking — catches long edges that pass through the area
+        edge_margin = max(search_r * 200, 2.0)
+        edge_aabb_min = arc_np.min(axis=0) - edge_margin
+        edge_aabb_max = arc_np.max(axis=0) + edge_margin
+        edge_cache = snapping_utils.query_nearby_from_cache(obj, edge_aabb_min, edge_aabb_max, expand_cells=0)
+
         if cache_result is not None:
             v_indices, _e_indices = cache_result
             arc_idx_set = set(av.index for av in arc_verts if av.is_valid)
@@ -110,14 +117,14 @@ def find_nearby_geometry(bm, arc_verts, radius, mw, obj=None):
                         target_verts.append(v)
                         break
 
-            # Walk link_edges from ALL cached nearby verts (not just distance-filtered)
-            # This catches edges that PASS THROUGH the arc area even if their midpoint is far
-            edge_aabb_margin = max(search_r * 10, 0.05)
-            edge_min = arc_np.min(axis=0) - edge_aabb_margin
-            edge_max = arc_np.max(axis=0) + edge_aabb_margin
+            # Walk link_edges from the WIDE vert set to find edges that pass through
+            wide_v_indices = edge_cache[0] if edge_cache else v_indices
+            edge_aabb_tight = max(search_r * 10, 0.05)
+            edge_min = arc_np.min(axis=0) - edge_aabb_tight
+            edge_max = arc_np.max(axis=0) + edge_aabb_tight
             seen_edges = set()
             target_edges = []
-            for idx in v_indices:
+            for idx in wide_v_indices:
                 if idx >= len(bm.verts):
                     continue
                 v = bm.verts[idx]
@@ -129,7 +136,7 @@ def find_nearby_geometry(bm, arc_verts, radius, mw, obj=None):
                     seen_edges.add(e.index)
                     if e.verts[0] in arc_vert_set and e.verts[1] in arc_vert_set:
                         continue
-                    # Quick AABB check on edge endpoints in world space
+                    # AABB check on edge extent vs arc area
                     p0 = mw @ e.verts[0].co
                     p1 = mw @ e.verts[1].co
                     e_min_x = min(p0.x, p1.x); e_max_x = max(p0.x, p1.x)
@@ -141,7 +148,7 @@ def find_nearby_geometry(bm, arc_verts, radius, mw, obj=None):
                         target_edges.append(e)
 
             _t1 = _t.perf_counter()
-            print(f"  [FIND_NEARBY cache] {(_t1-_t0)*1000:.1f}ms  verts={len(target_verts)}  edges={len(target_edges)}  (from {len(v_indices)} cached verts)")
+            print(f"  [FIND_NEARBY cache] {(_t1-_t0)*1000:.1f}ms  verts={len(target_verts)}  edges={len(target_edges)}  (narrow={len(v_indices)}v  wide={len(wide_v_indices)}v)")
             return target_verts, target_edges
 
     # ── FALLBACK: LOCAL-space AABB pre-filter + numpy (no world transform for 99% of mesh) ──
@@ -346,27 +353,34 @@ def perform_heavy_weld(bm, arc_verts, target_geom, radius, mw):
     return moves
 
 def perform_x_weld(bm, arc_edges, target_edges, radius, mw):
+    from collections import deque
     cuts = 0
     r2 = radius * radius
     mw_inv = mw.inverted()
-    
-    arc_edges_safe = [e for e in arc_edges if e.is_valid]
-    
-    for i, ae in enumerate(arc_edges_safe):
+
+    # Use a deque so that when an arc edge is split, the new edge
+    # (the remainder) gets appended and processed too.
+    # This is critical for the line tool where one long edge may cross
+    # multiple target edges — the arc tool doesn't hit this because
+    # its many small segments each cross at most one target edge.
+    arc_queue = deque(e for e in arc_edges if e.is_valid)
+
+    while arc_queue:
+        ae = arc_queue.popleft()
         if not ae.is_valid: continue
         p1a = mw @ ae.verts[0].co
         p1b = mw @ ae.verts[1].co
-        
+
         for j, te in enumerate(target_edges):
             if not te.is_valid: continue
             if len(set(ae.verts) & set(te.verts)) > 0: continue
-            
+
             p2a = mw @ te.verts[0].co
             p2b = mw @ te.verts[1].co
-            
+
             c1, c2, s, t = closest_points_on_segments(p1a, p1b, p2a, p2b)
             dist_sq = (c1 - c2).length_squared
-            
+
             if dist_sq < r2:
                 # LOGIC UPDATE: Handle T-Junctions (Arc End on Target Middle)
                 is_arc_internal = (EPS < s < (1.0 - EPS))
@@ -374,9 +388,9 @@ def perform_x_weld(bm, arc_edges, target_edges, radius, mw):
 
                 if is_tgt_internal:
                     # 1. Split Target Edge
-                    v_tgt = safe_edge_split_vert_only(bm, te, te.verts[0], t)
+                    v_tgt, _new_tgt_edge = safe_edge_split_vert_only(bm, te, te.verts[0], t)
                     if not v_tgt: continue
-                    
+
                     # Calculate world position
                     intersect_w = (c1 + c2) * 0.5
                     intersect_l = mw_inv @ intersect_w
@@ -385,18 +399,23 @@ def perform_x_weld(bm, arc_edges, target_edges, radius, mw):
                     # 2. Handle Arc Edge
                     if is_arc_internal:
                         # X-Crossing: Split Arc Edge too
-                        v_arc = safe_edge_split_vert_only(bm, ae, ae.verts[0], s)
-                        if v_arc: v_arc.co = intersect_l
+                        v_arc, new_arc_edge = safe_edge_split_vert_only(bm, ae, ae.verts[0], s)
+                        if v_arc:
+                            v_arc.co = intersect_l
+                            # Queue the remainder edge so it gets checked
+                            # against remaining target edges
+                            if new_arc_edge and new_arc_edge.is_valid:
+                                arc_queue.append(new_arc_edge)
                     else:
                         # T-Junction: Arc Edge ends here.
                         # Move the existing endpoint to the cut.
                         vert_idx = 0 if s < 0.5 else 1
                         v_arc_existing = ae.verts[vert_idx]
                         v_arc_existing.co = intersect_l
-                    
+
                     cuts += 1
-                    # --- FIX: Removed 'break' to allow the other end of the edge to weld too ---
-                        
+                    break  # ae was modified/split, restart with next edge from queue
+
     return cuts
 
 def perform_self_x_weld(bm, edges, radius, mw):
@@ -434,12 +453,12 @@ def perform_self_x_weld(bm, edges, radius, mw):
 
                 # Split e2 (Target)
                 if 0.001 < t < 0.999:
-                    v2 = safe_edge_split_vert_only(bm, e2, e2.verts[0], t)
+                    v2, _ne2 = safe_edge_split_vert_only(bm, e2, e2.verts[0], t)
                     if v2: v2.co = intersect_l
 
                 # Split e1 (Source)
                 if 0.001 < s < 0.999:
-                    v1 = safe_edge_split_vert_only(bm, e1, e1.verts[0], s)
+                    v1, _ne1 = safe_edge_split_vert_only(bm, e1, e1.verts[0], s)
                     if v1: v1.co = intersect_l
 
                 cuts += 1
