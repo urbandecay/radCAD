@@ -135,42 +135,54 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
 
     print(f"  [SNAP DETAIL] bmesh={(_tb-_ta)*1000:.2f}ms  setup={(_tc-_tb)*1000:.2f}ms  grid={(_td-_tc)*1000:.2f}ms  cache={'HIT' if (_td-_tc)<1 else 'MISS'}")
 
-    # ── query point at object bounding box center depth ──
+    # ── screen-space cell culling ──
+    # Instead of searching a 3D cube (wrong depth = missed verts),
+    # project each occupied cell center to screen and keep cells
+    # that project near the cursor. Works at ANY depth.
     ro = view3d_utils.region_2d_to_origin_3d(region, rv3d, (x, y))
     rd = view3d_utils.region_2d_to_vector_3d(region, rv3d, (x, y))
 
-    # Use object BB center as depth reference (not rv3d.view_location)
+    half_gs = gs * 0.5
+    # Generous screen radius for cell culling (pixels) — cells are small,
+    # so a cell center could be far from a vertex at its edge
+    cell_px_limit = 200.0 * 200.0  # 200px radius
+
+    # No 3D cull needed — screen-space projection handles filtering
+    cull_sq = 1e18
+
+    def _nearby(subgrid):
+        result = []
+        for cell in subgrid:
+            cx, cy, cz = cell
+            wcx = cx * gs + half_gs
+            wcy = cy * gs + half_gs
+            wcz = cz * gs + half_gs
+            vw = p30 * wcx + p31 * wcy + p32 * wcz + p33
+            if vw <= 0.0:
+                continue
+            inv_w = 1.0 / vw
+            px = W * (1.0 + (p00 * wcx + p01 * wcy + p02 * wcz + p03) * inv_w) * 0.5
+            py = H * (1.0 + (p10 * wcx + p11 * wcy + p12 * wcz + p13) * inv_w) * 0.5
+            sdx = mx - px; sdy = my - py
+            if sdx * sdx + sdy * sdy < cell_px_limit:
+                result.append(cell)
+        return result
+
+    # Query cell for debug vis (use BB center depth)
     bb = obj.bound_box
     bb_world = [mw @ Vector(c) for c in bb]
     bb_cx = sum(v.x for v in bb_world) / 8.0
     bb_cy = sum(v.y for v in bb_world) / 8.0
     bb_cz = sum(v.z for v in bb_world) / 8.0
-
     t = ((bb_cx - ro.x) * rd.x + (bb_cy - ro.y) * rd.y + (bb_cz - ro.z) * rd.z)
     if t < 0.01:
         t = 0.01
     qx = ro.x + rd.x * t
     qy = ro.y + rd.y * t
     qz = ro.z + rd.z * t
-
     ccx = int(qx // gs)
     ccy = int(qy // gs)
     ccz = int(qz // gs)
-    # Scale search radius inversely with grid density
-    R = max(3, int(5.0 / gs))
-    if R > 10:
-        R = 10
-    cull_sq = (gs * float(R)) ** 2
-
-    search_cells = [
-        (ccx + dx, ccy + dy, ccz + dz)
-        for dx in range(-R, R + 1)
-        for dy in range(-R, R + 1)
-        for dz in range(-R, R + 1)
-    ]
-
-    def _nearby(subgrid):
-        return [c for c in search_cells if c in subgrid]
 
     # Store debug info for grid visualization
     _debug['query_cell'] = (ccx, ccy, ccz)
@@ -188,22 +200,29 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
         _nearby_v = _nearby(vg)
         _n_cells = len(_nearby_v)
         _n_elems = sum(len(vg[c]) for c in _nearby_v)
+        _n_cull = 0; _n_behind = 0; _n_offscreen = 0; _n_checked = 0; _best_px_dist = 1e6
         for cell in _nearby_v:
             for elem in vg[cell]:
                 _, wx, wy, wz, nx, ny, nz = elem
                 dx = wx - qx; dy = wy - qy; dz = wz - qz
                 if dx * dx + dy * dy + dz * dz > cull_sq:
+                    _n_cull += 1
                     continue
                 vw = p30 * wx + p31 * wy + p32 * wz + p33
                 if vw <= 0.0:
+                    _n_behind += 1
                     continue
                 inv_w = 1.0 / vw
                 px = W * (1.0 + (p00 * wx + p01 * wy + p02 * wz + p03) * inv_w) * 0.5
                 py = H * (1.0 + (p10 * wx + p11 * wy + p12 * wz + p13) * inv_w) * 0.5
                 if px < -50.0 or px > W + 50.0 or py < -50.0 or py > H + 50.0:
+                    _n_offscreen += 1
                     continue
+                _n_checked += 1
                 sdx = mx - px; sdy = my - py
                 d2 = sdx * sdx + sdy * sdy
+                if d2 ** 0.5 < _best_px_dist:
+                    _best_px_dist = d2 ** 0.5
                 if d2 < best_d2:
                     best_d2 = d2
                     bwx, bwy, bwz = wx, wy, wz
@@ -211,9 +230,9 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
                     found = True
         _tf = _time.perf_counter()
         if found:
-            print(f"  [SNAP DETAIL2] ray+cells={(_te-_td)*1000:.2f}ms  verts={(_tf-_te)*1000:.2f}ms  cells={_n_cells}  elems={_n_elems}  VERT_HIT")
+            print(f"  [SNAP DETAIL2] ray+cells={(_te-_td)*1000:.2f}ms  verts={(_tf-_te)*1000:.2f}ms  cells={_n_cells}  elems={_n_elems}  VERT_HIT  best_px={_best_px_dist:.1f}")
             return (Vector((bwx, bwy, bwz)), Vector((bnx, bny, bnz)))
-        print(f"  [SNAP DETAIL2] ray+cells={(_te-_td)*1000:.2f}ms  verts={(_tf-_te)*1000:.2f}ms  cells={_n_cells}  elems={_n_elems}")
+        print(f"  [SNAP DETAIL2] ray+cells={(_te-_td)*1000:.2f}ms  verts={(_tf-_te)*1000:.2f}ms  cells={_n_cells}  elems={_n_elems}  culled={_n_cull}  behind={_n_behind}  offscreen={_n_offscreen}  checked={_n_checked}  best_px={_best_px_dist:.1f}")
     else:
         _tf = _te
 
