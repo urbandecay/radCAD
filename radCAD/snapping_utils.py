@@ -127,11 +127,6 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
     R = 3
     cull_sq = (gs * 3.0) ** 2
 
-    # ── cell search: iterate search volume, NOT occupied cells ──────
-    # Precompute the 343 search cells once, reuse for all sub-grids.
-    # _nearby checks each search cell against the subgrid dict (O(1)).
-    # This means a 1M-vert dense mesh elsewhere costs NOTHING — we
-    # only ever touch the cells near the mouse.
     search_cells = [
         (ccx + dx, ccy + dy, ccz + dz)
         for dx in range(-R, R + 1)
@@ -141,6 +136,8 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
 
     def _nearby(subgrid):
         return [c for c in search_cells if c in subgrid]
+
+    _te = _time.perf_counter()
 
     # ── VERT SNAP (highest priority, early-return) ────────────────
     if do_verts and vg:
@@ -168,8 +165,13 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
                     bwx, bwy, bwz = wx, wy, wz
                     bnx, bny, bnz = nx, ny, nz
                     found = True
+        _tf = _time.perf_counter()
         if found:
+            print(f"  [SNAP DETAIL2] ray+cells={(_te-_td)*1000:.2f}ms  verts={(_tf-_te)*1000:.2f}ms  VERT_HIT")
             return (Vector((bwx, bwy, bwz)), Vector((bnx, bny, bnz)))
+        print(f"  [SNAP DETAIL2] ray+cells={(_te-_td)*1000:.2f}ms  verts={(_tf-_te)*1000:.2f}ms")
+    else:
+        _tf = _te
 
     # ── EDGE-CENTER + FACE-CENTER SNAP (combined scan) ────────────
     best_d2 = limit_sq
@@ -199,13 +201,17 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
                     bwx, bwy, bwz = wx, wy, wz
                     bnx, bny, bnz = nx, ny, nz
                     found = True
+    _tg = _time.perf_counter()
     if found:
+        print(f"  [SNAP DETAIL2] ray+cells={(_te-_td)*1000:.2f}ms  verts={(_tf-_te)*1000:.2f}ms  centers={(_tg-_tf)*1000:.2f}ms  CENTER_HIT")
         return (Vector((bwx, bwy, bwz)), Vector((bnx, bny, bnz)))
 
     # ── EDGE CLOSEST-POINT SNAP ──────────────────────────────────
     if do_edges and eg:
+        _th0 = _time.perf_counter()
         bm.verts.ensure_lookup_table()
         bm.edges.ensure_lookup_table()
+        _th1 = _time.perf_counter()
         best_d2 = limit_sq
         best_edge = None
         for cell in _nearby(eg):
@@ -252,9 +258,13 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
                 if d2 < best_d2:
                     best_d2 = d2
                     best_edge = (v1w, v2w, t_edge, enx, eny, enz)
+        _th2 = _time.perf_counter()
+        print(f"  [SNAP DETAIL2] ray+cells={(_te-_td)*1000:.2f}ms  verts={(_tf-_te)*1000:.2f}ms  centers={(_tg-_tf)*1000:.2f}ms  ensure_lut={(_th1-_th0)*1000:.2f}ms  edge_scan={(_th2-_th1)*1000:.2f}ms")
         if best_edge is not None:
             v1w, v2w, t_edge, enx, eny, enz = best_edge
             pt_3d = v1w + (v2w - v1w) * t_edge
             return (pt_3d, Vector((enx, eny, enz)))
+    else:
+        print(f"  [SNAP DETAIL2] ray+cells={(_te-_td)*1000:.2f}ms  verts={(_tf-_te)*1000:.2f}ms  centers={(_tg-_tf)*1000:.2f}ms  edges=SKIPPED")
 
     return None
