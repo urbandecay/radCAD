@@ -227,6 +227,7 @@ class ModalManager:
 
         # --- OPTIMIZATION: Skip expensive mesh snapping for Freehand tool ---
         if state.get("tool_mode") != "CURVE_FREEHAND":
+            _t0 = time.perf_counter()
             snap_result = snap_to_mesh_components(
                 ctx, ctx.edit_object, x, y, max_px=snap_radius,
                 do_verts=state.get("snap_verts", True),
@@ -235,6 +236,7 @@ class ModalManager:
                 do_faces=False,
                 do_face_center=state.get("snap_face_center", True)
             )
+            _t1 = time.perf_counter()
             if snap_result is not None:
                 snapped_pos, snapped_normal = snap_result
 
@@ -310,10 +312,12 @@ class ModalManager:
             state["last_surface_hit"] = snapped_pos
             locked_normal = state.get("locked_normal")
             if locked_normal and state.get("locked"):
+                print(f"[SNAP PERF] snap={(_t1-_t0)*1000:.2f}ms  HIT(locked)")
                 return snapped_pos, locked_normal
             # Use element normal from snap — no expensive scene raycast needed
+            print(f"[SNAP PERF] snap={(_t1-_t0)*1000:.2f}ms  HIT")
             return snapped_pos, snapped_normal if snapped_normal else Vector((0,0,1))
-        
+
         # Compute ray once for both locked-plane and surface-raycast paths
         ray_origin = region_2d_to_origin_3d(reg, rv3d, (x, y))
         view_vec = region_2d_to_vector_3d(reg, rv3d, (x, y))
@@ -327,10 +331,14 @@ class ModalManager:
                 state["geometry_snap"] = False
                 state["last_surface_hit"] = hit_plane
                 state["last_surface_normal"] = locked_normal
+                print(f"[SNAP PERF] snap={(_t1-_t0)*1000:.2f}ms  MISS→locked_plane")
                 return hit_plane, locked_normal
 
+        _t2 = time.perf_counter()
         depsgraph = ctx.evaluated_depsgraph_get()
         hit, loc, norm, _, _, _ = ctx.scene.ray_cast(depsgraph, ray_origin, view_vec)
+        _t3 = time.perf_counter()
+        print(f"[SNAP PERF] snap={(_t1-_t0)*1000:.2f}ms  raycast={(_t3-_t2)*1000:.2f}ms  {'MISS→surface' if hit else 'MISS→void'}")
         if hit:
             state["geometry_snap"] = False
             state["last_surface_hit"] = loc
