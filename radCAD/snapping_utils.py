@@ -9,6 +9,14 @@ ELEMENT_SNAP_RADIUS_PX = 15.0
 # Grid cache — keyed on mesh identity + topology counts + grid_size
 _snap_cache = {}
 
+# Debug visualization state (updated every snap call)
+_debug = {
+    'nearby_cells': [],   # list of (cx, cy, cz) cell coords
+    'query_cell': None,   # (cx, cy, cz) of the cursor's cell
+    'gs': 1.0,            # current grid size
+    'all_cells': set(),   # all occupied cells (union of vg+eg+fg)
+}
+
 
 def _build_grid(obj, bm, mw, gs):
     """Build or return cached spatial grid.  Three separate sub-grids
@@ -146,6 +154,12 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
 
     def _nearby(subgrid):
         return [c for c in search_cells if c in subgrid]
+
+    # Store debug info for grid visualization
+    _debug['query_cell'] = (ccx, ccy, ccz)
+    _debug['gs'] = gs
+    _debug['nearby_cells'] = _nearby(vg)
+    _debug['all_cells'] = set(vg.keys()) | set(eg.keys()) | set(fg.keys())
 
     _te = _time.perf_counter()
 

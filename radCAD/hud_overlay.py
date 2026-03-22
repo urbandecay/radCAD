@@ -7,6 +7,7 @@ from gpu_extras.batch import batch_for_shader
 from bpy_extras.view3d_utils import location_3d_to_region_2d
 from .modal_state import state, style
 from .units_utils import format_length
+from . import snapping_utils
 
 # --- FONT SIZES ---
 SIZE_KEY = 12
@@ -702,17 +703,93 @@ def draw_hud_2d():
         print(f"HUD DRAW ERROR: {e}")
 
 
+# ── 3D Grid Visualization ─────────────────────────────────────────
+def _get_3d_shader():
+    try:
+        return gpu.shader.from_builtin('3D_UNIFORM_COLOR')
+    except Exception:
+        return gpu.shader.from_builtin('UNIFORM_COLOR')
+
+
+def _draw_grid_3d():
+    """Draw snap grid cells as 3D wireframe cubes."""
+    debug = snapping_utils._debug
+    gs = debug.get('gs', 1.0)
+    query_cell = debug.get('query_cell')
+    nearby = debug.get('nearby_cells', [])
+    all_cells = debug.get('all_cells', set())
+
+    if not query_cell and not nearby:
+        return
+
+    shader = _get_3d_shader()
+    gpu.state.blend_set('ALPHA')
+    gpu.state.line_width_set(1.0)
+
+    # Cube edge pairs (12 edges of a cube)
+    _edges = [
+        (0,1),(1,2),(2,3),(3,0),  # bottom
+        (4,5),(5,6),(6,7),(7,4),  # top
+        (0,4),(1,5),(2,6),(3,7),  # verticals
+    ]
+
+    def _draw_cell(cx, cy, cz, color):
+        x0, y0, z0 = cx * gs, cy * gs, cz * gs
+        x1, y1, z1 = x0 + gs, y0 + gs, z0 + gs
+        corners = [
+            (x0, y0, z0), (x1, y0, z0), (x1, y1, z0), (x0, y1, z0),
+            (x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1),
+        ]
+        lines = []
+        for a, b in _edges:
+            lines.append(corners[a])
+            lines.append(corners[b])
+        batch = batch_for_shader(shader, 'LINES', {"pos": lines})
+        shader.bind()
+        shader.uniform_float("color", color)
+        batch.draw(shader)
+
+    # Draw all occupied cells (dim blue) — cap at 500 to avoid GPU lag
+    drawn = 0
+    for c in all_cells:
+        _draw_cell(c[0], c[1], c[2], (0.2, 0.4, 0.8, 0.15))
+        drawn += 1
+        if drawn >= 500:
+            break
+
+    # Draw nearby cells (green)
+    for c in nearby:
+        _draw_cell(c[0], c[1], c[2], (0.0, 1.0, 0.0, 0.4))
+
+    # Draw query cell (red)
+    if query_cell:
+        _draw_cell(query_cell[0], query_cell[1], query_cell[2], (1.0, 0.0, 0.0, 0.6))
+
+    gpu.state.blend_set('NONE')
+    gpu.state.line_width_set(1.0)
+
+
 # Register/unregister draw handler
 _draw_handle = None
+_grid_draw_handle = None
 
 def register_handlers():
-    global _draw_handle
+    global _draw_handle, _grid_draw_handle
+    _grid_draw_handle = bpy.types.SpaceView3D.draw_handler_add(
+        _draw_grid_3d, (), 'WINDOW', 'POST_VIEW'
+    )
 
 def unregister_handlers():
-    global _draw_handle
+    global _draw_handle, _grid_draw_handle
     if _draw_handle:
         try:
             bpy.types.SpaceView3D.draw_handler_remove(_draw_handle, 'WINDOW')
         except:
             pass
         _draw_handle = None
+    if _grid_draw_handle:
+        try:
+            bpy.types.SpaceView3D.draw_handler_remove(_grid_draw_handle, 'WINDOW')
+        except:
+            pass
+        _grid_draw_handle = None
