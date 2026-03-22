@@ -47,6 +47,16 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
         default=True
     )
 
+    snap_grid_size: bpy.props.FloatProperty(
+        name="Snap Grid Size",
+        description="World-space grid cell size for spatial snapping. Smaller = finer detail, larger = faster",
+        default=10.0,
+        min=0.5,
+        max=100.0,
+        precision=1,
+        step=0.5
+    )
+
     # --- Line Perpendicular from Curve ---
     line_perp_show_catmull: bpy.props.BoolProperty(
         name="Show Catmull Overlay",
@@ -843,6 +853,7 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
             col.separator(factor=2.0)
             self.draw_group_label(col, "Geometry Snaps:", icon='SNAP_PEEL_OBJECT')
             self.draw_property_row(col, "Snap Strength:", "snap_strength")
+            self.draw_property_row(col, "Snap Grid Size:", "snap_grid_size")
             
             col.separator(factor=2.0)
             self.draw_group_label(col, "Axis Snapping:", icon='COLOR')

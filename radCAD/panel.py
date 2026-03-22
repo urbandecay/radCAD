@@ -7,8 +7,9 @@ bl_info = {
 import bpy
 import bpy.utils.previews
 import os
-from .modal_state import state 
+from .modal_state import state
 from .modal_core import DrawManager
+from . import hud_overlay
 
 CURRENT_DIR = os.path.dirname(__file__)
 POSSIBLE_PATHS = [
@@ -97,14 +98,18 @@ class RADCAD_OT_reset_overlays(bpy.types.Operator):
     def execute(self, context):
         state["active"] = False
         DrawManager.clear_all()
-        
+
+        # Clear and re-register grid visualization
+        hud_overlay.unregister_handlers()
+        hud_overlay.register_handlers()
+
         # Clear legacy/driver based handles if any persist
         if "radcad_handles" in bpy.app.driver_namespace:
             for h, region_type in bpy.app.driver_namespace["radcad_handles"]:
                 try: bpy.types.SpaceView3D.draw_handler_remove(h, region_type)
                 except Exception: pass
             bpy.app.driver_namespace["radcad_handles"] = []
-            
+
         context.area.tag_redraw()
         return {'FINISHED'}
 

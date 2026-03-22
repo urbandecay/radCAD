@@ -17,7 +17,9 @@ def _import(name):
 # 1. Import The Engine Parts
 prefs = _import("preferences")
 panel = _import("panel")
-modal_core = _import("modal_core") 
+hud_overlay = _import("hud_overlay")
+modal_core = _import("modal_core")
+snapping_utils = _import("snapping_utils") 
 
 # 2. Import The Operators
 op_1pt = _import("operators.op_arc_1pt")
@@ -92,7 +94,14 @@ def register():
     if hasattr(panel, "register"):
         panel.register()
 
+    # Register HUD draw handlers
+    if hasattr(hud_overlay, "register_handlers"):
+        hud_overlay.register_handlers()
+
 def unregister():
+    if hasattr(hud_overlay, "unregister_handlers"):
+        hud_overlay.unregister_handlers()
+
     if hasattr(panel, "unregister"):
         panel.unregister()
 
