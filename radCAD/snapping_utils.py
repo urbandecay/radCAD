@@ -78,9 +78,15 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
     if obj is None or obj.type != 'MESH':
         return None
 
+    import time as _time
+    _ta = _time.perf_counter()
+
     region, rv3d = ctx.region, ctx.region_data
     mx, my = float(x), float(y)
     bm = bmesh.from_edit_mesh(obj.data)
+
+    _tb = _time.perf_counter()
+
     mw = obj.matrix_world
 
     # ── perspective matrix → local floats (one-time extraction) ──
@@ -98,7 +104,11 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
     except Exception:
         gs = 10.0
 
+    _tc = _time.perf_counter()
     vg, eg, fg = _build_grid(obj, bm, mw, gs)
+    _td = _time.perf_counter()
+
+    print(f"  [SNAP DETAIL] bmesh={(_tb-_ta)*1000:.2f}ms  setup={(_tc-_tb)*1000:.2f}ms  grid={(_td-_tc)*1000:.2f}ms  cache={'HIT' if (_td-_tc)<1 else 'MISS'}")
 
     # ── query point along camera ray (raw floats) ──
     ro = view3d_utils.region_2d_to_origin_3d(region, rv3d, (x, y))
