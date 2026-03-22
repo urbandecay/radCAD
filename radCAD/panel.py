@@ -99,7 +99,13 @@ class RADCAD_OT_reset_overlays(bpy.types.Operator):
         state["active"] = False
         DrawManager.clear_all()
 
-        # Clear and re-register grid visualization
+        # Clear grid debug visualization data so cubes disappear
+        from . import snapping_utils
+        snapping_utils._debug['nearby_cells'] = []
+        snapping_utils._debug['query_cell'] = None
+        snapping_utils._debug['all_cells'] = set()
+
+        # Remove and re-register draw handlers (clears stuck HUD overlays)
         hud_overlay.unregister_handlers()
         hud_overlay.register_handlers()
 

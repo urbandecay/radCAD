@@ -118,17 +118,35 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
     else:
         gs = 10.0
 
+    # Cap grid size to half the object's largest WORLD-SPACE dimension
+    # so cells are never larger than the object itself
+    bb = obj.bound_box
+    bb_world = [mw @ Vector(c) for c in bb]
+    wx = [v.x for v in bb_world]
+    wy = [v.y for v in bb_world]
+    wz = [v.z for v in bb_world]
+    max_dim = max(max(wx) - min(wx), max(wy) - min(wy), max(wz) - min(wz), 0.2)
+    gs = min(gs, max(max_dim * 0.5, 0.1))
+    print(f"  [SNAP GRID] verts={n_verts} max_dim={max_dim:.2f} gs={gs:.2f}")
+
     _tc = _time.perf_counter()
     vg, eg, fg = _build_grid(obj, bm, mw, gs)
     _td = _time.perf_counter()
 
     print(f"  [SNAP DETAIL] bmesh={(_tb-_ta)*1000:.2f}ms  setup={(_tc-_tb)*1000:.2f}ms  grid={(_td-_tc)*1000:.2f}ms  cache={'HIT' if (_td-_tc)<1 else 'MISS'}")
 
-    # ── query point along camera ray (raw floats) ──
+    # ── query point at object bounding box center depth ──
     ro = view3d_utils.region_2d_to_origin_3d(region, rv3d, (x, y))
     rd = view3d_utils.region_2d_to_vector_3d(region, rv3d, (x, y))
-    vc = rv3d.view_location
-    t = (vc.x - ro.x) * rd.x + (vc.y - ro.y) * rd.y + (vc.z - ro.z) * rd.z
+
+    # Use object BB center as depth reference (not rv3d.view_location)
+    bb = obj.bound_box
+    bb_world = [mw @ Vector(c) for c in bb]
+    bb_cx = sum(v.x for v in bb_world) / 8.0
+    bb_cy = sum(v.y for v in bb_world) / 8.0
+    bb_cz = sum(v.z for v in bb_world) / 8.0
+
+    t = ((bb_cx - ro.x) * rd.x + (bb_cy - ro.y) * rd.y + (bb_cz - ro.z) * rd.z)
     if t < 0.01:
         t = 0.01
     qx = ro.x + rd.x * t
@@ -139,7 +157,6 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
     ccy = int(qy // gs)
     ccz = int(qz // gs)
     # Scale search radius inversely with grid density
-    # gs=10 → R=3 (70 units), gs=1 → R=5 (11 units), gs=0.5 → R=7 (7.5 units)
     R = max(3, int(5.0 / gs))
     if R > 10:
         R = 10
