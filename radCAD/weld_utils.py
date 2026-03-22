@@ -81,15 +81,15 @@ def find_nearby_geometry(bm, arc_verts, radius, mw, obj=None):
     search_r = radius * 2.0
     r2 = search_r * search_r
 
-    # ── Fast path: numpy vectorized (no cache, always current) ──
+    # ── Fast path: LOCAL-space AABB pre-filter + numpy (no world transform for 99% of mesh) ──
     if obj is not None and obj.type == 'MESH':
-        obj.update_from_editmode()
         mesh = obj.data
         n_verts = len(mesh.vertices)
         n_edges = len(mesh.edges)
 
         target_verts = []
         target_edges = []
+        n_candidates = 0
 
         if n_verts > 0:
             # Bulk get coords + hide (C speed via foreach_get)
@@ -99,61 +99,96 @@ def find_nearby_geometry(bm, arc_verts, radius, mw, obj=None):
             mesh.vertices.foreach_get('hide', hide_v)
             co = co_flat.reshape(n_verts, 3)
 
-            # World transform (numpy matmul)
-            mw_np = np.array(mw, dtype=np.float64).reshape(4, 4).T
-            wco = co @ mw_np[:3, :3].T + mw_np[3, :3]
+            # AABB pre-filter in LOCAL space — avoids world-transforming all 327k verts
+            mw_inv = mw.inverted()
+            arc_local = np.array([(mw_inv @ aw)[:] for aw in arc_world], dtype=np.float64)
+            scale_vec = mw.to_scale()
+            max_scale = max(abs(scale_vec.x), abs(scale_vec.y), abs(scale_vec.z))
+            local_r = search_r / max_scale if max_scale > 1e-8 else search_r
 
-            # Arc vert indices to exclude
-            arc_idx_set = set(av.index for av in arc_verts if av.is_valid)
+            arc_min_l = arc_local.min(axis=0) - local_r
+            arc_max_l = arc_local.max(axis=0) + local_r
 
-            # Vectorized distance check per arc vert
             vis = ~hide_v
-            found_v = set()
-            bm.verts.ensure_lookup_table()
+            in_box = (
+                (co[:, 0] >= arc_min_l[0]) & (co[:, 0] <= arc_max_l[0]) &
+                (co[:, 1] >= arc_min_l[1]) & (co[:, 1] <= arc_max_l[1]) &
+                (co[:, 2] >= arc_min_l[2]) & (co[:, 2] <= arc_max_l[2]) &
+                vis
+            )
+            candidate_indices = np.where(in_box)[0]
+            n_candidates = len(candidate_indices)
 
-            for aw in arc_world:
-                aw_np = np.array(aw[:], dtype=np.float64)
-                dists_sq = np.sum((wco - aw_np) ** 2, axis=1)
-                hits = np.where((dists_sq <= r2) & vis)[0]
-                for idx in hits.tolist():
-                    if idx not in found_v and idx not in arc_idx_set and idx < len(bm.verts):
-                        found_v.add(idx)
-                        target_verts.append(bm.verts[idx])
+            if n_candidates > 0:
+                # Only world-transform the candidates (not the whole mesh)
+                mw_np = np.array(mw, dtype=np.float64).reshape(4, 4).T
+                wco_cand = co[candidate_indices] @ mw_np[:3, :3].T + mw_np[3, :3]
 
-            # EDGES: vectorized AABB
+                arc_idx_set = set(av.index for av in arc_verts if av.is_valid)
+                found_v = set()
+                bm.verts.ensure_lookup_table()
+
+                for aw in arc_world:
+                    aw_np = np.array(aw[:], dtype=np.float64)
+                    dists_sq = np.sum((wco_cand - aw_np) ** 2, axis=1)
+                    hits = np.where(dists_sq <= r2)[0]
+                    for h in hits:
+                        idx = int(candidate_indices[h])
+                        if idx not in found_v and idx not in arc_idx_set and idx < len(bm.verts):
+                            found_v.add(idx)
+                            target_verts.append(bm.verts[idx])
+
+            # EDGES: vertex-proximity pre-filter (avoids 983k×3 fancy indexing)
             if n_edges > 0:
-                arc_np = np.array([aw[:] for aw in arc_world], dtype=np.float64)
-                margin = max(search_r, 0.01)
-                arc_min = arc_np.min(axis=0) - margin
-                arc_max = arc_np.max(axis=0) + margin
-
-                ev = np.empty(n_edges * 2, dtype=np.int32)
-                hide_e = np.empty(n_edges, dtype=bool)
-                mesh.edges.foreach_get('vertices', ev)
-                mesh.edges.foreach_get('hide', hide_e)
-                ev = ev.reshape(n_edges, 2)
-
-                e_wco0 = wco[ev[:, 0]]
-                e_wco1 = wco[ev[:, 1]]
-                e_min = np.minimum(e_wco0, e_wco1)
-                e_max = np.maximum(e_wco0, e_wco1)
-
-                overlap = (
-                    (e_max[:, 0] >= arc_min[0]) & (e_min[:, 0] <= arc_max[0]) &
-                    (e_max[:, 1] >= arc_min[1]) & (e_min[:, 1] <= arc_max[1]) &
-                    (e_max[:, 2] >= arc_min[2]) & (e_min[:, 2] <= arc_max[2]) &
-                    ~hide_e
+                # Use a larger AABB to find verts that could be edge endpoints near the arc
+                edge_margin = max(local_r * 10, 0.1)
+                edge_box = (
+                    (co[:, 0] >= arc_local.min(axis=0)[0] - edge_margin) &
+                    (co[:, 0] <= arc_local.max(axis=0)[0] + edge_margin) &
+                    (co[:, 1] >= arc_local.min(axis=0)[1] - edge_margin) &
+                    (co[:, 1] <= arc_local.max(axis=0)[1] + edge_margin) &
+                    (co[:, 2] >= arc_local.min(axis=0)[2] - edge_margin) &
+                    (co[:, 2] <= arc_local.max(axis=0)[2] + edge_margin)
                 )
+                nearby_vert_mask = edge_box  # bool array, n_verts
 
-                bm.edges.ensure_lookup_table()
-                for idx in np.where(overlap)[0].tolist():
-                    if idx < len(bm.edges):
-                        edge = bm.edges[idx]
-                        if not (edge.verts[0] in arc_vert_set and edge.verts[1] in arc_vert_set):
-                            target_edges.append(edge)
+                if nearby_vert_mask.any():
+                    ev = np.empty(n_edges * 2, dtype=np.int32)
+                    mesh.edges.foreach_get('vertices', ev)
+                    ev = ev.reshape(n_edges, 2)
+
+                    # Fast boolean lookup: does edge have an endpoint near the arc?
+                    has_nearby = nearby_vert_mask[ev[:, 0]] | nearby_vert_mask[ev[:, 1]]
+                    cand_edge_idx = np.where(has_nearby)[0]
+
+                    if len(cand_edge_idx) > 0:
+                        # AABB check only on candidate edges (small set)
+                        margin = max(local_r, 0.01)
+                        edge_min_l = arc_local.min(axis=0) - margin
+                        edge_max_l = arc_local.max(axis=0) + margin
+
+                        c_ev = ev[cand_edge_idx]
+                        e_co0 = co[c_ev[:, 0]]
+                        e_co1 = co[c_ev[:, 1]]
+                        e_min = np.minimum(e_co0, e_co1)
+                        e_max = np.maximum(e_co0, e_co1)
+
+                        overlap = (
+                            (e_max[:, 0] >= edge_min_l[0]) & (e_min[:, 0] <= edge_max_l[0]) &
+                            (e_max[:, 1] >= edge_min_l[1]) & (e_min[:, 1] <= edge_max_l[1]) &
+                            (e_max[:, 2] >= edge_min_l[2]) & (e_min[:, 2] <= edge_max_l[2])
+                        )
+
+                        bm.edges.ensure_lookup_table()
+                        for h in np.where(overlap)[0].tolist():
+                            idx = int(cand_edge_idx[h])
+                            if idx < len(bm.edges):
+                                edge = bm.edges[idx]
+                                if not edge.hide and not (edge.verts[0] in arc_vert_set and edge.verts[1] in arc_vert_set):
+                                    target_edges.append(edge)
 
         _t1 = _t.perf_counter()
-        print(f"  [FIND_NEARBY numpy] {(_t1-_t0)*1000:.1f}ms  verts={len(target_verts)}  edges={len(target_edges)}")
+        print(f"  [FIND_NEARBY numpy] {(_t1-_t0)*1000:.1f}ms  verts={len(target_verts)}  edges={len(target_edges)}  candidates={n_candidates}/{n_verts}")
         return target_verts, target_edges
 
     # ── Fallback: KDTree (if obj not provided) ──

@@ -94,11 +94,22 @@ def run(ctx, arc_verts, arc_edges):
         v = bm.verts[i]
         if v.is_valid: merge_verts.append(v)
     _p1_4a = _t.perf_counter()
-    bmesh.ops.remove_doubles(bm, verts=merge_verts, dist=radius)
+    # Build explicit targetmap — only call bmesh op if there's actually something to merge
+    targetmap = {}
+    for i in range(len(merge_verts)):
+        v1 = merge_verts[i]
+        if not v1.is_valid or v1 in targetmap: continue
+        for j in range(i + 1, len(merge_verts)):
+            v2 = merge_verts[j]
+            if not v2.is_valid or v2 in targetmap: continue
+            if (v1.co - v2.co).length <= radius:
+                targetmap[v2] = v1
+    n_merged = len(targetmap)
+    if targetmap:
+        bmesh.ops.weld_verts(bm, targetmap=targetmap)
     _p1_4b = _t.perf_counter()
-    bmesh.update_edit_mesh(me)
     _p1_5 = _t.perf_counter()
-    print(f"  [DOUBLES DETAIL] merge_verts={len(merge_verts)}  remove_doubles={(_p1_4b-_p1_4a)*1000:.0f}ms  update_edit_mesh={(_p1_5-_p1_4b)*1000:.0f}ms")
+    print(f"  [DOUBLES DETAIL] merge_verts={len(merge_verts)}  merge={(_p1_4b-_p1_4a)*1000:.0f}ms  merged={n_merged}")
 
     print(f"  [WELD P1] find_nearby={(_p1_1-_p1_0)*1000:.0f}ms  heavy_weld={(_p1_2-_p1_1)*1000:.0f}ms  self_x={(_p1_3-_p1_2)*1000:.0f}ms  x_weld={(_p1_4-_p1_3)*1000:.0f}ms  doubles={(_p1_5-_p1_4)*1000:.0f}ms  total={(_p1_5-_p1_0)*1000:.0f}ms")
     dbg("Phase 1 (Endpoint Weld) Complete.")
@@ -110,8 +121,6 @@ def run(ctx, arc_verts, arc_edges):
         bm.verts.ensure_lookup_table()
         bm.edges.ensure_lookup_table()
 
-        # Quick check: any faces parallel to drawing plane near the arc?
-        # Uses numpy foreach_get directly from mesh (no cache, always current).
         import numpy as np
 
         Zp = state.get("Zp", mathutils.Vector((0,0,1)))
@@ -119,32 +128,60 @@ def run(ctx, arc_verts, arc_edges):
         arc_sample_world = mw @ arc_verts[0].co if arc_verts and arc_verts[0].is_valid else None
 
         if arc_sample_world and len(me.polygons) > 0:
-            obj.update_from_editmode()
             n_faces = len(me.polygons)
+
+            # LOCAL-space AABB pre-filter — only read face data if arc is near the mesh
+            mw_inv = mw.inverted()
+            arc_sample_local = mw_inv @ arc_sample_world
+            asl_np = np.array(arc_sample_local[:], dtype=np.float64)
+
+            # Read ONLY centers first (cheapest foreach_get)
             fc_flat = np.empty(n_faces * 3, dtype=np.float64)
-            fn_flat = np.empty(n_faces * 3, dtype=np.float64)
-            hide_f = np.empty(n_faces, dtype=bool)
             me.polygons.foreach_get('center', fc_flat)
-            me.polygons.foreach_get('normal', fn_flat)
-            me.polygons.foreach_get('hide', hide_f)
+            fc = fc_flat.reshape(n_faces, 3)
 
-            mw_np = np.array(mw, dtype=np.float64).reshape(4, 4).T
-            rot_np = np.array(mw.to_3x3().normalized(), dtype=np.float64).reshape(3, 3).T
+            # AABB in local space — generous margin for face proximity
+            face_margin = 0.5
+            in_box = (
+                (fc[:, 0] >= asl_np[0] - face_margin) & (fc[:, 0] <= asl_np[0] + face_margin) &
+                (fc[:, 1] >= asl_np[1] - face_margin) & (fc[:, 1] <= asl_np[1] + face_margin) &
+                (fc[:, 2] >= asl_np[2] - face_margin) & (fc[:, 2] <= asl_np[2] + face_margin)
+            )
 
-            wfc = fc_flat.reshape(n_faces, 3) @ mw_np[:3, :3].T + mw_np[3, :3]
-            wfn = fn_flat.reshape(n_faces, 3) @ rot_np.T
-            fl = np.linalg.norm(wfn, axis=1, keepdims=True)
-            fl[fl < 1e-8] = 1.0
-            wfn /= fl
+            # Only load normals/hide for candidates in the box
+            box_indices = np.where(in_box)[0]
+            if len(box_indices) > 0:
+                fn_flat = np.empty(n_faces * 3, dtype=np.float64)
+                hide_f = np.empty(n_faces, dtype=bool)
+                me.polygons.foreach_get('normal', fn_flat)
+                me.polygons.foreach_get('hide', hide_f)
 
-            zp_np = np.array(Zp[:], dtype=np.float64)
-            dots = np.abs(wfn @ zp_np)
-            aligned_mask = (dots > 0.9) & ~hide_f
-            if aligned_mask.any():
-                sample_np = np.array(arc_sample_world[:], dtype=np.float64)
-                diffs = sample_np - wfc[aligned_mask]
-                plane_dists = np.abs(np.sum(diffs * wfn[aligned_mask], axis=1))
-                has_candidate_face = bool(np.any(plane_dists <= 0.3))
+                fn = fn_flat.reshape(n_faces, 3)
+                cand_fc = fc[box_indices]
+                cand_fn = fn[box_indices]
+                cand_hide = hide_f[box_indices]
+
+                # World transform ONLY for candidates
+                mw_np = np.array(mw, dtype=np.float64).reshape(4, 4).T
+                rot_np = np.array(mw.to_3x3().normalized(), dtype=np.float64).reshape(3, 3).T
+
+                wfc = cand_fc @ mw_np[:3, :3].T + mw_np[3, :3]
+                wfn = cand_fn @ rot_np.T
+                fl = np.linalg.norm(wfn, axis=1, keepdims=True)
+                fl[fl < 1e-8] = 1.0
+                wfn /= fl
+
+                zp_np = np.array(Zp[:], dtype=np.float64)
+                dots = np.abs(wfn @ zp_np)
+                aligned_mask = (dots > 0.9) & ~cand_hide
+                if aligned_mask.any():
+                    sample_np = np.array(arc_sample_world[:], dtype=np.float64)
+                    diffs = sample_np - wfc[aligned_mask]
+                    plane_dists = np.abs(np.sum(diffs * wfn[aligned_mask], axis=1))
+                    has_candidate_face = bool(np.any(plane_dists <= 0.3))
+
+            _p2_filt = _t.perf_counter()
+            print(f"  [WELD P2] candidates={len(box_indices)}/{n_faces}  filter={(_p2_filt-_p2_0)*1000:.0f}ms")
 
         print(f"  [WELD P2] has_candidate_face={has_candidate_face}")
         if has_candidate_face:
@@ -165,8 +202,13 @@ def run(ctx, arc_verts, arc_edges):
     except Exception:
         pass
 
+    # ONE final sync: push all bmesh changes (welds, splits, doubles) to the mesh
+    _sync0 = _t.perf_counter()
+    bmesh.update_edit_mesh(me)
+    _sync1 = _t.perf_counter()
+
     _w1 = _t.perf_counter()
-    print(f"  [WELD TOTAL] {(_w1-_w0)*1000:.0f}ms")
+    print(f"  [WELD TOTAL] {(_w1-_w0)*1000:.0f}ms  (final_sync={(_sync1-_sync0)*1000:.0f}ms)")
     dbg("--- RUN COMPLETE ---")
 
 
