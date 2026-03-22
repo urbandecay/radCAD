@@ -1,222 +1,252 @@
-# snapping_utils.py
+# snapping_utils.py  —  zero-alloc hot path, no raycasts
 
 import bmesh
-from mathutils import Vector, geometry
+from mathutils import Vector
 from bpy_extras import view3d_utils
 
 ELEMENT_SNAP_RADIUS_PX = 15.0
 
-# Grid cache for fast spatial queries
+# Grid cache — keyed on mesh identity + topology counts + grid_size
 _snap_cache = {}
 
 
-def _get_snap_grid(obj, bm, mw, grid_size=10.0):
-    """Build/return cached world-space spatial grid with normals."""
-    key = (id(obj.data), len(bm.verts), len(bm.edges), len(bm.faces), grid_size)
-    if key in _snap_cache:
-        return _snap_cache[key]
+def _build_grid(obj, bm, mw, gs):
+    """Build or return cached spatial grid.  Three separate sub-grids
+    (verts, edge-centers, face-centers) so the inner loop never does
+    a string comparison.  Elements stored as raw-float tuples so the
+    inner loop never allocates a Vector.
+    Format per element: (index, wx, wy, wz, nx, ny, nz)
+    """
+    key = (id(obj.data), len(bm.verts), len(bm.edges), len(bm.faces), gs)
+    cached = _snap_cache.get(key)
+    if cached is not None:
+        return cached
 
-    grid = {}
-    rot = mw.to_3x3().normalized()  # rotation matrix for normals
+    rot = mw.to_3x3().normalized()
+    vg, eg, fg = {}, {}, {}
 
-    # Add verts to grid  — store (type, index, world_co, world_normal)
     for v in bm.verts:
-        if v.hide: continue
+        if v.hide:
+            continue
         wco = mw @ v.co
         wnm = (rot @ v.normal).normalized()
-        cell = (int(wco.x // grid_size), int(wco.y // grid_size), int(wco.z // grid_size))
-        if cell not in grid:
-            grid[cell] = []
-        grid[cell].append(('vert', v.index, wco, wnm))
+        cell = (int(wco.x // gs), int(wco.y // gs), int(wco.z // gs))
+        entry = (v.index, wco.x, wco.y, wco.z, wnm.x, wnm.y, wnm.z)
+        try:
+            vg[cell].append(entry)
+        except KeyError:
+            vg[cell] = [entry]
 
-    # Add edge centers to grid
     for e in bm.edges:
-        if e.hide: continue
+        if e.hide:
+            continue
         wco = mw @ ((e.verts[0].co + e.verts[1].co) * 0.5)
-        avg_n = ((e.verts[0].normal + e.verts[1].normal) * 0.5)
+        avg_n = (e.verts[0].normal + e.verts[1].normal) * 0.5
         wnm = (rot @ avg_n).normalized()
-        cell = (int(wco.x // grid_size), int(wco.y // grid_size), int(wco.z // grid_size))
-        if cell not in grid:
-            grid[cell] = []
-        grid[cell].append(('edge_center', e.index, wco, wnm))
+        cell = (int(wco.x // gs), int(wco.y // gs), int(wco.z // gs))
+        entry = (e.index, wco.x, wco.y, wco.z, wnm.x, wnm.y, wnm.z)
+        try:
+            eg[cell].append(entry)
+        except KeyError:
+            eg[cell] = [entry]
 
-    # Add face centers to grid
     for f in bm.faces:
-        if f.hide: continue
+        if f.hide:
+            continue
         wco = mw @ f.calc_center_median()
         wnm = (rot @ f.normal).normalized()
-        cell = (int(wco.x // grid_size), int(wco.y // grid_size), int(wco.z // grid_size))
-        if cell not in grid:
-            grid[cell] = []
-        grid[cell].append(('face_center', f.index, wco, wnm))
+        cell = (int(wco.x // gs), int(wco.y // gs), int(wco.z // gs))
+        entry = (f.index, wco.x, wco.y, wco.z, wnm.x, wnm.y, wnm.z)
+        try:
+            fg[cell].append(entry)
+        except KeyError:
+            fg[cell] = [entry]
 
-    _snap_cache[key] = grid
-    return _snap_cache[key]
+    result = (vg, eg, fg)
+    _snap_cache[key] = result
+    return result
 
 
 def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
-                            do_verts=True,
-                            do_edges=True,
-                            do_edge_center=True,
-                            do_face_center=True,
+                            do_verts=True, do_edges=True,
+                            do_edge_center=True, do_face_center=True,
                             **kwargs):
-    """
-    Returns (world_co, world_normal) or None.
-    Spatial grid partitioning + screen-space 15px bubble.
-    Normal is derived from the snapped element — no scene raycast needed.
+    """Returns (world_co, world_normal) or None.
+    Pure-math hot path: no scene raycasts, no Vector allocations in
+    the inner loops, no string comparisons, adaptive cell search.
     """
     if obj is None or obj.type != 'MESH':
         return None
 
     region, rv3d = ctx.region, ctx.region_data
-    mouse = Vector((x, y))
+    mx, my = float(x), float(y)
     bm = bmesh.from_edit_mesh(obj.data)
-
-    bm.verts.ensure_lookup_table()
-    bm.edges.ensure_lookup_table()
-    bm.faces.ensure_lookup_table()
-
     mw = obj.matrix_world
 
-    # Fast 2D projection using perspective matrix
+    # ── perspective matrix → local floats (one-time extraction) ──
     pm = rv3d.perspective_matrix
-    W = region.width
-    H = region.height
-
-    def project_fast(wco):
-        v = pm @ wco.to_4d()
-        if v.w <= 0:
-            return None
-        px = W * (1 + v.x / v.w) * 0.5
-        py = H * (1 + v.y / v.w) * 0.5
-        if px < -50 or px > W + 50 or py < -50 or py > H + 50:
-            return None
-        return Vector((px, py))
-
+    p00, p01, p02, p03 = pm[0][0], pm[0][1], pm[0][2], pm[0][3]
+    p10, p11, p12, p13 = pm[1][0], pm[1][1], pm[1][2], pm[1][3]
+    p30, p31, p32, p33 = pm[3][0], pm[3][1], pm[3][2], pm[3][3]
+    W, H = float(region.width), float(region.height)
     limit_sq = max_px * max_px
 
-    # Get grid size from preferences
+    # ── grid size preference (one dict lookup) ──
     try:
         import bpy
-        prefs = bpy.context.preferences.addons[__package__].preferences
-        grid_size = prefs.snap_grid_size
-    except:
-        grid_size = 10.0
+        gs = bpy.context.preferences.addons[__package__].preferences.snap_grid_size
+    except Exception:
+        gs = 10.0
 
-    grid = _get_snap_grid(obj, bm, mw, grid_size)
+    vg, eg, fg = _build_grid(obj, bm, mw, gs)
 
-    # Get 3D query point along camera ray
-    ray_origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, (x, y))
-    ray_dir = view3d_utils.region_2d_to_vector_3d(region, rv3d, (x, y))
-    view_center = Vector(rv3d.view_location)
-    t = max(0.01, (view_center - ray_origin).dot(ray_dir))
-    query_pt = ray_origin + ray_dir * t
+    # ── query point along camera ray (raw floats) ──
+    ro = view3d_utils.region_2d_to_origin_3d(region, rv3d, (x, y))
+    rd = view3d_utils.region_2d_to_vector_3d(region, rv3d, (x, y))
+    vc = rv3d.view_location
+    t = (vc.x - ro.x) * rd.x + (vc.y - ro.y) * rd.y + (vc.z - ro.z) * rd.z
+    if t < 0.01:
+        t = 0.01
+    qx = ro.x + rd.x * t
+    qy = ro.y + rd.y * t
+    qz = ro.z + rd.z * t
 
-    # Find cursor's grid cell and check nearby cells (7x7x7)
-    qx = int(query_pt.x // grid_size)
-    qy = int(query_pt.y // grid_size)
-    qz = int(query_pt.z // grid_size)
+    ccx = int(qx // gs)
+    ccy = int(qy // gs)
+    ccz = int(qz // gs)
+    R = 3
+    cull_sq = (gs * 3.0) ** 2
 
-    cells_to_search = 3
-    nearby_cells = []
-    for dx in range(-cells_to_search, cells_to_search + 1):
-        for dy in range(-cells_to_search, cells_to_search + 1):
-            for dz in range(-cells_to_search, cells_to_search + 1):
-                cell = (qx + dx, qy + dy, qz + dz)
-                if cell in grid:
-                    nearby_cells.append(cell)
+    # ── adaptive cell search ──────────────────────────────────────
+    # For sparse grids (< 100 occupied cells) iterate the keys and
+    # range-check — much faster than 343 dict lookups when most are
+    # empty.  For dense grids fall back to the enumeration approach.
+    def _nearby(subgrid):
+        if len(subgrid) < 100:
+            return [c for c in subgrid
+                    if abs(c[0] - ccx) <= R and abs(c[1] - ccy) <= R and abs(c[2] - ccz) <= R]
+        out = []
+        for dx in range(-R, R + 1):
+            for dy in range(-R, R + 1):
+                for dz in range(-R, R + 1):
+                    c = (ccx + dx, ccy + dy, ccz + dz)
+                    if c in subgrid:
+                        out.append(c)
+        return out
 
-    # Track best candidates: (world_co, world_normal, screen_dist_sq)
-    best_vert = None
-    best_dist_vert = float('inf')
-    best_edge_center = None
-    best_dist_edge_center = float('inf')
-    best_face_center = None
-    best_dist_face_center = float('inf')
-
-    world_cull_sq = (grid_size * 3.0) ** 2
-
-    # --- Verts ---
-    if do_verts:
-        for cell in nearby_cells:
-            for elem_type, idx, wco, wnm in grid[cell]:
-                if elem_type != 'vert': continue
-                if (wco - query_pt).length_squared > world_cull_sq:
+    # ── VERT SNAP (highest priority, early-return) ────────────────
+    if do_verts and vg:
+        best_d2 = limit_sq
+        bwx = bwy = bwz = bnx = bny = bnz = 0.0
+        found = False
+        for cell in _nearby(vg):
+            for elem in vg[cell]:
+                _, wx, wy, wz, nx, ny, nz = elem
+                dx = wx - qx; dy = wy - qy; dz = wz - qz
+                if dx * dx + dy * dy + dz * dz > cull_sq:
                     continue
-                p2d = project_fast(wco)
-                if p2d is None: continue
-                d2 = (mouse - p2d).length_squared
-                if d2 < limit_sq and d2 < best_dist_vert:
-                    best_vert = (wco, wnm)
-                    best_dist_vert = d2
-
-    if best_vert is not None:
-        return best_vert
-
-    # --- Edge centers ---
-    if do_edge_center:
-        for cell in nearby_cells:
-            for elem_type, idx, wco, wnm in grid[cell]:
-                if elem_type != 'edge_center': continue
-                if (wco - query_pt).length_squared > world_cull_sq:
+                vw = p30 * wx + p31 * wy + p32 * wz + p33
+                if vw <= 0.0:
                     continue
-                p2d = project_fast(wco)
-                if p2d is None: continue
-                d2 = (mouse - p2d).length_squared
-                if d2 < limit_sq and d2 < best_dist_edge_center:
-                    best_edge_center = (wco, wnm)
-                    best_dist_edge_center = d2
-
-    # --- Face centers ---
-    if do_face_center:
-        for cell in nearby_cells:
-            for elem_type, idx, wco, wnm in grid[cell]:
-                if elem_type != 'face_center': continue
-                if (wco - query_pt).length_squared > world_cull_sq:
+                inv_w = 1.0 / vw
+                px = W * (1.0 + (p00 * wx + p01 * wy + p02 * wz + p03) * inv_w) * 0.5
+                py = H * (1.0 + (p10 * wx + p11 * wy + p12 * wz + p13) * inv_w) * 0.5
+                if px < -50.0 or px > W + 50.0 or py < -50.0 or py > H + 50.0:
                     continue
-                p2d = project_fast(wco)
-                if p2d is None: continue
-                d2 = (mouse - p2d).length_squared
-                if d2 < limit_sq and d2 < best_dist_face_center:
-                    best_face_center = (wco, wnm)
-                    best_dist_face_center = d2
+                sdx = mx - px; sdy = my - py
+                d2 = sdx * sdx + sdy * sdy
+                if d2 < best_d2:
+                    best_d2 = d2
+                    bwx, bwy, bwz = wx, wy, wz
+                    bnx, bny, bnz = nx, ny, nz
+                    found = True
+        if found:
+            return (Vector((bwx, bwy, bwz)), Vector((bnx, bny, bnz)))
 
-    # Return best edge or face center
-    if best_edge_center is not None or best_face_center is not None:
-        if best_edge_center is None:
-            return best_face_center
-        if best_face_center is None:
-            return best_edge_center
-        return best_edge_center if best_dist_edge_center < best_dist_face_center else best_face_center
-
-    # --- Edge closest-point snapping ---
-    if do_edges:
-        rot = mw.to_3x3().normalized()
-        for cell in nearby_cells:
-            for elem_type, idx, wco, wnm in grid[cell]:
-                if elem_type != 'edge_center': continue
-                if (wco - query_pt).length_squared > world_cull_sq:
+    # ── EDGE-CENTER + FACE-CENTER SNAP (combined scan) ────────────
+    best_d2 = limit_sq
+    bwx = bwy = bwz = bnx = bny = bnz = 0.0
+    found = False
+    for subgrid, enabled in ((eg, do_edge_center), (fg, do_face_center)):
+        if not enabled or not subgrid:
+            continue
+        for cell in _nearby(subgrid):
+            for elem in subgrid[cell]:
+                _, wx, wy, wz, nx, ny, nz = elem
+                dx = wx - qx; dy = wy - qy; dz = wz - qz
+                if dx * dx + dy * dy + dz * dz > cull_sq:
                     continue
+                vw = p30 * wx + p31 * wy + p32 * wz + p33
+                if vw <= 0.0:
+                    continue
+                inv_w = 1.0 / vw
+                px = W * (1.0 + (p00 * wx + p01 * wy + p02 * wz + p03) * inv_w) * 0.5
+                py = H * (1.0 + (p10 * wx + p11 * wy + p12 * wz + p13) * inv_w) * 0.5
+                if px < -50.0 or px > W + 50.0 or py < -50.0 or py > H + 50.0:
+                    continue
+                sdx = mx - px; sdy = my - py
+                d2 = sdx * sdx + sdy * sdy
+                if d2 < best_d2:
+                    best_d2 = d2
+                    bwx, bwy, bwz = wx, wy, wz
+                    bnx, bny, bnz = nx, ny, nz
+                    found = True
+    if found:
+        return (Vector((bwx, bwy, bwz)), Vector((bnx, bny, bnz)))
 
+    # ── EDGE CLOSEST-POINT SNAP ──────────────────────────────────
+    if do_edges and eg:
+        bm.verts.ensure_lookup_table()
+        bm.edges.ensure_lookup_table()
+        best_d2 = limit_sq
+        best_edge = None
+        for cell in _nearby(eg):
+            for elem in eg[cell]:
+                idx, ewx, ewy, ewz, enx, eny, enz = elem
+                dx = ewx - qx; dy = ewy - qy; dz = ewz - qz
+                if dx * dx + dy * dy + dz * dz > cull_sq:
+                    continue
                 e = bm.edges[idx]
-                if e.hide: continue
-
-                v1_world = mw @ e.verts[0].co
-                v2_world = mw @ e.verts[1].co
-
-                p1_2d = project_fast(v1_world)
-                p2_2d = project_fast(v2_world)
-
-                if p1_2d and p2_2d:
-                    intersect_2d = geometry.intersect_point_line(mouse, p1_2d, p2_2d)
-                    if intersect_2d:
-                        pt_on_seg_2d = intersect_2d[0]
-                        dist2 = (mouse - pt_on_seg_2d).length_squared
-                        if dist2 < limit_sq:
-                            seg_len = (p2_2d - p1_2d).length
-                            if seg_len > 0.001:
-                                factor = (pt_on_seg_2d - p1_2d).length / seg_len
-                                pt_3d = v1_world + (v2_world - v1_world) * factor
-                                return (pt_3d, wnm)
+                if e.hide:
+                    continue
+                v1w = mw @ e.verts[0].co
+                v2w = mw @ e.verts[1].co
+                v1x, v1y, v1z = v1w.x, v1w.y, v1w.z
+                v2x, v2y, v2z = v2w.x, v2w.y, v2w.z
+                # project endpoint 1
+                w1 = p30 * v1x + p31 * v1y + p32 * v1z + p33
+                if w1 <= 0.0:
+                    continue
+                iw1 = 1.0 / w1
+                s1x = W * (1.0 + (p00 * v1x + p01 * v1y + p02 * v1z + p03) * iw1) * 0.5
+                s1y = H * (1.0 + (p10 * v1x + p11 * v1y + p12 * v1z + p13) * iw1) * 0.5
+                # project endpoint 2
+                w2 = p30 * v2x + p31 * v2y + p32 * v2z + p33
+                if w2 <= 0.0:
+                    continue
+                iw2 = 1.0 / w2
+                s2x = W * (1.0 + (p00 * v2x + p01 * v2y + p02 * v2z + p03) * iw2) * 0.5
+                s2y = H * (1.0 + (p10 * v2x + p11 * v2y + p12 * v2z + p13) * iw2) * 0.5
+                # closest point on segment (inline, no Vector allocs)
+                ex = s2x - s1x; ey = s2y - s1y
+                elen_sq = ex * ex + ey * ey
+                if elen_sq < 0.001:
+                    continue
+                t_edge = ((mx - s1x) * ex + (my - s1y) * ey) / elen_sq
+                if t_edge < 0.0:
+                    t_edge = 0.0
+                elif t_edge > 1.0:
+                    t_edge = 1.0
+                cx = s1x + t_edge * ex
+                cy = s1y + t_edge * ey
+                sdx = mx - cx; sdy = my - cy
+                d2 = sdx * sdx + sdy * sdy
+                if d2 < best_d2:
+                    best_d2 = d2
+                    best_edge = (v1w, v2w, t_edge, enx, eny, enz)
+        if best_edge is not None:
+            v1w, v2w, t_edge, enx, eny, enz = best_edge
+            pt_3d = v1w + (v2w - v1w) * t_edge
+            return (pt_3d, Vector((enx, eny, enz)))
 
     return None

@@ -9,6 +9,7 @@ from bpy_extras.view3d_utils import region_2d_to_origin_3d, region_2d_to_vector_
 from .modal_state import state, reset_state_from_context
 from .orientation_utils import orthonormal_basis_from_normal
 from .plane_utils import world_to_plane, plane_to_world, project_mouse_to_ground, raycast_under_mouse
+from .snapping_utils import snap_to_mesh_components
 
 # --- PERSISTENT REGISTRY FIX ---
 # We store the registry in driver_namespace so it survives script reloads.
@@ -226,11 +227,6 @@ class ModalManager:
 
         # --- OPTIMIZATION: Skip expensive mesh snapping for Freehand tool ---
         if state.get("tool_mode") != "CURVE_FREEHAND":
-            try:
-                from .snapping_utils import snap_to_mesh_components
-            except ImportError:
-                def snap_to_mesh_components(**kwargs): return None
-
             snap_result = snap_to_mesh_components(
                 ctx, ctx.edit_object, x, y, max_px=snap_radius,
                 do_verts=state.get("snap_verts", True),
@@ -318,21 +314,21 @@ class ModalManager:
             # Use element normal from snap — no expensive scene raycast needed
             return snapped_pos, snapped_normal if snapped_normal else Vector((0,0,1))
         
+        # Compute ray once for both locked-plane and surface-raycast paths
+        ray_origin = region_2d_to_origin_3d(reg, rv3d, (x, y))
+        view_vec = region_2d_to_vector_3d(reg, rv3d, (x, y))
+
         is_locked = state.get("locked")
         locked_normal = state.get("locked_normal")
         if is_locked and locked_normal:
             l_point = state.get("pivot") or state.get("locked_plane_point") or Vector((0,0,0))
-            ray_origin = region_2d_to_origin_3d(reg, rv3d, (x,y))
-            ray_vector = region_2d_to_vector_3d(reg, rv3d, (x,y))
-            hit_plane = intersect_line_plane(ray_origin, ray_origin + ray_vector * 10000, l_point, locked_normal)
+            hit_plane = intersect_line_plane(ray_origin, ray_origin + view_vec * 10000, l_point, locked_normal)
             if hit_plane:
                 state["geometry_snap"] = False
                 state["last_surface_hit"] = hit_plane
                 state["last_surface_normal"] = locked_normal
                 return hit_plane, locked_normal
 
-        view_vec = region_2d_to_vector_3d(reg, rv3d, (x,y))
-        ray_origin = region_2d_to_origin_3d(reg, rv3d, (x,y))
         depsgraph = ctx.evaluated_depsgraph_get()
         hit, loc, norm, _, _, _ = ctx.scene.ray_cast(depsgraph, ray_origin, view_vec)
         if hit:
