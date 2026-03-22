@@ -66,7 +66,7 @@ def run(ctx, arc_verts, arc_edges):
     _pre_vert_count = len(bm.verts)  # snapshot before splits
     _p1_0 = _t.perf_counter()
     # This phase moves the ARC to the MESH. It is generally safe.
-    target_verts, target_edges = weld_utils.find_nearby_geometry(bm, arc_verts, radius * 2.0, mw)
+    target_verts, target_edges = weld_utils.find_nearby_geometry(bm, arc_verts, radius * 2.0, mw, obj)
     _p1_1 = _t.perf_counter()
 
     # CRITICAL: Snap endpoints to vertices/edges FIRST
@@ -111,50 +111,40 @@ def run(ctx, arc_verts, arc_edges):
         bm.edges.ensure_lookup_table()
 
         # Quick check: any faces parallel to drawing plane near the arc?
-        # Uses snap grid's pre-computed face normals/centers (numpy) instead of
-        # iterating 655k faces with matrix multiplies.
+        # Uses numpy foreach_get directly from mesh (no cache, always current).
         import numpy as np
-        from . import snapping_utils
 
         Zp = state.get("Zp", mathutils.Vector((0,0,1)))
         has_candidate_face = False
         arc_sample_world = mw @ arc_verts[0].co if arc_verts and arc_verts[0].is_valid else None
 
-        if arc_sample_world:
-            # Try snap grid first (pick closest match to current mesh)
-            grid_data = None
-            best_diff = float('inf')
-            n_bm_verts = len(bm.verts)
-            for key, cached in snapping_utils._snap_cache.items():
-                diff = abs(key[1] - n_bm_verts)
-                if diff < best_diff:
-                    best_diff = diff
-                    grid_data = cached
+        if arc_sample_world and len(me.polygons) > 0:
+            obj.update_from_editmode()
+            n_faces = len(me.polygons)
+            fc_flat = np.empty(n_faces * 3, dtype=np.float64)
+            fn_flat = np.empty(n_faces * 3, dtype=np.float64)
+            hide_f = np.empty(n_faces, dtype=bool)
+            me.polygons.foreach_get('center', fc_flat)
+            me.polygons.foreach_get('normal', fn_flat)
+            me.polygons.foreach_get('hide', hide_f)
 
-            if grid_data is not None:
-                fg = grid_data[2]  # face grid
-                if len(fg['wco']) > 0:
-                    zp_np = np.array(Zp[:], dtype=np.float64)
-                    dots = np.abs(fg['wnm'] @ zp_np)
-                    aligned_mask = dots > 0.9
-                    if aligned_mask.any():
-                        sample_np = np.array(arc_sample_world[:], dtype=np.float64)
-                        diffs = sample_np - fg['wco'][aligned_mask]
-                        plane_dists = np.abs(np.sum(diffs * fg['wnm'][aligned_mask], axis=1))
-                        has_candidate_face = bool(np.any(plane_dists <= 0.3))
-            else:
-                # Fallback: bmesh scan
-                mw_rot = mw.to_3x3()
-                bm.faces.ensure_lookup_table()
-                for f in bm.faces:
-                    if f.hide or f.select: continue
-                    f_norm_world = mw_rot @ f.normal
-                    if abs(f_norm_world.dot(Zp)) < 0.9: continue
-                    plane_co_world = mw @ f.verts[0].co
-                    dist = abs(mathutils.geometry.distance_point_to_plane(arc_sample_world, plane_co_world, f_norm_world))
-                    if dist <= 0.3:
-                        has_candidate_face = True
-                        break
+            mw_np = np.array(mw, dtype=np.float64).reshape(4, 4).T
+            rot_np = np.array(mw.to_3x3().normalized(), dtype=np.float64).reshape(3, 3).T
+
+            wfc = fc_flat.reshape(n_faces, 3) @ mw_np[:3, :3].T + mw_np[3, :3]
+            wfn = fn_flat.reshape(n_faces, 3) @ rot_np.T
+            fl = np.linalg.norm(wfn, axis=1, keepdims=True)
+            fl[fl < 1e-8] = 1.0
+            wfn /= fl
+
+            zp_np = np.array(Zp[:], dtype=np.float64)
+            dots = np.abs(wfn @ zp_np)
+            aligned_mask = (dots > 0.9) & ~hide_f
+            if aligned_mask.any():
+                sample_np = np.array(arc_sample_world[:], dtype=np.float64)
+                diffs = sample_np - wfc[aligned_mask]
+                plane_dists = np.abs(np.sum(diffs * wfn[aligned_mask], axis=1))
+                has_candidate_face = bool(np.any(plane_dists <= 0.3))
 
         print(f"  [WELD P2] has_candidate_face={has_candidate_face}")
         if has_candidate_face:

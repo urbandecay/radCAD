@@ -65,8 +65,9 @@ def safe_edge_split_vert_only(bm, edge, split_from_vert, fac):
 
 # --- SEARCH HELPERS ---
 
-def find_nearby_geometry(bm, arc_verts, radius, mw):
+def find_nearby_geometry(bm, arc_verts, radius, mw, obj=None):
     import time as _t
+    import numpy as np
     _t0 = _t.perf_counter()
 
     arc_vert_set = set(arc_verts)
@@ -77,107 +78,85 @@ def find_nearby_geometry(bm, arc_verts, radius, mw):
     if not arc_world:
         return [], []
 
-    # ── Try snap grid cache (avoids KDTree build + edge AABB scan) ──
-    from . import snapping_utils
-    import numpy as np
+    search_r = radius * 2.0
+    r2 = search_r * search_r
 
-    grid_data = None
-    gs = 0.5
-    current_verts = len(bm.verts)
-    best_diff = float('inf')
-    for key, cached in snapping_utils._snap_cache.items():
-        # Pick entry closest to current mesh state (handles undo correctly)
-        diff = abs(key[1] - current_verts)
-        if diff < best_diff:
-            best_diff = diff
-            grid_data = cached
-            gs = key[4]
+    # ── Fast path: numpy vectorized (no cache, always current) ──
+    if obj is not None and obj.type == 'MESH':
+        obj.update_from_editmode()
+        mesh = obj.data
+        n_verts = len(mesh.vertices)
+        n_edges = len(mesh.edges)
 
-    if grid_data is not None:
-      try:
-        vg, eg, fg = grid_data
-        search_r = radius * 2.0
-        r2 = search_r * search_r
-        inv_gs = 1.0 / gs
-
-        n_bm_verts = len(bm.verts)
-        n_bm_edges = len(bm.edges)
-        bm.verts.ensure_lookup_table()
-        bm.edges.ensure_lookup_table()
-
-        # ── VERTS: cell-based lookup ──
         target_verts = []
-        found_v = set()
-        cells_checked = 0
-
-        for aw in arc_world:
-            awx, awy, awz = float(aw.x), float(aw.y), float(aw.z)
-            cx0 = int(math.floor((awx - search_r) * inv_gs))
-            cy0 = int(math.floor((awy - search_r) * inv_gs))
-            cz0 = int(math.floor((awz - search_r) * inv_gs))
-            cx1 = int(math.floor((awx + search_r) * inv_gs))
-            cy1 = int(math.floor((awy + search_r) * inv_gs))
-            cz1 = int(math.floor((awz + search_r) * inv_gs))
-
-            for cx in range(cx0, cx1 + 1):
-                for cy in range(cy0, cy1 + 1):
-                    for cz in range(cz0, cz1 + 1):
-                        cells_checked += 1
-                        bounds = vg['cells'].get((cx, cy, cz))
-                        if not bounds: continue
-                        s, e = bounds
-                        cell_wco = vg['wco'][s:e]
-                        diffs = cell_wco - np.array([awx, awy, awz])
-                        dist_sq = (diffs * diffs).sum(axis=1)
-                        hits = np.where(dist_sq <= r2)[0]
-                        cell_idx = vg['idx'][s:e]
-                        for h in hits.tolist():
-                            idx = int(cell_idx[h])
-                            if idx not in found_v and idx < n_bm_verts:
-                                v = bm.verts[idx]
-                                if v not in arc_vert_set and not v.hide:
-                                    found_v.add(idx)
-                                    target_verts.append(v)
-
-        # ── EDGES: cell-based lookup (edge midpoints in grid) ──
         target_edges = []
-        found_e = set()
 
-        for aw in arc_world:
-            awx, awy, awz = float(aw.x), float(aw.y), float(aw.z)
-            # Search wider for edges (midpoint offset from endpoints)
-            er = search_r + gs
-            cx0 = int(math.floor((awx - er) * inv_gs))
-            cy0 = int(math.floor((awy - er) * inv_gs))
-            cz0 = int(math.floor((awz - er) * inv_gs))
-            cx1 = int(math.floor((awx + er) * inv_gs))
-            cy1 = int(math.floor((awy + er) * inv_gs))
-            cz1 = int(math.floor((awz + er) * inv_gs))
+        if n_verts > 0:
+            # Bulk get coords + hide (C speed via foreach_get)
+            co_flat = np.empty(n_verts * 3, dtype=np.float64)
+            hide_v = np.empty(n_verts, dtype=bool)
+            mesh.vertices.foreach_get('co', co_flat)
+            mesh.vertices.foreach_get('hide', hide_v)
+            co = co_flat.reshape(n_verts, 3)
 
-            for cx in range(cx0, cx1 + 1):
-                for cy in range(cy0, cy1 + 1):
-                    for cz in range(cz0, cz1 + 1):
-                        bounds = eg['cells'].get((cx, cy, cz))
-                        if not bounds: continue
-                        s, e = bounds
-                        for i in range(s, e):
-                            idx = int(eg['idx'][i])
-                            if idx in found_e or idx >= n_bm_edges: continue
-                            edge = bm.edges[idx]
-                            if not edge.hide and not (edge.verts[0] in arc_vert_set and edge.verts[1] in arc_vert_set):
-                                found_e.add(idx)
-                                target_edges.append(edge)
+            # World transform (numpy matmul)
+            mw_np = np.array(mw, dtype=np.float64).reshape(4, 4).T
+            wco = co @ mw_np[:3, :3].T + mw_np[3, :3]
+
+            # Arc vert indices to exclude
+            arc_idx_set = set(av.index for av in arc_verts if av.is_valid)
+
+            # Vectorized distance check per arc vert
+            vis = ~hide_v
+            found_v = set()
+            bm.verts.ensure_lookup_table()
+
+            for aw in arc_world:
+                aw_np = np.array(aw[:], dtype=np.float64)
+                dists_sq = np.sum((wco - aw_np) ** 2, axis=1)
+                hits = np.where((dists_sq <= r2) & vis)[0]
+                for idx in hits.tolist():
+                    if idx not in found_v and idx not in arc_idx_set and idx < len(bm.verts):
+                        found_v.add(idx)
+                        target_verts.append(bm.verts[idx])
+
+            # EDGES: vectorized AABB
+            if n_edges > 0:
+                arc_np = np.array([aw[:] for aw in arc_world], dtype=np.float64)
+                margin = max(search_r, 0.01)
+                arc_min = arc_np.min(axis=0) - margin
+                arc_max = arc_np.max(axis=0) + margin
+
+                ev = np.empty(n_edges * 2, dtype=np.int32)
+                hide_e = np.empty(n_edges, dtype=bool)
+                mesh.edges.foreach_get('vertices', ev)
+                mesh.edges.foreach_get('hide', hide_e)
+                ev = ev.reshape(n_edges, 2)
+
+                e_wco0 = wco[ev[:, 0]]
+                e_wco1 = wco[ev[:, 1]]
+                e_min = np.minimum(e_wco0, e_wco1)
+                e_max = np.maximum(e_wco0, e_wco1)
+
+                overlap = (
+                    (e_max[:, 0] >= arc_min[0]) & (e_min[:, 0] <= arc_max[0]) &
+                    (e_max[:, 1] >= arc_min[1]) & (e_min[:, 1] <= arc_max[1]) &
+                    (e_max[:, 2] >= arc_min[2]) & (e_min[:, 2] <= arc_max[2]) &
+                    ~hide_e
+                )
+
+                bm.edges.ensure_lookup_table()
+                for idx in np.where(overlap)[0].tolist():
+                    if idx < len(bm.edges):
+                        edge = bm.edges[idx]
+                        if not (edge.verts[0] in arc_vert_set and edge.verts[1] in arc_vert_set):
+                            target_edges.append(edge)
 
         _t1 = _t.perf_counter()
-        print(f"  [FIND_NEARBY grid] {(_t1-_t0)*1000:.1f}ms  verts={len(target_verts)}  edges={len(target_edges)}  cells_checked={cells_checked}  grid_verts={len(vg['wco'])}  grid_edges={len(eg['wco'])}  bm_verts={n_bm_verts}  bm_edges={n_bm_edges}  search_r={search_r:.4f}  gs={gs}")
+        print(f"  [FIND_NEARBY numpy] {(_t1-_t0)*1000:.1f}ms  verts={len(target_verts)}  edges={len(target_edges)}")
         return target_verts, target_edges
-      except Exception as ex:
-        import traceback
-        print(f"  [FIND_NEARBY grid] EXCEPTION: {ex}")
-        traceback.print_exc()
-        # Fall through to KDTree fallback
 
-    # ── Fallback: KDTree (only if snap grid not cached) ──
+    # ── Fallback: KDTree (if obj not provided) ──
     bg_verts = [v for v in bm.verts if v not in arc_vert_set and not v.hide]
     target_verts = []
 
