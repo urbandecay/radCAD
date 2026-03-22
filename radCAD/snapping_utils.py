@@ -74,6 +74,13 @@ def _build_grid(obj, bm, mw, gs):
     """
     import time as _t
     key = (id(obj.data), len(bm.verts), len(bm.edges), len(bm.faces), gs)
+
+    # ALWAYS clean stale entries BEFORE cache check (handles undo)
+    mesh_id = id(obj.data)
+    stale = [k for k in _snap_cache if k[0] == mesh_id and k != key]
+    for k in stale:
+        del _snap_cache[k]
+
     cached = _snap_cache.get(key)
     if cached is not None:
         return cached

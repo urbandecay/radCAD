@@ -83,23 +83,32 @@ def find_nearby_geometry(bm, arc_verts, radius, mw):
 
     grid_data = None
     gs = 0.5
+    current_verts = len(bm.verts)
+    best_diff = float('inf')
     for key, cached in snapping_utils._snap_cache.items():
-        grid_data = cached
-        gs = key[4]
-        break
+        # Pick entry closest to current mesh state (handles undo correctly)
+        diff = abs(key[1] - current_verts)
+        if diff < best_diff:
+            best_diff = diff
+            grid_data = cached
+            gs = key[4]
 
     if grid_data is not None:
+      try:
         vg, eg, fg = grid_data
         search_r = radius * 2.0
         r2 = search_r * search_r
         inv_gs = 1.0 / gs
 
+        n_bm_verts = len(bm.verts)
+        n_bm_edges = len(bm.edges)
         bm.verts.ensure_lookup_table()
         bm.edges.ensure_lookup_table()
 
         # ── VERTS: cell-based lookup ──
         target_verts = []
         found_v = set()
+        cells_checked = 0
 
         for aw in arc_world:
             awx, awy, awz = float(aw.x), float(aw.y), float(aw.z)
@@ -113,6 +122,7 @@ def find_nearby_geometry(bm, arc_verts, radius, mw):
             for cx in range(cx0, cx1 + 1):
                 for cy in range(cy0, cy1 + 1):
                     for cz in range(cz0, cz1 + 1):
+                        cells_checked += 1
                         bounds = vg['cells'].get((cx, cy, cz))
                         if not bounds: continue
                         s, e = bounds
@@ -123,7 +133,7 @@ def find_nearby_geometry(bm, arc_verts, radius, mw):
                         cell_idx = vg['idx'][s:e]
                         for h in hits.tolist():
                             idx = int(cell_idx[h])
-                            if idx not in found_v and idx < len(bm.verts):
+                            if idx not in found_v and idx < n_bm_verts:
                                 v = bm.verts[idx]
                                 if v not in arc_vert_set and not v.hide:
                                     found_v.add(idx)
@@ -152,15 +162,20 @@ def find_nearby_geometry(bm, arc_verts, radius, mw):
                         s, e = bounds
                         for i in range(s, e):
                             idx = int(eg['idx'][i])
-                            if idx in found_e or idx >= len(bm.edges): continue
+                            if idx in found_e or idx >= n_bm_edges: continue
                             edge = bm.edges[idx]
                             if not edge.hide and not (edge.verts[0] in arc_vert_set and edge.verts[1] in arc_vert_set):
                                 found_e.add(idx)
                                 target_edges.append(edge)
 
         _t1 = _t.perf_counter()
-        print(f"  [FIND_NEARBY grid] {(_t1-_t0)*1000:.1f}ms  verts={len(target_verts)}  edges={len(target_edges)}")
+        print(f"  [FIND_NEARBY grid] {(_t1-_t0)*1000:.1f}ms  verts={len(target_verts)}  edges={len(target_edges)}  cells_checked={cells_checked}  grid_verts={len(vg['wco'])}  grid_edges={len(eg['wco'])}  bm_verts={n_bm_verts}  bm_edges={n_bm_edges}  search_r={search_r:.4f}  gs={gs}")
         return target_verts, target_edges
+      except Exception as ex:
+        import traceback
+        print(f"  [FIND_NEARBY grid] EXCEPTION: {ex}")
+        traceback.print_exc()
+        # Fall through to KDTree fallback
 
     # ── Fallback: KDTree (only if snap grid not cached) ──
     bg_verts = [v for v in bm.verts if v not in arc_vert_set and not v.hide]

@@ -93,9 +93,12 @@ def run(ctx, arc_verts, arc_edges):
     for i in range(_pre_vert_count, len(bm.verts)):
         v = bm.verts[i]
         if v.is_valid: merge_verts.append(v)
+    _p1_4a = _t.perf_counter()
     bmesh.ops.remove_doubles(bm, verts=merge_verts, dist=radius)
+    _p1_4b = _t.perf_counter()
     bmesh.update_edit_mesh(me)
     _p1_5 = _t.perf_counter()
+    print(f"  [DOUBLES DETAIL] merge_verts={len(merge_verts)}  remove_doubles={(_p1_4b-_p1_4a)*1000:.0f}ms  update_edit_mesh={(_p1_5-_p1_4b)*1000:.0f}ms")
 
     print(f"  [WELD P1] find_nearby={(_p1_1-_p1_0)*1000:.0f}ms  heavy_weld={(_p1_2-_p1_1)*1000:.0f}ms  self_x={(_p1_3-_p1_2)*1000:.0f}ms  x_weld={(_p1_4-_p1_3)*1000:.0f}ms  doubles={(_p1_5-_p1_4)*1000:.0f}ms  total={(_p1_5-_p1_0)*1000:.0f}ms")
     dbg("Phase 1 (Endpoint Weld) Complete.")
@@ -118,11 +121,15 @@ def run(ctx, arc_verts, arc_edges):
         arc_sample_world = mw @ arc_verts[0].co if arc_verts and arc_verts[0].is_valid else None
 
         if arc_sample_world:
-            # Try snap grid first
+            # Try snap grid first (pick closest match to current mesh)
             grid_data = None
+            best_diff = float('inf')
+            n_bm_verts = len(bm.verts)
             for key, cached in snapping_utils._snap_cache.items():
-                grid_data = cached
-                break
+                diff = abs(key[1] - n_bm_verts)
+                if diff < best_diff:
+                    best_diff = diff
+                    grid_data = cached
 
             if grid_data is not None:
                 fg = grid_data[2]  # face grid
@@ -149,6 +156,7 @@ def run(ctx, arc_verts, arc_edges):
                         has_candidate_face = True
                         break
 
+        print(f"  [WELD P2] has_candidate_face={has_candidate_face}")
         if has_candidate_face:
             # Only scan selected edges/verts when we know there's a face to cut
             final_arc_edge_indices = [e.index for e in bm.edges if e.select]
