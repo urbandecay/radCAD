@@ -97,11 +97,17 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
     W, H = float(region.width), float(region.height)
     limit_sq = max_px * max_px
 
-    # ── grid size preference (one dict lookup) ──
-    try:
-        import bpy
-        gs = bpy.context.preferences.addons[__package__].preferences.snap_grid_size
-    except Exception:
+    # ── adaptive grid size based on mesh density ──
+    # With grid_size=10, a dense mesh puts 300K+ verts in 9 cells.
+    # We need cells small enough that each one has ~50-100 verts max.
+    n_verts = len(bm.verts)
+    if n_verts > 50000:
+        gs = 0.5
+    elif n_verts > 10000:
+        gs = 1.0
+    elif n_verts > 1000:
+        gs = 3.0
+    else:
         gs = 10.0
 
     _tc = _time.perf_counter()
@@ -124,8 +130,12 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
     ccx = int(qx // gs)
     ccy = int(qy // gs)
     ccz = int(qz // gs)
-    R = 3
-    cull_sq = (gs * 3.0) ** 2
+    # Scale search radius inversely with grid density
+    # gs=10 → R=3 (70 units), gs=1 → R=5 (11 units), gs=0.5 → R=7 (7.5 units)
+    R = max(3, int(5.0 / gs))
+    if R > 10:
+        R = 10
+    cull_sq = (gs * float(R)) ** 2
 
     search_cells = [
         (ccx + dx, ccy + dy, ccz + dz)
