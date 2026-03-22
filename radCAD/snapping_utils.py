@@ -449,3 +449,45 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
         print(f"  [SNAP DETAIL2] ray+cells={(_te-_td)*1000:.2f}ms  verts={(_tf-_te)*1000:.2f}ms  centers={(_tg-_tf)*1000:.2f}ms  edges=SKIPPED")
 
     return None
+
+
+def query_nearby_from_cache(obj, aabb_min, aabb_max, expand_cells=1):
+    """Query the snap grid cache for vert/edge indices within a world-space AABB.
+    Returns (v_indices, e_indices) as lists of int, or None if no cache for obj.
+    expand_cells: expand AABB by this many grid cells on each side (default 1).
+    """
+    if obj is None:
+        return None
+
+    obj_id = id(obj.data)
+    best_key = None
+    for key in _snap_cache:
+        if key[0] == obj_id:
+            best_key = key
+            break
+
+    if best_key is None:
+        return None
+
+    vg, eg, _ = _snap_cache[best_key]
+    gs = best_key[4]
+
+    amin = np.asarray(aabb_min, dtype=np.float64)
+    amax = np.asarray(aabb_max, dtype=np.float64)
+
+    if expand_cells > 0:
+        expand = gs * expand_cells
+        amin = amin - expand
+        amax = amax + expand
+
+    v_indices = []
+    if len(vg['wco']) > 0:
+        mask = np.all((vg['wco'] >= amin) & (vg['wco'] <= amax), axis=1)
+        v_indices = vg['idx'][mask].tolist()
+
+    e_indices = []
+    if len(eg['wco']) > 0:
+        mask = np.all((eg['wco'] >= amin) & (eg['wco'] <= amax), axis=1)
+        e_indices = eg['idx'][mask].tolist()
+
+    return (v_indices, e_indices)
