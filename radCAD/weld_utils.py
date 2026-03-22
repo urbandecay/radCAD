@@ -81,7 +81,70 @@ def find_nearby_geometry(bm, arc_verts, radius, mw, obj=None):
     search_r = radius * 2.0
     r2 = search_r * search_r
 
-    # ── Fast path: LOCAL-space AABB pre-filter + numpy (no world transform for 99% of mesh) ──
+    # ── FASTEST PATH: query snap grid cache for VERTS, walk bmesh for EDGES ──
+    if obj is not None:
+        from . import snapping_utils
+        arc_np = np.array([aw[:] for aw in arc_world], dtype=np.float64)
+        aabb_min = arc_np.min(axis=0) - search_r
+        aabb_max = arc_np.max(axis=0) + search_r
+
+        cache_result = snapping_utils.query_nearby_from_cache(obj, aabb_min, aabb_max)
+        if cache_result is not None:
+            v_indices, _e_indices = cache_result
+            arc_idx_set = set(av.index for av in arc_verts if av.is_valid)
+
+            bm.verts.ensure_lookup_table()
+            bm.edges.ensure_lookup_table()
+
+            # Distance-filter cached verts for target_verts
+            target_verts = []
+            for idx in v_indices:
+                if idx in arc_idx_set or idx >= len(bm.verts):
+                    continue
+                v = bm.verts[idx]
+                if not v.is_valid or v.hide:
+                    continue
+                v_w = mw @ v.co
+                for aw in arc_world:
+                    if (v_w - aw).length_squared <= r2:
+                        target_verts.append(v)
+                        break
+
+            # Walk link_edges from ALL cached nearby verts (not just distance-filtered)
+            # This catches edges that PASS THROUGH the arc area even if their midpoint is far
+            edge_aabb_margin = max(search_r * 10, 0.05)
+            edge_min = arc_np.min(axis=0) - edge_aabb_margin
+            edge_max = arc_np.max(axis=0) + edge_aabb_margin
+            seen_edges = set()
+            target_edges = []
+            for idx in v_indices:
+                if idx >= len(bm.verts):
+                    continue
+                v = bm.verts[idx]
+                if not v.is_valid:
+                    continue
+                for e in v.link_edges:
+                    if e.index in seen_edges or e.hide:
+                        continue
+                    seen_edges.add(e.index)
+                    if e.verts[0] in arc_vert_set and e.verts[1] in arc_vert_set:
+                        continue
+                    # Quick AABB check on edge endpoints in world space
+                    p0 = mw @ e.verts[0].co
+                    p1 = mw @ e.verts[1].co
+                    e_min_x = min(p0.x, p1.x); e_max_x = max(p0.x, p1.x)
+                    e_min_y = min(p0.y, p1.y); e_max_y = max(p0.y, p1.y)
+                    e_min_z = min(p0.z, p1.z); e_max_z = max(p0.z, p1.z)
+                    if (e_max_x >= edge_min[0] and e_min_x <= edge_max[0] and
+                        e_max_y >= edge_min[1] and e_min_y <= edge_max[1] and
+                        e_max_z >= edge_min[2] and e_min_z <= edge_max[2]):
+                        target_edges.append(e)
+
+            _t1 = _t.perf_counter()
+            print(f"  [FIND_NEARBY cache] {(_t1-_t0)*1000:.1f}ms  verts={len(target_verts)}  edges={len(target_edges)}  (from {len(v_indices)} cached verts)")
+            return target_verts, target_edges
+
+    # ── FALLBACK: LOCAL-space AABB pre-filter + numpy (no world transform for 99% of mesh) ──
     if obj is not None and obj.type == 'MESH':
         mesh = obj.data
         n_verts = len(mesh.vertices)
