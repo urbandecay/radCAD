@@ -335,6 +335,20 @@ class ModalManager:
                 return hit_plane, locked_normal
 
         _t2 = time.perf_counter()
+        # Throttle expensive scene raycast — only run if we don't have a recent surface hit
+        # For dense meshes (327k+ verts), ray_cast takes 300ms+ per frame
+        last_hit = state.get("last_surface_hit")
+        last_norm = state.get("last_surface_normal")
+        if last_hit is not None and last_norm is not None:
+            # Reuse last surface hit as a plane to project onto — skip expensive raycast
+            hit_plane = intersect_line_plane(ray_origin, ray_origin + view_vec * 10000, last_hit, last_norm)
+            if hit_plane:
+                state["geometry_snap"] = False
+                state["last_surface_hit"] = hit_plane
+                _t3 = time.perf_counter()
+                print(f"[SNAP PERF] snap={(_t1-_t0)*1000:.2f}ms  MISS→cached_plane ({(_t3-_t2)*1000:.2f}ms)")
+                return hit_plane, last_norm
+
         depsgraph = ctx.evaluated_depsgraph_get()
         hit, loc, norm, _, _, _ = ctx.scene.ray_cast(depsgraph, ray_origin, view_vec)
         _t3 = time.perf_counter()
