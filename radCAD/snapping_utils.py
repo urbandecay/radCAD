@@ -185,9 +185,11 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
     ccz = int(qz // gs)
 
     # Store debug info for grid visualization
+    # Show green cubes for ALL nearby cells (verts + edges + faces),
+    # so visualization updates correctly when snap mode changes
     _debug['query_cell'] = (ccx, ccy, ccz)
     _debug['gs'] = gs
-    _debug['nearby_cells'] = _nearby(vg)
+    _debug['nearby_cells'] = list(set(_nearby(vg)) | set(_nearby(eg)) | set(_nearby(fg)))
     _debug['all_cells'] = set(vg.keys()) | set(eg.keys()) | set(fg.keys())
 
     _te = _time.perf_counter()
