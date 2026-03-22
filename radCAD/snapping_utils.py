@@ -93,11 +93,17 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
             return None
         return Vector((W * (1 + v.x / v.w) * 0.5, H * (1 + v.y / v.w) * 0.5))
 
-    # Candidates list stores: (PRIORITY, DIST_SQ, WORLD_CO)
-    candidates = []
     limit_sq = max_px * max_px
+    best_vert = None
+    best_dist_vert = float('inf')
+    best_edge_center = None
+    best_dist_edge_center = float('inf')
+    best_face_center = None
+    best_dist_face_center = float('inf')
+    best_edge = None
+    best_dist_edge = float('inf')
 
-    # 1. Verts (Priority 0) — Brute force loop
+    # 1. Verts (Priority 0) — Find closest vert in bubble
     if do_verts:
         for v in bm.verts:
             if v.hide: continue
@@ -105,10 +111,15 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
             p2d = project_fast(wco)
             if p2d is None: continue
             d2 = (mouse - p2d).length_squared
-            if d2 < limit_sq:
-                candidates.append((0, d2, wco))
+            if d2 < limit_sq and d2 < best_dist_vert:
+                best_vert = wco
+                best_dist_vert = d2
 
-    # 2. Edge Centers (Priority 1) — Brute force loop
+    # If found a vert, snap to it (highest priority)
+    if best_vert is not None:
+        return best_vert
+
+    # 2. Edge Centers (Priority 1) — Find closest edge center in bubble
     if do_edge_center:
         for e in bm.edges:
             if e.hide: continue
@@ -116,10 +127,11 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
             p2d = project_fast(wco)
             if p2d is None: continue
             d2 = (mouse - p2d).length_squared
-            if d2 < limit_sq:
-                candidates.append((1, d2, wco))
+            if d2 < limit_sq and d2 < best_dist_edge_center:
+                best_edge_center = wco
+                best_dist_edge_center = d2
 
-    # 3. Face Centers (Priority 1) — Brute force loop
+    # 3. Face Centers (Priority 1) — Find closest face center in bubble
     if do_face_center:
         for f in bm.faces:
             if f.hide: continue
@@ -127,10 +139,20 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
             p2d = project_fast(wco)
             if p2d is None: continue
             d2 = (mouse - p2d).length_squared
-            if d2 < limit_sq:
-                candidates.append((1, d2, wco))
+            if d2 < limit_sq and d2 < best_dist_face_center:
+                best_face_center = wco
+                best_dist_face_center = d2
 
-    # 4. Nearest Point on Edge (Priority 2) — Brute force loop
+    # Return best edge or face center (whichever is closer)
+    if best_edge_center is not None or best_face_center is not None:
+        if best_edge_center is None:
+            return best_face_center
+        if best_face_center is None:
+            return best_edge_center
+        # Both exist, return closer one
+        return best_edge_center if best_dist_edge_center < best_dist_face_center else best_face_center
+
+    # 4. Nearest Point on Edge (Priority 2) — Find closest point on edge in bubble
     if do_edges:
         for e in bm.edges:
             if e.hide: continue
@@ -155,38 +177,15 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
 
                         dist2 = (mouse - pt_on_seg_2d).length_squared
 
-                        if dist2 < limit_sq:
+                        if dist2 < limit_sq and dist2 < best_dist_edge:
                             seg_len = (p2_2d - p1_2d).length
                             if seg_len > 0.001:
                                 factor = (pt_on_seg_2d - p1_2d).length / seg_len
                                 pt_3d = v1_world + (v2_world - v1_world) * factor
-                                candidates.append((2, dist2, pt_3d))
+                                best_edge = pt_3d
+                                best_dist_edge = dist2
 
-    # 5. Sort & Select with Two-Tier Snapping
-    candidates.sort(key=lambda item: (item[0], item[1]))
-
-    # Tight bubble (0-5px) = snap instantly, outer bubble (5-15px) = only if tight is empty
-    TIGHT_BUBBLE_PX = 5.0
-    tight_bubble_sq = TIGHT_BUBBLE_PX * TIGHT_BUBBLE_PX
-
-    tight_candidates = []
-    outer_candidates = []
-
-    # Split candidates
-    for prio, dist_sq, co in candidates:
-        if dist_sq < tight_bubble_sq:
-            tight_candidates.append((prio, dist_sq, co))
-        else:
-            outer_candidates.append((prio, dist_sq, co))
-
-    # Snap to closest candidate in tight bubble, no occlusion check
-    if tight_candidates:
-        prio, dist_sq, co = tight_candidates[0]
-        return co
-
-    # If nothing in tight bubble, snap to closest in outer bubble, no occlusion check
-    if outer_candidates:
-        prio, dist_sq, co = outer_candidates[0]
-        return co
+    if best_edge is not None:
+        return best_edge
 
     return None
