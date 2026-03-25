@@ -51,7 +51,8 @@ class SpatialGrid:
     def _add_to_cell(self, key, category, data):
         if key not in self.cells:
             self.cells[key] = {"verts": [], "edge_centers": [],
-                               "face_centers": [], "edges": []}
+                               "face_centers": [], "edges": [],
+                               "vert_idxs": [], "edge_idxs": []}
         self.cells[key][category].append(data)
 
     def _full_rebuild(self, obj, bm):
@@ -74,7 +75,9 @@ class SpatialGrid:
             v = bm.verts[i]
             if v.hide: continue
             wco = mw @ v.co
-            self._add_to_cell(self._cell_key(wco), "verts", wco)
+            ck = self._cell_key(wco)
+            self._add_to_cell(ck, "verts", wco)
+            self._add_to_cell(ck, "vert_idxs", i)
 
         # Edges
         for i in range(self._binned_edges, ne):
@@ -86,6 +89,7 @@ class SpatialGrid:
             ck = self._cell_key(center)
             self._add_to_cell(ck, "edge_centers", center)
             self._add_to_cell(ck, "edges", (v1w, v2w))
+            self._add_to_cell(ck, "edge_idxs", i)
 
         # Faces
         for i in range(self._binned_faces, nf):
@@ -178,6 +182,24 @@ class SpatialGrid:
         i, j, k = cell_key
         return (Vector((i * s, j * s, k * s)),
                 Vector(((i + 1) * s, (j + 1) * s, (k + 1) * s)))
+
+    def get_cells_in_bounds(self, min_v, max_v, padding=1):
+        """Return populated cell keys overlapping the given world-space AABB."""
+        min_i = int(math.floor(min_v.x * self.inv_cell)) - padding
+        min_j = int(math.floor(min_v.y * self.inv_cell)) - padding
+        min_k = int(math.floor(min_v.z * self.inv_cell)) - padding
+        max_i = int(math.floor(max_v.x * self.inv_cell)) + padding
+        max_j = int(math.floor(max_v.y * self.inv_cell)) + padding
+        max_k = int(math.floor(max_v.z * self.inv_cell)) + padding
+
+        result = []
+        for ci in range(min_i, max_i + 1):
+            for cj in range(min_j, max_j + 1):
+                for ck in range(min_k, max_k + 1):
+                    key = (ci, cj, ck)
+                    if key in self.cells:
+                        result.append(key)
+        return result
 
 
 # Module-level grid instance (persists across frames, rebuilt only on topo change)

@@ -164,61 +164,128 @@ def _split_edge_at_cuts(bm, edge, cuts, mw_inv, crossing_verts, weld_targetmap):
 
 # --- SEARCH HELPERS ---
 
-def find_nearby_geometry(bm, arc_verts, radius, mw):
+def find_nearby_geometry(bm, arc_verts, radius, mw, obj=None):
     arc_vert_set = set(arc_verts)
-    
-    # 1. Verts (KDTree)
-    bg_verts = [v for v in bm.verts if v not in arc_vert_set and not v.hide]
-    target_verts = []
-    
-    if bg_verts:
-        kd = KDTree(len(bg_verts))
-        for i, v in enumerate(bg_verts):
-            kd.insert(mw @ v.co, i)
-        kd.balance()
-        
-        found_v_idxs = set()
-        for av in arc_verts:
-            if not av.is_valid: continue
-            p_w = mw @ av.co
-            for (co, index, dist) in kd.find_range(p_w, radius * 2.0):
-                found_v_idxs.add(index)
-        target_verts = [bg_verts[i] for i in found_v_idxs]
 
-    # 2. Edges (AABB)
+    # Build arc bounding box in world space
     min_v = Vector((float('inf'),)*3)
     max_v = Vector((float('-inf'),)*3)
-    
     valid_arc = False
+    arc_world_pts = []
     for av in arc_verts:
-        if av.is_valid:
-            valid_arc = True
-            p = mw @ av.co
-            min_v.x = min(min_v.x, p.x); min_v.y = min(min_v.y, p.y); min_v.z = min(min_v.z, p.z)
-            max_v.x = max(max_v.x, p.x); max_v.y = max(max_v.y, p.y); max_v.z = max(max_v.z, p.z)
-            
+        if not av.is_valid: continue
+        valid_arc = True
+        p = mw @ av.co
+        arc_world_pts.append(p)
+        min_v.x = min(min_v.x, p.x); min_v.y = min(min_v.y, p.y); min_v.z = min(min_v.z, p.z)
+        max_v.x = max(max_v.x, p.x); max_v.y = max(max_v.y, p.y); max_v.z = max(max_v.z, p.z)
+
+    if not valid_arc:
+        return [], []
+
+    margin = max(radius * 2.0, 0.01)
+    search_min = min_v - Vector((margin, margin, margin))
+    search_max = max_v + Vector((margin, margin, margin))
+
+    # Local-space AABB for fallback paths (avoids per-element matrix multiply)
+    local_min = Vector((float('inf'),)*3)
+    local_max = Vector((float('-inf'),)*3)
+    for av in arc_verts:
+        if not av.is_valid: continue
+        co = av.co
+        local_min.x = min(local_min.x, co.x); local_min.y = min(local_min.y, co.y); local_min.z = min(local_min.z, co.z)
+        local_max.x = max(local_max.x, co.x); local_max.y = max(local_max.y, co.y); local_max.z = max(local_max.z, co.z)
+    local_smin = local_min - Vector((margin, margin, margin))
+    local_smax = local_max + Vector((margin, margin, margin))
+
+    # Try spatial grid for O(nearby) instead of O(all edges)
+    from . import snapping_utils
+    grid = snapping_utils.get_spatial_grid()
+    if not grid.cells and obj is not None:
+        grid.build(obj, bm)
+    use_grid = bool(grid.cells)
+
+    # 1. Verts
+    target_verts = []
+    r2 = (radius * 2.0) ** 2
+
+    if use_grid:
+        nearby_cells = grid.get_cells_in_bounds(search_min, search_max)
+        candidate_vidxs = set()
+        for ck in nearby_cells:
+            candidate_vidxs.update(grid.cells[ck].get("vert_idxs", []))
+
+        bm.verts.ensure_lookup_table()
+        for idx in candidate_vidxs:
+            if idx >= len(bm.verts): continue
+            v = bm.verts[idx]
+            if v.hide or v in arc_vert_set: continue
+            v_w = mw @ v.co
+            for ap in arc_world_pts:
+                if (v_w - ap).length_squared <= r2:
+                    target_verts.append(v)
+                    break
+    else:
+        bg_verts = [v for v in bm.verts if v not in arc_vert_set and not v.hide]
+        if bg_verts:
+            # Local-space KDTree — no matrix multiply per vert
+            kd = KDTree(len(bg_verts))
+            for i, v in enumerate(bg_verts):
+                kd.insert(v.co, i)
+            kd.balance()
+            found_v_idxs = set()
+            for av in arc_verts:
+                if not av.is_valid: continue
+                for (co, index, dist) in kd.find_range(av.co, radius * 2.0):
+                    found_v_idxs.add(index)
+            target_verts = [bg_verts[i] for i in found_v_idxs]
+
+    # 2. Edges
     target_edges = set()
-    if valid_arc:
-        margin = max(radius * 2.0, 0.01) 
-        min_v -= Vector((margin, margin, margin))
-        max_v += Vector((margin, margin, margin))
-        
+
+    if use_grid:
+        candidate_eidxs = set()
+        for ck in nearby_cells:
+            candidate_eidxs.update(grid.cells[ck].get("edge_idxs", []))
+
+        bm.edges.ensure_lookup_table()
+        for idx in candidate_eidxs:
+            if idx >= len(bm.edges): continue
+            e = bm.edges[idx]
+            if e.hide: continue
+            if e.verts[0] in arc_vert_set and e.verts[1] in arc_vert_set: continue
+
+            p1 = mw @ e.verts[0].co
+            p2 = mw @ e.verts[1].co
+
+            e_min_x = min(p1.x, p2.x); e_max_x = max(p1.x, p2.x)
+            if e_max_x < search_min.x or e_min_x > search_max.x: continue
+            e_min_y = min(p1.y, p2.y); e_max_y = max(p1.y, p2.y)
+            if e_max_y < search_min.y or e_min_y > search_max.y: continue
+            e_min_z = min(p1.z, p2.z); e_max_z = max(p1.z, p2.z)
+            if e_max_z < search_min.z or e_min_z > search_max.z: continue
+
+            target_edges.add(e)
+
+        dbg(f"Grid search: {len(candidate_eidxs)} edge candidates from {len(nearby_cells)} cells -> {len(target_edges)} hits")
+    else:
+        # Local-space AABB check — no matrix multiply per edge
         for e in bm.edges:
             if e.hide: continue
             if e.verts[0] in arc_vert_set and e.verts[1] in arc_vert_set: continue
-            
-            p1 = mw @ e.verts[0].co
-            p2 = mw @ e.verts[1].co
-            
+
+            p1 = e.verts[0].co
+            p2 = e.verts[1].co
+
             e_min_x = min(p1.x, p2.x); e_max_x = max(p1.x, p2.x)
-            if e_max_x < min_v.x or e_min_x > max_v.x: continue
+            if e_max_x < local_smin.x or e_min_x > local_smax.x: continue
             e_min_y = min(p1.y, p2.y); e_max_y = max(p1.y, p2.y)
-            if e_max_y < min_v.y or e_min_y > max_v.y: continue
+            if e_max_y < local_smin.y or e_min_y > local_smax.y: continue
             e_min_z = min(p1.z, p2.z); e_max_z = max(p1.z, p2.z)
-            if e_max_z < min_v.z or e_min_z > max_v.z: continue
-            
+            if e_max_z < local_smin.z or e_min_z > local_smax.z: continue
+
             target_edges.add(e)
-            
+
     return list(set(target_verts)), list(target_edges)
 
 

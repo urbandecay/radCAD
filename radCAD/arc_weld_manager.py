@@ -62,7 +62,7 @@ def run(ctx, arc_verts, arc_edges):
 
     # --- PHASE 1: PRE-WELD (Snap Arc Ends to Existing Geometry) ---
     # This phase moves the ARC to the MESH. It is generally safe.
-    target_verts, target_edges = weld_utils.find_nearby_geometry(bm, arc_verts, radius * 2.0, mw)
+    target_verts, target_edges = weld_utils.find_nearby_geometry(bm, arc_verts, radius * 2.0, mw, obj=obj)
     
     # CRITICAL: Snap endpoints to vertices/edges FIRST
     weld_utils.perform_heavy_weld(bm, arc_verts, (target_verts, target_edges), radius, mw)
@@ -136,6 +136,13 @@ def _run_knife_project_final(ctx, obj, arc_edge_indices, arc_coords_to_find):
     arc_radius = (max_v - min_v).length * 0.5
     if arc_radius == 0: arc_radius = 1.0
 
+    # Local-space center for fast distance culling (skips distant geometry like dense balls)
+    arc_local_center = mathutils.Vector((0, 0, 0))
+    for co in arc_coords_to_find:
+        arc_local_center += co
+    arc_local_center /= len(arc_coords_to_find)
+    cull_dist_sq = (arc_radius + 1.0) ** 2
+
     sample_point_world = mw @ arc_coords_to_find[0]
     
     candidates = [] 
@@ -145,6 +152,9 @@ def _run_knife_project_final(ctx, obj, arc_edge_indices, arc_coords_to_find):
     
     for f in bm.faces:
         if f.hide or f.select: continue
+        # Quick distance cull — skip faces far from arc (no matrix multiply)
+        if (f.calc_center_median() - arc_local_center).length_squared > cull_dist_sq:
+            continue
         f_norm_world = mw_rot @ f.normal
         
         # NOTE: This check ensures we only cut faces parallel to the drawing plane.
@@ -258,7 +268,10 @@ def _run_knife_project_final(ctx, obj, arc_edge_indices, arc_coords_to_find):
             
             for v in bm_final.verts:
                 if v.hide: continue
-                
+                # Quick distance cull — skip verts far from arc
+                if (v.co - arc_local_center).length_squared > cull_dist_sq:
+                    continue
+
                 if v.select:
                     # --- NEWLY CUT VERTEX ---
                     # It was selected by the Knife Project. Teleport it to the ideal mathematical position.
