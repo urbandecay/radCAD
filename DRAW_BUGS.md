@@ -288,3 +288,50 @@ Result: when P flips the rectangle perpendicular, the target is determined by wh
 1. Compute the final basis first (set Zp/Xp/Yp for the mode you're in)
 2. THEN resolve the target using `intersect_line_plane(ray, anchor, Zp)` with that basis
 3. The resulting point will lie on your intended plane with the correct dimensionality
+
+---
+
+## Bug: X-crossing weld only catches first intersection per edge
+
+**Date:** 2026-03-25
+**Affected code:** `radCAD/weld_utils.py` — `perform_x_weld()` and `perform_self_x_weld()`
+
+### What was wrong
+
+When a drawn line crossed two (or more) existing edges, only one intersection would get welded. The other crossing point was silently skipped. Direction-dependent — sometimes the near one welded, sometimes the far one, depending on edge vert order.
+
+### Why it happened
+
+The old code split edges **immediately** when it found an intersection, inside the detection loop. After `bmesh.utils.edge_split()`:
+
+1. Arc edge at `s=0.7` is found crossing target edge — split happens
+2. `ae` (the arc edge reference) now points to the **shortened** portion `[0, 0.7]`
+3. The next crossing at `s=0.3` (relative to the original full edge) is on the **other** half `[0.7, 1.0]` — but that half is a new edge object the loop never visits
+4. Second crossing is silently lost
+
+Same problem in `perform_self_x_weld` — split-as-you-go means each split invalidates the edge references for subsequent crossings.
+
+### Why this was hard to debug
+
+The weld *partially* worked — you'd get one clean crossing out of two. It looked like a tolerance or detection issue ("maybe the second intersection is too far away?"). But the detection math was fine. The real problem was that `edge_split` changes the topology mid-loop, and the loop had no idea the edge it was iterating over just got shorter.
+
+The failed "split rescaling" attempt (rescale `s` parameters after each split) was mathematically sound on paper, but broke because it didn't track which *new edge object* to continue splitting — it kept trying to split the original (now-shortened) edge.
+
+### What was fixed
+
+Ported rCAD's **collect-then-split** approach:
+
+1. **Phase 1 — Detect ALL intersections** without modifying anything. Store `(edge, param, world_pos)` tuples.
+2. **Phase 2 — Create crossing verts** at each unique intersection point (one BMVert per crossing).
+3. **Phase 3 — Group cuts by edge**, sort by parameter ascending.
+4. **Phase 4 — Split in order with renormalization**: `fac_local = (t_abs - prev_t) / (1.0 - prev_t)`. After each split, find the continuation edge via `edge_between(new_vert, curr_right)` and advance along it.
+5. **Phase 5 — Weld** all split verts to their crossing verts via `bmesh.ops.weld_verts(bm, targetmap=...)`.
+
+Key helpers added:
+- `edge_between(v1, v2)` — find the edge connecting two verts
+- `_find_next_edge(new_vert, curr_left, curr_right)` — find continuation edge after split (with dot-product fallback)
+- `_split_edge_at_cuts(bm, edge, cuts, ...)` — shared splitting logic for both functions
+
+### Rule of thumb
+
+**Never modify topology inside a detection loop.** `edge_split` changes the mesh graph — the edge you just split is now a different object with different endpoints. Collect all the information you need first, THEN do all the splits in a second pass. When splitting an edge at multiple points, sort by parameter and renormalize: `fac = (next_t - prev_t) / (1.0 - prev_t)`. Track the continuation edge after each split with `edge_between()`.

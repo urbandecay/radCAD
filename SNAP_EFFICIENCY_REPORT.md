@@ -281,6 +281,38 @@ The grid speeds up the coarse filter by ~95% (skip cells with no nearby geometry
 
 ---
 
+## CRITICAL FIX: Incomplete X-Crossing Weld (2026-03-25)
+
+**Problem:** When a line crossed multiple edges, only one intersection would weld. Draw a diagonal crossing two target edges — only one junction forms, the other stays unwelded.
+
+**Root cause:** `perform_x_weld()` and `perform_self_x_weld()` split edges **immediately** during intersection detection. After the first split:
+- `edge_split(ae, v, 0.3)` shortens the arc edge to `[start, new_v]`
+- The second crossing at parameter `0.7` is on the orphaned `[new_v, end]` half
+- Loop never visits that new edge object → second crossing silently lost
+
+Attempted fix (split rescaling) was mathematically correct but didn't track which edge object to continue splitting after each split.
+
+**Solution:** Ported rCAD's collect-then-split approach from `/home/molotovgirl/Desktop/rCAD/rCAD_utils/weld_tools/x_weld_op.py`:
+
+1. **Phase 1 — Detect ALL** without modifications. Store `(edge, param, world_pos)` for each crossing.
+2. **Phase 2 — Create crossing verts** at each unique intersection point.
+3. **Phase 3 — Group cuts by edge**, sort ascending by parameter.
+4. **Phase 4 — Split in order with renormalization**:
+   ```python
+   fac_local = (t_abs - prev_t) / (1.0 - prev_t)
+   ```
+   After each split, find continuation edge via `edge_between(new_vert, curr_right)`.
+5. **Phase 5 — Weld** all split verts to crossing verts via `bmesh.ops.weld_verts(bm, targetmap=...)`.
+
+**Code changes:**
+- `weld_utils.py`: Added `edge_between()`, `_find_next_edge()`, `_split_edge_at_cuts()` helpers
+- Rewrote `perform_x_weld()` and `perform_self_x_weld()` with 5-phase collect-then-split
+- Both now handle multiple crossings per edge correctly
+
+**Result:** ✅ Draw diagonal crossing two edges — both junctions weld cleanly.
+
+---
+
 ## SOLUTION: Ray-Cast Grid Lookup (2026-03-25) ✅
 
 **The Insight (user suggestion):** Stop trying to estimate a world-space radius from the pixel snap distance. Instead: **cast the actual cursor ray through the grid, find which cells it passes through, and search only those cells (plus neighbors).**
@@ -387,3 +419,48 @@ For a scene where you're doing many small commits (which is the whole CAD workfl
 3. The grid lookup or project_fast is slower than expected for the cell count being processed
 
 **Next steps:** Profile the actual slowdown point — is it the grid rebuild, the cell iteration, or something upstream?
+
+---
+
+## CRITICAL BLOCKER: Incomplete Weld (Ongoing Since Branch Start)
+
+**Issue:** Welding happens but is **incomplete**. Not all expected welds occur during commit.
+
+**Status:** This is a pre-existing issue since this branch began. It's NOT a regression from recent changes — it's a foundational problem.
+
+**Priority:** **FIX WELD COMPLETENESS FIRST** before attempting any efficiency optimizations. Fixing an incomplete weld function will likely help with the commit slowness anyway, or at least let us diagnose the real bottleneck without weld being a confounding factor.
+
+**Current State:** At commit `1ec31c7`, weld works (though incompletely) and commit is slow. This is the baseline. Later attempts to optimize commit speed broke weld further and should be avoided until weld is fixed.
+
+---
+
+## Failed Weld Fix Attempt: Split Rescaling (2026-03-25)
+
+**Symptom:** Diagonal line crossing two target edges only welds at one intersection (direction-dependent). Verts move freely when edited, confirming weld is incomplete.
+
+**Root Cause Hypothesis:** In `perform_x_weld()`, when one arc edge crosses multiple target edges:
+1. First intersection at `s=0.7` is found and processed
+2. `edge_split()` is called, splitting arc edge into [0, 0.7] and [0.7, 1.0] portions
+3. Original `ae` reference now points to [0, 0.7] portion only
+4. Second intersection at `s=0.3` (relative to original full edge) is on the other half — never processed because `ae` is now shorter
+5. Direction mattered because vertex order flips the parameter calculation
+
+**Attempted Fix:** Two-phase approach:
+- **Phase 1:** Collect ALL intersections first before any splits
+- **Phase 2:** Apply splits in descending `s` order with parameter rescaling
+  - Track `remaining_s` (fraction of original edge still extant)
+  - When splitting at original `s=0.7`, subsequent hit at original `s=0.3` gets rescaled: `adjusted_s = 0.3 / 0.7`
+  - After each split, update `remaining_s = s`
+
+**Why it should have worked:** If you split the far end first and rescale remaining parameters, earlier splits should stay valid. This is mathematically sound in theory.
+
+**What actually happened:** ❌ **FAILED** — Diagonal intersections stopped welding entirely. Even opposite-direction draws no longer work partially. Weld is completely broken.
+
+**Conclusion:** Either:
+1. My understanding of `bmesh.utils.edge_split()` return values or behavior is wrong
+2. The rescaling math is inverted or backwards
+3. The problem is not a simple parameter rescaling issue — it's something deeper about how `edge_split` invalidates edge references or bmesh state
+
+**What this tells us:** The bug is NOT just "splits happen in the wrong order." The underlying issue is more fundamental than parameter math. Needs deeper investigation of bmesh edge splitting behavior and what `ae.is_valid` actually returns after splits.
+
+
