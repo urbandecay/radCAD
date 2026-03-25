@@ -78,8 +78,7 @@ def run(ctx, arc_verts, arc_edges):
         if v.is_valid: v.select = True
     
     bmesh.ops.remove_doubles(bm, verts=[v for v in bm.verts if v.select], dist=radius)
-    bmesh.update_edit_mesh(me)
-    
+
     dbg("Phase 1 (Endpoint Weld) Complete.")
     
     # --- PHASE 2: KNIFE PROJECT ---
