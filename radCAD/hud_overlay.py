@@ -180,8 +180,11 @@ def draw_hotkeys_panel():
     if not state.get("show_hotkeys", True): return
     if state.get("tool_mode") in ["LINE_TANGENT_FROM_CURVE", "CURVE_FREEHAND"]: return
 
-    perp_state = "ON" if state.get("is_perpendicular") else "OFF"
-    perp_col = None 
+    if state.get("stage") == 0:
+        perp_state = "ON" if state.get("pre_perpendicular") else "OFF"
+    else:
+        perp_state = "ON" if state.get("is_perpendicular") else "OFF"
+    perp_col = None
 
     tool_mode = state.get("tool_mode", "1POINT")
     lines = []
@@ -192,7 +195,7 @@ def draw_hotkeys_panel():
         show_perp = True
     elif tool_mode in ["CIRCLE_2POINT", "CIRCLE_3POINT"] and state["stage"] == 1:
         show_perp = True
-    elif tool_mode == "1POINT" and state["stage"] >= 1:
+    elif tool_mode == "1POINT":
         show_perp = True
     elif tool_mode in ["ELLIPSE_RADIUS", "ELLIPSE_ENDPOINTS", "ELLIPSE_FOCI", "POLYGON_CENTER_CORNER", "POLYGON_CENTER_TANGENT", "POLYGON_CORNER_CORNER", "POLYGON_EDGE", "RECTANGLE_3_POINTS"] and state["stage"] >= 1:
         show_perp = True

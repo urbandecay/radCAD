@@ -34,6 +34,11 @@ class ArcTool_Common(SurfaceDrawTool):
         self.ref_normal = Vector((0,0,1))
         self.vertical_override_axis = None # None means 'Auto'
 
+        # Always reset pre-perpendicular state on new invocation so P starts fresh
+        self.state["pre_perpendicular"] = False
+        self.state["pre_perpendicular_axis"] = None
+        self.state["pre_perp_floor_normal"] = None
+
     def update(self, context, event, snap_point, snap_normal):
         # 0. Check for numerical input override
         if self.state.get("skip_mouse_update"):
@@ -65,6 +70,20 @@ class ArcTool_Common(SurfaceDrawTool):
         if self.stage == 0:
             self.update_initial_plane(context, event, snap_point, snap_normal)
             if self.Zp: self.ref_normal = self.Zp.copy()
+
+            # Dynamic vertical reorientation for 1POINT when P is active
+            if self.mode == "1POINT" and self.state.get("pre_perpendicular"):
+                floor_n = self.state.get("pre_perp_floor_normal", self.ref_normal)
+                ax_x, ax_y, _ = orthonormal_basis_from_normal(floor_n)
+                rv3d = context.region_data
+                view_dir = rv3d.view_matrix.inverted().to_3x3() @ Vector((0, 0, -1))
+                new_Zp = ax_x if abs(view_dir.dot(ax_x)) > abs(view_dir.dot(ax_y)) else ax_y
+                if new_Zp.dot(view_dir) > 0:
+                    new_Zp = -new_Zp
+                self.Zp = new_Zp.normalized()
+                self.Yp = floor_n.normalized()
+                self.Xp = self.Yp.cross(self.Zp).normalized()
+                self.state["locked_normal"] = self.Zp
             return
 
         # --- STAGE 1 & 2: THE SPECIALIST ---
@@ -482,7 +501,15 @@ class ArcTool_Common(SurfaceDrawTool):
                 # 2-Point: Just record normal, don't hard lock yet
                 self.state["locked"] = False
             
-            if self.Zp: self.ref_normal = self.Zp.copy()
+            # Restore true floor normal if pre-perp was active (Zp is now vertical axis)
+            if self.state.get("pre_perpendicular"):
+                saved = self.state.get("pre_perp_floor_normal")
+                if saved: self.ref_normal = saved.copy()
+                self.state["pre_perpendicular"] = False
+                self.state["pre_perpendicular_axis"] = None
+                self.state["pre_perp_floor_normal"] = None
+            elif self.Zp:
+                self.ref_normal = self.Zp.copy()
             self.stage = 1
             return 'NEXT_STAGE'
 
@@ -610,7 +637,26 @@ class ArcTool_Common(SurfaceDrawTool):
 
         # 2. Tool Specifics (P Key)
         if event.type == 'P' and event.value == 'PRESS':
-            if self.stage == 0: return False
+            if self.stage == 0:
+                # --- PRE-ARC VERTICAL TOGGLE (1POINT only) ---
+                if self.mode != "1POINT":
+                    return False
+                rv3d = context.region_data
+
+                if self.state.get("pre_perpendicular"):
+                    # Second press — turn off
+                    self.state["pre_perpendicular"] = False
+                    self.state["pre_perp_floor_normal"] = None
+                    self.state["locked"] = False
+                    self.state["locked_normal"] = None
+                    self.core.report({'INFO'}, "Vertical Mode: Off")
+                else:
+                    # First press — capture floor normal, update loop handles orientation dynamically
+                    self.state["pre_perp_floor_normal"] = self.ref_normal.copy()
+                    self.state["pre_perpendicular"] = True
+                    self.state["locked"] = True
+                    self.core.report({'INFO'}, "Vertical: On")
+                return True
             bridge = None
             
             if self.mode == "1POINT":
