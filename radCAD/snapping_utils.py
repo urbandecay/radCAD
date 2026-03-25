@@ -30,8 +30,13 @@ class SpatialGrid:
         # Each cell stores lists: {"verts": [...], "edge_centers": [...],
         #                          "face_centers": [...], "edges": [...]}
         self.cells = {}
-        # Cache key: (obj_name, vert_count, edge_count, face_count, matrix_hash)
-        self._cache_key = None
+        # Cache key: (obj_name, matrix_hash)
+        self._cache_obj = None
+        self._cache_mat_hash = None
+        # Track how many elements we've already binned (for incremental updates)
+        self._binned_verts = 0
+        self._binned_edges = 0
+        self._binned_faces = 0
         # Debug: which cells were searched last frame
         self.debug_searched_cells = []
         self.debug_candidate_cells = []
@@ -49,31 +54,31 @@ class SpatialGrid:
                                "face_centers": [], "edges": []}
         self.cells[key][category].append(data)
 
-    def build(self, obj, bm):
-        """Rebuild the grid from the bmesh. Only rebuilds if topology changed."""
+    def _full_rebuild(self, obj, bm):
+        """Nuke the grid and re-bin everything from scratch."""
         mw = obj.matrix_world
-        # Quick hash of the matrix to detect transforms
-        m = mw
-        mat_hash = hash((round(m[0][0],4), round(m[0][3],4),
-                         round(m[1][1],4), round(m[1][3],4),
-                         round(m[2][2],4), round(m[2][3],4)))
-
-        new_key = (obj.name, len(bm.verts), len(bm.edges), len(bm.faces), mat_hash)
-        if new_key == self._cache_key:
-            return  # No change, skip rebuild
-
-        self._cache_key = new_key
         self.cells.clear()
+        self._binned_verts = 0
+        self._binned_edges = 0
+        self._binned_faces = 0
+        self._incremental_add(obj, bm, mw)
 
-        # Bin verts
-        for v in bm.verts:
+    def _incremental_add(self, obj, bm, mw):
+        """Bin only the NEW elements (indices >= what we've already binned)."""
+        nv = len(bm.verts)
+        ne = len(bm.edges)
+        nf = len(bm.faces)
+
+        # Verts
+        for i in range(self._binned_verts, nv):
+            v = bm.verts[i]
             if v.hide: continue
             wco = mw @ v.co
-            ck = self._cell_key(wco)
-            self._add_to_cell(ck, "verts", wco)
+            self._add_to_cell(self._cell_key(wco), "verts", wco)
 
-        # Bin edge centers + full edge data
-        for e in bm.edges:
+        # Edges
+        for i in range(self._binned_edges, ne):
+            e = bm.edges[i]
             if e.hide: continue
             v1w = mw @ e.verts[0].co
             v2w = mw @ e.verts[1].co
@@ -82,18 +87,57 @@ class SpatialGrid:
             self._add_to_cell(ck, "edge_centers", center)
             self._add_to_cell(ck, "edges", (v1w, v2w))
 
-        # Bin face centers
-        for f in bm.faces:
+        # Faces
+        for i in range(self._binned_faces, nf):
+            f = bm.faces[i]
             if f.hide: continue
             wco = mw @ f.calc_center_median()
-            ck = self._cell_key(wco)
-            self._add_to_cell(ck, "face_centers", wco)
+            self._add_to_cell(self._cell_key(wco), "face_centers", wco)
 
+        self._binned_verts = nv
+        self._binned_edges = ne
+        self._binned_faces = nf
         self.debug_all_cells = list(self.cells.keys())
+
+    def build(self, obj, bm):
+        """Update the grid. Does incremental add if only topology grew,
+        full rebuild if object changed or transform moved."""
+        mw = obj.matrix_world
+        m = mw
+        mat_hash = hash((round(m[0][0],4), round(m[0][3],4),
+                         round(m[1][1],4), round(m[1][3],4),
+                         round(m[2][2],4), round(m[2][3],4)))
+
+        nv, ne, nf = len(bm.verts), len(bm.edges), len(bm.faces)
+        obj_changed = (self._cache_obj != obj.name)
+        mat_changed = (self._cache_mat_hash != mat_hash)
+
+        # If the object or transform changed, full rebuild is required
+        if obj_changed or mat_changed:
+            self._cache_obj = obj.name
+            self._cache_mat_hash = mat_hash
+            self._full_rebuild(obj, bm)
+            return
+
+        # If counts shrunk (deletion happened), full rebuild
+        if nv < self._binned_verts or ne < self._binned_edges or nf < self._binned_faces:
+            self._full_rebuild(obj, bm)
+            return
+
+        # If counts are the same, nothing to do
+        if nv == self._binned_verts and ne == self._binned_edges and nf == self._binned_faces:
+            return
+
+        # Counts grew — incremental add (the fast path!)
+        self._incremental_add(obj, bm, mw)
 
     def invalidate(self):
         """Force a full rebuild on next build() call."""
-        self._cache_key = None
+        self._cache_obj = None
+        self._cache_mat_hash = None
+        self._binned_verts = 0
+        self._binned_edges = 0
+        self._binned_faces = 0
 
     def get_cells_along_ray(self, ray_origin, ray_dir, max_depth=100.0, padding=1):
         """Return all populated cell keys that the cursor ray passes through,

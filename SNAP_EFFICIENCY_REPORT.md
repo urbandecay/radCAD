@@ -334,3 +334,56 @@ nearby_cells = _spatial_grid.get_cells_along_ray(ray_origin, ray_dir)
 **Why previous attempts failed:** Every approach tried to reverse-engineer "what world-space radius corresponds to 15px at this camera distance?" That's a hard, zoom-dependent problem. The ray-cast approach doesn't ask that question — it just uses geometry that's directly on the cursor line.
 
 **Next steps:** Grid is now working correctly for snapping. Remaining optimization: cache invalidation. The grid rebuilds on topology/transform change, but for massive scenes with frequent small edits, this cache logic could be smarter. See "Caching & Weld Fixes" section above for prior work.
+
+---
+
+## Cache Optimization Opportunity (2026-03-25)
+
+**Current Behavior:**
+
+The grid cache is solid — it avoids rebuilding when nothing changes. But when topology DOES change (every time you commit an arc/line), the `build()` method re-scans the **entire mesh** and re-bins everything, even if you only added 50 new verts to a million-vert mesh.
+
+**The Problem:**
+
+When you commit geometry:
+1. Old grid is invalidated (vert count changed)
+2. Code calls `bmesh.from_edit_mesh()` and `ensure_lookup_table()` — fresh on every frame
+3. `build()` iterates through **all** verts/edges/faces to re-bin them
+4. For a 1M-vert mesh: 1M iterations in pure Python just to grid the 50 new verts you added
+
+It's like throwing out your organized filing cabinet and re-filing everything because you got new paperwork.
+
+**The Fix:** ✅ IMPLEMENTED (2026-03-25)
+
+Incremental grid updates instead of full rebuilds. `build()` now has three paths:
+
+1. **Object or transform changed** → full rebuild (positions moved, no shortcut possible)
+2. **Element counts shrunk** (deletion) → full rebuild (can't know which indices were removed)
+3. **Element counts grew** (the common CAD case!) → **incremental add** — only bin new elements starting from the last known index
+
+Implementation details:
+- Tracks `_binned_verts`, `_binned_edges`, `_binned_faces` — how many elements are already in the grid
+- `_incremental_add()` iterates only from `self._binned_N` to `len(bm.N)` — the delta
+- Exploits bmesh's append-only indexing: new geometry always gets higher indices during edit mode
+- `_full_rebuild()` clears and re-bins everything (used for transform changes and deletions)
+- `invalidate()` resets all counters to force a full rebuild
+
+**Impact:**
+
+- **Before:** Commit arc → invalidate cache → 1M iterations to rebuild grid → slow
+- **After:** Commit arc → add 50 new verts to grid → instant
+
+For a scene where you're doing many small commits (which is the whole CAD workflow), this is a massive win.
+
+---
+
+## Field Assessment (2026-03-25)
+
+**Observation:** Drawing starts fast, but the moment geometry is committed, things get super slow.
+
+**Implication:** The incremental cache isn't solving the bottleneck. Either:
+1. The cache invalidation is happening when it shouldn't (forcing full rebuilds on every commit)
+2. Something else in the snapping/commit pipeline is O(n) and blocking
+3. The grid lookup or project_fast is slower than expected for the cell count being processed
+
+**Next steps:** Profile the actual slowdown point — is it the grid rebuild, the cell iteration, or something upstream?
