@@ -8,6 +8,7 @@ import bpy
 from .modal_state import state, style
 from .plane_utils import world_radius_for_pixel_size
 from .orientation_utils import orthonormal_basis_from_normal
+from .snapping_utils import get_spatial_grid
 
 # =========================================================================
 #  SHADER MANAGEMENT
@@ -888,6 +889,68 @@ def draw_preview_tan_tan_tan(ctx, shaders, prefs):
     if viz_diam and len(viz_diam) == 2:
         draw_line(ctx, shaders, viz_diam[0], viz_diam[1], (1, 0.8, 0, 1), prefs)
 
+def draw_snap_grid_overlay(ctx, shaders):
+    """Draw the spatial grid cells as wireframe cubes in the 3D viewport.
+
+    Color coding:
+      Gray  = cells that contain geometry (populated)
+      Yellow = cells being searched this frame (pre-filter region)
+      Green = cells that yielded actual snap candidates
+    """
+    grid = get_spatial_grid()
+    if not grid.cells:
+        return
+
+    sh = shaders["UNIFORM"]
+    sh.bind()
+
+    def draw_cell_wireframe(cell_key, color):
+        mn, mx = grid.cell_bounds(cell_key)
+        # 12 edges of a cube
+        edges = [
+            (mn, Vector((mx.x, mn.y, mn.z))),
+            (mn, Vector((mn.x, mx.y, mn.z))),
+            (mn, Vector((mn.x, mn.y, mx.z))),
+            (mx, Vector((mn.x, mx.y, mx.z))),
+            (mx, Vector((mx.x, mn.y, mx.z))),
+            (mx, Vector((mx.x, mx.y, mn.z))),
+            (Vector((mx.x, mn.y, mn.z)), Vector((mx.x, mx.y, mn.z))),
+            (Vector((mx.x, mn.y, mn.z)), Vector((mx.x, mn.y, mx.z))),
+            (Vector((mn.x, mx.y, mn.z)), Vector((mx.x, mx.y, mn.z))),
+            (Vector((mn.x, mx.y, mn.z)), Vector((mn.x, mx.y, mx.z))),
+            (Vector((mn.x, mn.y, mx.z)), Vector((mx.x, mn.y, mx.z))),
+            (Vector((mn.x, mn.y, mx.z)), Vector((mn.x, mx.y, mx.z))),
+        ]
+        verts = []
+        for a, b in edges:
+            verts.extend([a, b])
+        sh.uniform_float("color", color)
+        batch = batch_for_shader(sh, 'LINES', {"pos": verts})
+        batch.draw(sh)
+
+    searched_set = set(grid.debug_searched_cells)
+    candidate_set = set(grid.debug_candidate_cells)
+
+    gpu.state.line_width_set(1.0)
+
+    # Draw all populated cells in gray (skip searched/candidate — drawn on top)
+    for ck in grid.debug_all_cells:
+        if ck in searched_set:
+            continue
+        draw_cell_wireframe(ck, (0.4, 0.4, 0.4, 0.15))
+
+    # Draw searched cells in yellow
+    for ck in searched_set:
+        if ck in candidate_set:
+            continue
+        draw_cell_wireframe(ck, (1.0, 1.0, 0.0, 0.3))
+
+    # Draw candidate cells in green
+    for ck in candidate_set:
+        draw_cell_wireframe(ck, (0.0, 1.0, 0.0, 0.5))
+
+    gpu.state.line_width_set(1.0)
+
 def draw_cb_3d():
     if not state["active"]: return
     try:
@@ -903,7 +966,11 @@ def draw_cb_3d():
         
         settings = get_render_settings(ctx)
         shaders = get_shaders()
-        
+
+        # --- SPATIAL GRID DEBUG OVERLAY ---
+        if state.get("show_snap_grid", False):
+            draw_snap_grid_overlay(ctx, shaders)
+
         # --- NEW: DRAW GREY CATMULL OUTLINES FOR INPUT SELECTION ---
         catmull_outlines = state.get("catmull_spline_previews", [])
         if catmull_outlines:

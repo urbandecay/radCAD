@@ -723,6 +723,7 @@ def modal_arc_common(self, ctx, ev):
         if ev.type == 'F2': state["snap_edges"] = not state.get("snap_edges", False); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
         if ev.type == 'F3': state["snap_edge_center"] = not state.get("snap_edge_center", False); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
         if ev.type == 'F4': state["snap_face_center"] = not state.get("snap_face_center", False); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
+        if ev.type == 'F6': state["show_snap_grid"] = not state.get("show_snap_grid", False); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
 
         if ev.type == 'C': state["use_angle_snap"] = not state.get("use_angle_snap", True); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
         if ev.type == 'W': state["auto_weld"] = not state.get("auto_weld", True); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
@@ -800,6 +801,7 @@ def modal_arc_common(self, ctx, ev):
                     elif k == "snap_face_center": state["snap_face_center"] = not state.get("snap_face_center", False)
                     elif k == "toggle_angle": state["use_angle_snap"] = not state.get("use_angle_snap", True)
                     elif k == "weld_btn": state["auto_weld"] = not state.get("auto_weld", True)
+                    elif k == "show_snap_grid": state["show_snap_grid"] = not state.get("show_snap_grid", False)
                     ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
             
             if self.manager.active_tool:

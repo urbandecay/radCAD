@@ -298,6 +298,7 @@ def draw_bottom_bar():
         ("F4: Face Center", state.get("snap_face_center", False), "snap_face_center"),
         ("C: Compass", state.get("use_angle_snap", True), "toggle_angle"),
         ("W: Weld", state.get("auto_weld", True), "weld_btn"),
+        ("F6: Grid", state.get("show_snap_grid", False), "show_snap_grid"),
     ]
     
     # --- FIXED: Only show Weld for Tan Tan tool ---

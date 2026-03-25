@@ -124,7 +124,8 @@ state = {
     "is_perpendicular": False,
     "ui_hitboxes": {},
     "snap_point": None,
-    "current_axis_vector": None # NEW: Tracks axis alignment for coloring
+    "current_axis_vector": None, # NEW: Tracks axis alignment for coloring
+    "show_snap_grid": True  # Debug overlay: show spatial grid cells
 }
 
 style = {
