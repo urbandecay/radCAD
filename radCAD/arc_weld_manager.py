@@ -80,21 +80,57 @@ def run(ctx, arc_verts, arc_edges):
     bmesh.ops.remove_doubles(bm, verts=[v for v in bm.verts if v.select], dist=radius)
 
     dbg("Phase 1 (Endpoint Weld) Complete.")
-    
+
+    # --- PHASE 1.5: DIRECT FACE SPLIT ---
+    # After x-weld, arc edges may connect face boundary verts through the face interior.
+    # Split those faces directly — more reliable than knife_project for coplanar cuts.
+    bm.verts.ensure_lookup_table()
+    bm.edges.ensure_lookup_table()
+    bm.faces.ensure_lookup_table()
+
+    face_splits = 0
+    changed = True
+    while changed:
+        changed = False
+        for e in list(bm.edges):
+            if not e.is_valid or not e.select:
+                continue
+            v1, v2 = e.verts
+            # Find faces that contain BOTH verts in their boundary but NOT this edge
+            common_faces = set(v1.link_faces) & set(v2.link_faces)
+            for f in common_faces:
+                if e in f.edges:
+                    continue  # edge is already part of the face boundary
+                if f.hide:
+                    continue
+                try:
+                    bmesh.utils.face_split(f, v1, v2, use_exist=True)
+                    face_splits += 1
+                    changed = True
+                except Exception:
+                    pass
+            if changed:
+                bm.faces.ensure_lookup_table()
+                break  # restart after topology change
+
+    if face_splits:
+        dbg(f"Phase 1.5: Direct face split cut {face_splits} face(s).")
+        bmesh.update_edit_mesh(me)
+
     # --- PHASE 2: KNIFE PROJECT ---
     if state.get("weld_to_faces", True):
         bm = bmesh.from_edit_mesh(me)
         bm.verts.ensure_lookup_table()
         bm.edges.ensure_lookup_table()
-        
+
         # Save indices and coords to find them after the cut
         final_arc_edge_indices = [e.index for e in bm.edges if e.select]
-        
+
         # CRITICAL: These are the "Ideal" coordinates where the vertices SHOULD be.
         final_arc_coords = [v.co.copy() for v in bm.verts if v.select]
-        
+
         dbg(f"Preparing Knife Project for {len(final_arc_edge_indices)} edges.")
-        
+
         if final_arc_edge_indices:
             _run_knife_project_final(ctx, obj, final_arc_edge_indices, final_arc_coords)
 

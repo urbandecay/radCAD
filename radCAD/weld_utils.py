@@ -114,6 +114,7 @@ def _split_edge_at_cuts(bm, edge, cuts, mw_inv, crossing_verts, weld_targetmap):
             continue
         uniq.append((param, w_pos, rk))
 
+    was_selected = edge.select
     base_v0 = edge.verts[0]
     curr_edge = edge
     curr_left = base_v0
@@ -154,6 +155,11 @@ def _split_edge_at_cuts(bm, edge, cuts, mw_inv, crossing_verts, weld_targetmap):
         nxt_edge = _find_next_edge(new_vert, curr_left, curr_right)
         if nxt_edge is None:
             break
+
+        # Propagate selection: if the original edge was selected (arc edge),
+        # keep all split fragments selected so Phase 2 knife cutter sees them
+        if was_selected and nxt_edge.is_valid:
+            nxt_edge.select = True
 
         curr_left = new_vert
         curr_edge = nxt_edge

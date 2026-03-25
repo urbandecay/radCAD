@@ -335,3 +335,28 @@ Key helpers added:
 ### Rule of thumb
 
 **Never modify topology inside a detection loop.** `edge_split` changes the mesh graph — the edge you just split is now a different object with different endpoints. Collect all the information you need first, THEN do all the splits in a second pass. When splitting an edge at multiple points, sort by parameter and renormalize: `fac = (next_t - prev_t) / (1.0 - prev_t)`. Track the continuation edge after each split with `edge_between()`.
+
+---
+
+## Bug: Line draw on face doesn't cut the face (edges intersect but face stays intact)
+
+### What was wrong
+Drawing a line on a face with the polyline tool would weld into the face's edges correctly (Phase 1 x-weld worked), but the face itself never got split. The line just sat there crossing the face boundary edges without actually cutting the polygon.
+
+### Why it happened
+Two compounding issues:
+
+1. **Selection loss during edge splits:** `_split_edge_at_cuts` uses `bmesh.utils.edge_split`, which does NOT propagate selection to new edges. After x-weld splits an arc edge at face boundary crossings, only the original (shortened) fragment stays selected. The inside-the-face fragments are new, unselected edges — so the knife cutter misses them.
+
+2. **Knife project is the wrong tool for coplanar cuts:** Even with selection fixed, Phase 2's `knife_project` approach is fundamentally fragile for this case. After Phase 1 x-weld creates junction vertices on the face boundary and arc edges connect them through the face interior, the geometry is ALREADY there — we just need to tell bmesh to split the face. Knife project depends on view alignment, redraw timing, and projecting a cutter that's coplanar with the target — all unreliable.
+
+### Why this was hard to debug
+Phase 1 x-weld visually succeeds — vertices snap, edges split at intersections, everything looks connected. The knife project runs without errors. The face just... doesn't split. You'd assume the knife worked and look for issues elsewhere, when the real problem is that the knife approach itself is ill-suited for geometry that's already topologically connected.
+
+### What was fixed
+1. **`weld_utils.py`** `_split_edge_at_cuts`: propagate `was_selected = edge.select` to continuation edges after each split, so all arc fragments stay selected.
+
+2. **`arc_weld_manager.py`** new Phase 1.5: after x-weld and remove_doubles, directly split faces using `bmesh.utils.face_split`. For each selected edge, find faces that contain both its endpoint verts in their boundary but don't contain the edge itself — those faces need to be cut along that edge. This is deterministic and doesn't depend on view state.
+
+### Rule of thumb
+**If the topology is already there (edges connecting face boundary verts), use `face_split` — don't project a knife.** Knife project is for cutting faces where no edges exist yet. When edges already connect boundary verts through the face interior, `bmesh.utils.face_split(face, v1, v2, use_exist=True)` is the direct, reliable solution.
