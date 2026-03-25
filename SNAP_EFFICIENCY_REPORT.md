@@ -262,3 +262,75 @@ The grid speeds up the coarse filter by ~95% (skip cells with no nearby geometry
    - If `r_cells` is 0 or 1 when cursor is near geometry, radius is too small
 
 **Likely fix:** Increase the 2.0x multiplier in `_estimate_search_radius()` to 3.0x or 4.0x, or improve the unprojection math for orthographic views.
+
+---
+
+## Attempted Solution: Multi-Depth Ray Sampling + Cell Padding (2026-03-25)
+
+**Approach:**
+1. Instead of using a single reference point (raycast hit), sample multiple points along the cursor ray at different depths (1, 5, 15 BU)
+2. Add union of all nearby cells from all these reference points
+3. Increase cell boundary padding from `r = max(1, ceil(...))` to `r = max(2, ceil(...) + 1)`
+4. Bump safety margin from 2.0x to 3.0x in `_estimate_search_radius()`
+
+**Rationale:** The original approach centered the grid search on a single raycast hit point, which could be at a vastly different depth than the vertices you're trying to snap to. Multi-depth sampling would catch geometry the single raycast missed. Extra cell padding would handle boundary cases.
+
+**Result:** ❌ **FAILED** — Gray cells still don't turn yellow when cursor enters them. Verts still don't snap. Issue persists unchanged.
+
+**Conclusion:** The problem is not boundary artifacts or a single "wrong" reference point. The fundamental issue is that `_estimate_search_radius()` is computing the world-space radius incorrectly for the actual cursor position, or the grid cells themselves aren't being populated correctly for the geometry under the cursor.
+
+---
+
+## SOLUTION: Ray-Cast Grid Lookup (2026-03-25) ✅
+
+**The Insight (user suggestion):** Stop trying to estimate a world-space radius from the pixel snap distance. Instead: **cast the actual cursor ray through the grid, find which cells it passes through, and search only those cells (plus neighbors).**
+
+**Why it works:** The cursor ray IS the line of sight. If a cell is on the ray, the cursor is looking at it. No radius estimation, no depth guessing, no unprojection math.
+
+**Implementation:**
+- New method `get_cells_along_ray(ray_origin, ray_dir, max_depth, padding)`
+- Steps along the ray in half-cell increments (won't skip cells)
+- Records every cell the ray passes through up to 100 BU depth
+- Expands by padding=1 in all directions to catch boundary geometry
+- Returns union of all these cells
+
+**Code changes:**
+```python
+def get_cells_along_ray(self, ray_origin, ray_dir, max_depth=100.0, padding=1):
+    """Step along the cursor ray, record cells it passes through,
+    expand by padding, return all nearby cells."""
+    step = self.cell_size * 0.5
+    num_steps = int(max_depth / step)
+    visited = set()
+
+    for i in range(num_steps):
+        t = i * step
+        pt = ray_origin + ray_dir * t
+        ck = self._cell_key(pt)
+        visited.add(ck)
+
+    # Expand each visited cell by padding
+    result_set = set()
+    for (ci, cj, ck_z) in visited:
+        for dx in range(-padding, padding + 1):
+            for dy in range(-padding, padding + 1):
+                for dz in range(-padding, padding + 1):
+                    key = (ci + dx, cj + dy, ck_z + dz)
+                    if key in self.cells:
+                        result_set.add(key)
+
+    return list(result_set)
+```
+
+In `snap_to_mesh_components()`:
+```python
+ray_origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, (x, y))
+ray_dir = view3d_utils.region_2d_to_vector_3d(region, rv3d, (x, y))
+nearby_cells = _spatial_grid.get_cells_along_ray(ray_origin, ray_dir)
+```
+
+**Result:** ✅ **WORKS PERFECTLY** — Gray cells turn yellow the instant the cursor ray enters them. Snapping catches all geometry correctly.
+
+**Why previous attempts failed:** Every approach tried to reverse-engineer "what world-space radius corresponds to 15px at this camera distance?" That's a hard, zoom-dependent problem. The ray-cast approach doesn't ask that question — it just uses geometry that's directly on the cursor line.
+
+**Next steps:** Grid is now working correctly for snapping. Remaining optimization: cache invalidation. The grid rebuilds on topology/transform change, but for massive scenes with frequent small edits, this cache logic could be smarter. See "Caching & Weld Fixes" section above for prior work.

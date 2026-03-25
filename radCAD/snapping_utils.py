@@ -95,33 +95,36 @@ class SpatialGrid:
         """Force a full rebuild on next build() call."""
         self._cache_key = None
 
-    def get_nearby_cells(self, world_pos, radius):
-        """Return all cell keys within `radius` world units of `world_pos`.
+    def get_cells_along_ray(self, ray_origin, ray_dir, max_depth=100.0, padding=1):
+        """Return all populated cell keys that the cursor ray passes through,
+        plus `padding` neighbor cells around each one.
 
-        This is the coarse filter. We intentionally use a GENEROUS radius
-        so we never miss valid snap candidates. The screen-space check
-        handles precision.
+        This is dead simple: step along the ray, record which cells we enter,
+        then expand by `padding` in all directions. No radius estimation,
+        no unprojection math. The ray IS the cursor — if a cell is on the ray,
+        the cursor is looking at it.
         """
-        inv = self.inv_cell
-        cx = world_pos.x * inv
-        cy = world_pos.y * inv
-        cz = world_pos.z * inv
-        r = max(1, int(math.ceil(radius * inv)))
+        step = self.cell_size * 0.5  # Half-cell steps so we never skip a cell
+        num_steps = int(max_depth / step)
+        visited = set()
 
-        ix, iy, iz = int(math.floor(cx)), int(math.floor(cy)), int(math.floor(cz))
+        for i in range(num_steps):
+            t = i * step
+            pt = ray_origin + ray_dir * t
+            ck = self._cell_key(pt)
+            visited.add(ck)
 
-        result = []
-        for dx in range(-r, r + 1):
-            for dy in range(-r, r + 1):
-                for dz in range(-r, r + 1):
-                    key = (ix + dx, iy + dy, iz + dz)
-                    if key in self.cells:
-                        result.append(key)
+        # Expand each visited cell by padding to catch boundary geometry
+        result_set = set()
+        for (ci, cj, ck_z) in visited:
+            for dx in range(-padding, padding + 1):
+                for dy in range(-padding, padding + 1):
+                    for dz in range(-padding, padding + 1):
+                        key = (ci + dx, cj + dy, ck_z + dz)
+                        if key in self.cells:
+                            result_set.add(key)
 
-        # DEBUG: Uncomment to diagnose search radius issues
-        # print(f"[GRID DEBUG] world_pos={world_pos}, radius={radius:.2f}, cell_size={self.cell_size}, "
-        #       f"r_cells={r}, center_cell=({ix},{iy},{iz}), found_cells={len(result)}")
-
+        result = list(result_set)
         self.debug_searched_cells = result
         return result
 
@@ -248,11 +251,7 @@ def _estimate_search_radius(region, rv3d, world_pos, px_radius):
 
     # Multiply by safety margin — we'd rather search a few extra cells
     # than miss a valid snap candidate
-    final_radius = world_radius * 2.0
-
-    # DEBUG: Uncomment to diagnose search radius calculation
-    # print(f"[RADIUS] px_radius={px_radius}, depth={depth:.3f}, world_radius={world_radius:.3f}, "
-    #       f"final={final_radius:.3f}, p2d={p2d}")
+    final_radius = world_radius * 3.0
 
     return final_radius
 
@@ -296,17 +295,11 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
     # Build/update spatial grid (cached, only rebuilds on topo/transform change)
     _spatial_grid.build(obj, bm)
 
-    # Determine the world-space search area
-    # We need a reference point to estimate the pixel-to-world scale.
-    # Use the raycast hit point under the cursor, or fall back to view target.
-    ref_hit, _, _ = raycast_under_mouse(ctx, x, y)
-    if ref_hit is None:
-        # No surface under cursor — use the view center/target as depth reference
-        view_loc = rv3d.view_location
-        ref_hit = view_loc
-
-    search_radius = _estimate_search_radius(region, rv3d, ref_hit, max_px)
-    nearby_cells = _spatial_grid.get_nearby_cells(ref_hit, search_radius)
+    # Cast a ray from the cursor into the scene and find which grid cells
+    # it passes through. Simple as it gets — no radius estimation needed.
+    ray_origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, (x, y))
+    ray_dir = view3d_utils.region_2d_to_vector_3d(region, rv3d, (x, y))
+    nearby_cells = _spatial_grid.get_cells_along_ray(ray_origin, ray_dir)
 
     # Fast projection setup
     project = _make_project_fast(region, rv3d)
