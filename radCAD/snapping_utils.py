@@ -369,17 +369,22 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
     is_ortho = rv3d.view_perspective == 'ORTHO'
 
     if is_ortho:
-        # Ortho: ray march fails (origin far from geometry, parallel rays).
-        # Use ALL populated cells — screen-space loop filters precisely.
-        nearby_cells = list(_spatial_grid.cells.keys())
+        # Ortho rays are parallel — no camera point, so ray marching fails.
+        # Fix: "undistort" by creating a fake camera point behind the view
+        # and casting an angled ray from there through the cursor's world
+        # position. Turns ortho into perspective-style marching.
+        fake_cam = Vector(rv3d.view_location) - ray_dir * rv3d.view_distance
+        cursor_world = view3d_utils.region_2d_to_location_3d(
+            region, rv3d, (x, y), rv3d.view_location
+        )
+        angled_dir = (cursor_world - fake_cam).normalized()
+        nearby_cells = _spatial_grid.get_cells_along_ray(
+            fake_cam, angled_dir,
+            max_depth=rv3d.view_distance + ctx.space_data.clip_end
+        )
         _spatial_grid.debug_searched_cells = list(nearby_cells)
-        # One-shot log to prove this code path is alive
-        if not getattr(_spatial_grid, '_ortho_diag', False):
-            _spatial_grid._ortho_diag = True
-            print(f"[ORTHO_SNAP] Code loaded — {len(nearby_cells)} cells, {len(bm.verts)} verts")
     else:
         nearby_cells = _spatial_grid.get_cells_along_ray(ray_origin, ray_dir)
-        _spatial_grid._ortho_diag = False  # reset so next ortho entry re-logs
 
     # Projection: ortho needs Blender's built-in (perspective_matrix doesn't work)
     if is_ortho:
