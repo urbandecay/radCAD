@@ -362,13 +362,31 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
     _spatial_grid.build(obj, bm)
 
     # Cast a ray from the cursor into the scene and find which grid cells
-    # it passes through. Simple as it gets — no radius estimation needed.
+    # it passes through.
     ray_origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, (x, y))
     ray_dir = view3d_utils.region_2d_to_vector_3d(region, rv3d, (x, y))
-    nearby_cells = _spatial_grid.get_cells_along_ray(ray_origin, ray_dir)
 
-    # Fast projection setup
-    project = _make_project_fast(region, rv3d)
+    is_ortho = rv3d.view_perspective == 'ORTHO'
+
+    if is_ortho:
+        # Ortho: ray march fails (origin far from geometry, parallel rays).
+        # Use ALL populated cells — screen-space loop filters precisely.
+        nearby_cells = list(_spatial_grid.cells.keys())
+        _spatial_grid.debug_searched_cells = list(nearby_cells)
+        # One-shot log to prove this code path is alive
+        if not getattr(_spatial_grid, '_ortho_diag', False):
+            _spatial_grid._ortho_diag = True
+            print(f"[ORTHO_SNAP] Code loaded — {len(nearby_cells)} cells, {len(bm.verts)} verts")
+    else:
+        nearby_cells = _spatial_grid.get_cells_along_ray(ray_origin, ray_dir)
+        _spatial_grid._ortho_diag = False  # reset so next ortho entry re-logs
+
+    # Projection: ortho needs Blender's built-in (perspective_matrix doesn't work)
+    if is_ortho:
+        def project(wco):
+            return location_3d_to_region_2d(region, rv3d, wco)
+    else:
+        project = _make_project_fast(region, rv3d)
 
     # Candidates list stores: (PRIORITY, DIST_SQ, WORLD_CO)
     candidates = []
@@ -447,6 +465,18 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
                                     candidate_cell_keys.add(ck)
 
     _spatial_grid.debug_candidate_cells = list(candidate_cell_keys)
+
+    # Ortho diagnostic — helps identify why snap fails in ortho
+    if is_ortho and not candidates:
+        nv = sum(len(_spatial_grid.cells[ck]["verts"]) for ck in nearby_cells) if nearby_cells else 0
+        sample = "empty grid"
+        for ck in nearby_cells:
+            vs = _spatial_grid.cells[ck]["verts"]
+            if vs:
+                p = project(vs[0])
+                sample = f"v3d={vs[0]} -> p2d={p}"
+                break
+        print(f"[ORTHO_SNAP] 0 candidates | {len(nearby_cells)} cells, {nv} verts | {sample} | mouse=({x},{y}) max_px={max_px}")
 
     # 5. Sort & Select — same logic as original
     candidates.sort(key=lambda item: (item[0], item[1]))
