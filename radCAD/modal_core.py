@@ -636,6 +636,16 @@ def modal_arc_common(self, ctx, ev):
                      state["skip_mouse_update"] = True
                      # Force immediate update with fresh coordinates
                      self.manager.on_move(ctx, ev)
+                     if (
+                         state.get("tool_mode") == "LINE_POLY"
+                         and ev.type in {'RET', 'NUMPAD_ENTER'}
+                         and ev.value == 'PRESS'
+                         and state.get("stage", 0) > 0
+                     ):
+                         tool_current = getattr(self.manager.active_tool, "current", None)
+                         self.manager.active_tool.handle_click(ctx, ev, tool_current, state.get("locked_normal"))
+                         state["stage"] = self.manager.active_tool.stage
+                         self.manager.on_move(ctx, ev)
                      
              return {'RUNNING_MODAL'}
 
