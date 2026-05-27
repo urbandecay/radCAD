@@ -222,9 +222,15 @@ class ModalManager:
         reg, rv3d = self.region, self.rv3d
         if not reg or not rv3d: return Vector((0,0,0)), Vector((0,0,1))
         snap_radius = self.state.get("snap_strength", 6.0) * 2.0
+        mesh_snap_enabled = (
+            state.get("snap_verts", True) or
+            state.get("snap_edges", True) or
+            state.get("snap_edge_center", True) or
+            state.get("snap_face_center", True)
+        )
 
         # --- OPTIMIZATION: Skip expensive mesh snapping for Freehand tool ---
-        if state.get("tool_mode") != "CURVE_FREEHAND":
+        if state.get("tool_mode") != "CURVE_FREEHAND" and mesh_snap_enabled:
             try:
                 from .snapping_utils import snap_to_mesh_components
             except ImportError:
@@ -330,13 +336,15 @@ class ModalManager:
 
         view_vec = region_2d_to_vector_3d(reg, rv3d, (x,y))
         ray_origin = region_2d_to_origin_3d(reg, rv3d, (x,y))
-        depsgraph = ctx.evaluated_depsgraph_get()
-        hit, loc, norm, _, _, _ = ctx.scene.ray_cast(depsgraph, ray_origin, view_vec)
-        if hit:
-            state["geometry_snap"] = False
-            state["last_surface_hit"] = loc
-            state["last_surface_normal"] = norm
-            return loc, norm
+
+        if mesh_snap_enabled:
+            depsgraph = ctx.evaluated_depsgraph_get()
+            hit, loc, norm, _, _, _ = ctx.scene.ray_cast(depsgraph, ray_origin, view_vec)
+            if hit:
+                state["geometry_snap"] = False
+                state["last_surface_hit"] = loc
+                state["last_surface_normal"] = norm
+                return loc, norm
 
         # --- FALLBACK: VOID DRAWING (Smart Ortho Alignment) ---
         plane_normal = Vector((0, 0, 1))
@@ -460,6 +468,7 @@ def get_or_create_black_material():
 
 def commit_arc_to_mesh(ctx):
     from . import arc_weld_manager
+    from .snapping_utils import invalidate_snap_cache
 
     # Determine tool name for the new object
     tool_mode = state.get("tool_mode", "CAD_Object")
@@ -545,10 +554,12 @@ def commit_arc_to_mesh(ctx):
         
     bpy.ops.mesh.select_all(action='DESELECT')
     bmesh.update_edit_mesh(obj.data)
+    invalidate_snap_cache()
 
 def begin_modal(self, ctx, ev):
     from .tool_previews import draw_cb_3d
     from .hud_overlay import draw_hud_2d 
+    from .snapping_utils import invalidate_snap_cache
 
     if ctx.area.type != 'VIEW_3D' or ctx.mode != 'EDIT_MESH':
         self.report({'WARNING'}, "Run in Edit Mode on a mesh")
@@ -558,13 +569,13 @@ def begin_modal(self, ctx, ev):
     ctx.window.cursor_modal_set('DEFAULT')
     
     DrawManager.clear_all()
+    invalidate_snap_cache()
     reset_state_from_context(ctx)
     new_tool_id = f"{state['tool_mode']}_{time.time()}"
     self.tool_instance_id = new_tool_id
     ctx.scene.active_cad_tool_id = new_tool_id
     # Pass self (the operator) so ModalManager can report messages
     self.manager = ModalManager(ctx, self)
-    self.manager.on_move(ctx, ev)
     
     DrawManager.add_handler('MAIN_3D', draw_cb_3d, (), 'WINDOW', 'POST_VIEW')
     DrawManager.add_handler('HUD_2D', draw_hud_2d, (), 'WINDOW', 'POST_PIXEL')
@@ -723,8 +734,6 @@ def modal_arc_common(self, ctx, ev):
         if ev.type == 'F2': state["snap_edges"] = not state.get("snap_edges", False); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
         if ev.type == 'F3': state["snap_edge_center"] = not state.get("snap_edge_center", False); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
         if ev.type == 'F4': state["snap_face_center"] = not state.get("snap_face_center", False); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
-        if ev.type == 'F6': state["show_snap_grid"] = not state.get("show_snap_grid", False); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
-
         if ev.type == 'C': state["use_angle_snap"] = not state.get("use_angle_snap", True); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
         if ev.type == 'W': state["auto_weld"] = not state.get("auto_weld", True); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
         
@@ -801,7 +810,6 @@ def modal_arc_common(self, ctx, ev):
                     elif k == "snap_face_center": state["snap_face_center"] = not state.get("snap_face_center", False)
                     elif k == "toggle_angle": state["use_angle_snap"] = not state.get("use_angle_snap", True)
                     elif k == "weld_btn": state["auto_weld"] = not state.get("auto_weld", True)
-                    elif k == "show_snap_grid": state["show_snap_grid"] = not state.get("show_snap_grid", False)
                     ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
             
             if self.manager.active_tool:
