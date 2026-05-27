@@ -9,6 +9,11 @@ from mathutils import Vector
 from mathutils.geometry import intersect_point_line
 from bpy_extras.view3d_utils import location_3d_to_region_2d
 
+try:
+    import numpy as np
+except Exception:
+    np = None
+
 
 class _SnapOffscreen:
     def __init__(self, width, height):
@@ -126,6 +131,11 @@ class _GpuSnapMesh:
         bm.edges.ensure_lookup_table()
         bm.faces.ensure_lookup_table()
 
+        has_hidden_verts = any(v.hide for v in bm.verts)
+        if np is not None and not has_hidden_verts:
+            self._build_arrays_numpy(bm, do_verts, do_edges, do_edge_center, do_face_center)
+            return
+
         index_map = {}
         for v in bm.verts:
             if v.hide:
@@ -168,13 +178,47 @@ class _GpuSnapMesh:
             if len(indices) == 3:
                 self.face_tri_indices.append(tuple(indices))
 
-        if not do_verts:
-            self._visible_vert_count = 0
-        else:
-            self._visible_vert_count = len(self.vert_coords)
+        self._visible_vert_count = len(self.vert_coords) if do_verts else 0
+
+    def _build_arrays_numpy(self, bm, do_verts, do_edges, do_edge_center, do_face_center):
+        self.vert_coords = np.array([v.co for v in bm.verts], "f4")
+
+        if do_edges or do_edge_center:
+            edge_indices = [
+                (e.verts[0].index, e.verts[1].index)
+                for e in bm.edges
+                if not (e.hide or e.verts[0].hide or e.verts[1].hide)
+            ]
+            if edge_indices:
+                edge_indices = np.array(edge_indices, "i4")
+                if do_edges:
+                    self.edge_indices = edge_indices
+                if do_edge_center:
+                    self.edge_centers = (
+                        self.vert_coords[edge_indices[:, 0]]
+                        + self.vert_coords[edge_indices[:, 1]]
+                    ) * 0.5
+
+        if do_face_center:
+            centers = [f.calc_center_median() for f in bm.faces if not f.hide]
+            if centers:
+                self.face_centers = np.array(centers, "f4")
+
+        if bm.faces:
+            tris = []
+            for tri in bm.calc_loop_triangles():
+                if not tri or tri[0].face.hide:
+                    continue
+                if tri[0].vert.hide or tri[1].vert.hide or tri[2].vert.hide:
+                    continue
+                tris.append((tri[0].vert.index, tri[1].vert.index, tri[2].vert.index))
+            if tris:
+                self.face_tri_indices = np.array(tris, "i4")
+
+        self._visible_vert_count = len(self.vert_coords) if do_verts else 0
 
     def _point_batch(self, coords):
-        if not coords:
+        if len(coords) == 0:
             return None
         fmt = gpu.types.GPUVertFormat()
         fmt.attr_add(id="pos", comp_type="F32", len=3, fetch_mode="FLOAT")
@@ -187,7 +231,7 @@ class _GpuSnapMesh:
     def _build_batches(self):
         shader = self._shader()
 
-        if self.face_tri_indices:
+        if len(self.face_tri_indices) > 0:
             depth_shader = self._shader(depth_only=True)
             fmt = gpu.types.GPUVertFormat()
             fmt.attr_add(id="pos", comp_type="F32", len=3, fetch_mode="FLOAT")
@@ -200,7 +244,7 @@ class _GpuSnapMesh:
         if self._visible_vert_count:
             self.batch_verts = self._point_batch(self.vert_coords)
 
-        if self.edge_indices:
+        if len(self.edge_indices) > 0:
             fmt = gpu.types.GPUVertFormat()
             fmt.attr_add(id="pos", comp_type="F32", len=3, fetch_mode="FLOAT")
             vbo = gpu.types.GPUVertBuf(fmt, len=len(self.vert_coords))
@@ -209,10 +253,10 @@ class _GpuSnapMesh:
             self.batch_edges = gpu.types.GPUBatch(type="LINES", buf=vbo, elem=ebo)
             self.batch_edges.program_set(shader)
 
-        if self.edge_centers:
+        if len(self.edge_centers) > 0:
             self.batch_edge_centers = self._point_batch(self.edge_centers)
 
-        if self.face_centers:
+        if len(self.face_centers) > 0:
             self.batch_face_centers = self._point_batch(self.face_centers)
 
     def total_elements(self):
@@ -361,6 +405,32 @@ class SnapPickBuffer:
         shading = ctx.space_data.shading
         return not (shading.type == 'WIREFRAME' or shading.show_xray)
 
+    def _mouse_near_object_bounds(self, ctx, obj, x, y, max_px):
+        """Cheap coarse reject before touching dense edit mesh data."""
+        region = ctx.region
+        rv3d = ctx.region_data
+        mw = obj.matrix_world
+        projected = []
+
+        for corner in obj.bound_box:
+            co_2d = location_3d_to_region_2d(region, rv3d, mw @ Vector(corner))
+            if co_2d is not None:
+                projected.append(co_2d)
+
+        if not projected:
+            return True
+
+        min_x = min(p.x for p in projected)
+        max_x = max(p.x for p in projected)
+        min_y = min(p.y for p in projected)
+        max_y = max(p.y for p in projected)
+        padding = max(64.0, float(max_px) * 4.0)
+
+        return (
+            min_x - padding <= x <= max_x + padding
+            and min_y - padding <= y <= max_y + padding
+        )
+
     def _read_nearest_index(self, x, y, max_px):
         if self._buffer is None:
             return 0
@@ -409,6 +479,20 @@ class SnapPickBuffer:
         if obj is None or obj.type != 'MESH' or not obj.data.is_editmode:
             return None
         if ctx.region is None or ctx.region_data is None:
+            return None
+
+        if not self._mouse_near_object_bounds(ctx, obj, x, y, max_px):
+            if debug_stats is not None:
+                debug_stats["coarse"] = "bounds_reject"
+                debug_stats["mesh_access_ms"] = 0.0
+                debug_stats["mesh_build_ms"] = 0.0
+                debug_stats["draw_ms"] = 0.0
+                debug_stats["buffer_read_ms"] = 0.0
+                debug_stats["lookup_ms"] = 0.0
+                debug_stats["resolve_ms"] = 0.0
+                debug_stats["total_ms"] = (time.perf_counter() - t_total) * 1000.0
+                debug_stats["index"] = 0
+                debug_stats["result"] = None
             return None
 
         t_mesh = time.perf_counter()
