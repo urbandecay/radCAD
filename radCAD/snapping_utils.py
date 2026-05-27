@@ -436,8 +436,8 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
     2. Nearest Edge (Bottom Priority)
 
     Uses spatial grid as a coarse pre-filter to avoid iterating
-    through all geometry. The actual snap decisions are still 100%
-    screen-space (pixel distance), same as the original.
+    through all geometry. Any vertex in a searched grid cell is allowed
+    to compete as a snap candidate; the closest projected candidate wins.
     """
     if obj is None or obj.type != 'MESH':
         return None
@@ -480,11 +480,12 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
     # Candidates list stores: (PRIORITY, DIST_SQ, WORLD_CO)
     candidates = []
     limit_sq = max_px * max_px
+    loose_vert_limit_sq = (max_px * 2.5) * (max_px * 2.5)
 
     # Track which cells had actual candidates (for debug overlay)
     candidate_cell_keys = set()
 
-    # 1. Verts (Priority 0) — from grid cells only
+    # 1. Verts — close verts keep top priority; looser yellow-cell verts are fallback
     if do_verts:
         for ck in nearby_cells:
             cell = _spatial_grid.cells[ck]
@@ -495,6 +496,9 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
                 d2 = (mouse - p2d).length_squared
                 if d2 < limit_sq:
                     candidates.append((0, d2, wco))
+                    candidate_cell_keys.add(ck)
+                elif d2 < loose_vert_limit_sq:
+                    candidates.append((3, d2, wco))
                     candidate_cell_keys.add(ck)
 
     # 2. Edge Centers (Priority 1)
