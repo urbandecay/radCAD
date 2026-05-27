@@ -4,7 +4,7 @@ import bpy
 import math
 from mathutils import Vector, geometry
 from .modal_state import state
-from .units_utils import format_length
+from .units_utils import format_length, parse_length_input
 from .plane_utils import world_to_plane
 
 def apply_input_value(ctx):
@@ -17,13 +17,9 @@ def apply_input_value(ctx):
         if state["input_mode"] == 'SEGMENTS':
             val_meters = 0 # Dummy for flow
         else:
-            val_meters = bpy.utils.units.to_value(val_str, 'LENGTH', 'METERS')
+            val_meters = parse_length_input(val_str)
     except ValueError:
-        # Fallback if typing just numbers without units
-        try:
-            val_meters = float(val_str)
-        except ValueError:
-            return
+        return
 
     tool_mode = state.get("tool_mode", "1POINT")
 
@@ -217,15 +213,31 @@ def handle_text_input(ctx, ev):
         state["cursor_index"] = min(len(curr_str), idx + 1)
         ctx.area.tag_redraw()
         return True
-    elif ev.type == 'BACKSPACE' and ev.value == 'PRESS':
+    elif ev.type in {'BACKSPACE', 'BACK_SPACE'} and ev.value == 'PRESS':
         if idx > 0:
             state["input_string"] = curr_str[:idx-1] + curr_str[idx:]
             state["cursor_index"] = idx - 1
         ctx.area.tag_redraw()
         return True
-    elif ev.type == 'DEL' and ev.value == 'PRESS':
+    elif ev.type in {'DEL', 'DELETE'} and ev.value == 'PRESS':
         if idx < len(curr_str):
             state["input_string"] = curr_str[:idx] + curr_str[idx+1:]
+        ctx.area.tag_redraw()
+        return True
+    elif ev.type == 'SPACE' and ev.value == 'PRESS':
+        state["input_string"] = curr_str[:idx] + " " + curr_str[idx:]
+        state["cursor_index"] = idx + 1
+        ctx.area.tag_redraw()
+        return True
+    elif ev.type in {'SLASH', 'NUMPAD_SLASH'} and ev.value == 'PRESS':
+        state["input_string"] = curr_str[:idx] + "/" + curr_str[idx:]
+        state["cursor_index"] = idx + 1
+        ctx.area.tag_redraw()
+        return True
+    elif ev.type in {'QUOTE', 'APOSTROPHE'} and ev.value == 'PRESS':
+        char = '"' if ev.shift else "'"
+        state["input_string"] = curr_str[:idx] + char + curr_str[idx:]
+        state["cursor_index"] = idx + 1
         ctx.area.tag_redraw()
         return True
     

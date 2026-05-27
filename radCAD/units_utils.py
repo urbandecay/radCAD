@@ -138,9 +138,21 @@ def parse_implicit_imperial(val_str):
         return None
 
 def parse_length_input(val_str):
+    val_str = val_str.strip()
+
     # 1. Explicit Quotes -> Imperial
     if "'" in val_str or '"' in val_str:
         return parse_imperial_string(val_str)
+
+    units = bpy.context.scene.unit_settings
+    system = units.system
+
+    # In imperial inches mode, spaced input like "250 1/2" is inches,
+    # not contractor feet+inches syntax.
+    if system == 'IMPERIAL' and units.length_unit == 'INCHES':
+        parts = val_str.replace('-', ' ').split()
+        if len(parts) > 1 and all(not any(c.isalpha() for c in p) for p in parts):
+            return safe_eval_additive_string(val_str) * 0.0254
 
     # 2. Lazy Contractor Mode (Implicit Feet + Inches)
     # Works if we see spaces and strictly numeric tokens
@@ -149,17 +161,20 @@ def parse_length_input(val_str):
         return implicit_val
 
     # 3. System Fallback (Metric/Imperial standard)
-    units = bpy.context.scene.unit_settings
-    system = units.system
-    
     try:
         # If raw number in Metric, append default unit
-        if system == 'METRIC':
-             try: 
-                 float(val_str)
-                 suffix = {"MILLIMETERS": "mm", "CENTIMETERS": "cm", "METERS": "m", "KILOMETERS": "km"}.get(units.length_unit, "m")
-                 val_str = f"{val_str}{suffix}"
-             except: pass
+        try:
+            float(val_str)
+            if system == 'METRIC':
+                suffix = {"MILLIMETERS": "mm", "CENTIMETERS": "cm", "METERS": "m", "KILOMETERS": "km"}.get(units.length_unit, "m")
+                val_str = f"{val_str}{suffix}"
+            elif system == 'IMPERIAL':
+                if units.length_unit == 'INCHES':
+                    return float(val_str) * 0.0254
+                if units.length_unit == 'FEET':
+                    return float(val_str) * 0.3048
+        except ValueError:
+            pass
              
         return bpy.utils.units.to_value(system, 'LENGTH', val_str)
     except:

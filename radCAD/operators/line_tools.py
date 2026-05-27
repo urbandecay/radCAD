@@ -646,6 +646,39 @@ class LineTool_Poly(SurfaceDrawTool):
         self.preview_pts = self.points + [self.current]
         self.radius = (self.current - ref).length
 
+    def apply_typed_length_now(self):
+        val_str = self.state.get("input_string", "")
+        if not val_str:
+            return False
+
+        try:
+            length = max(0.0001, abs(parse_length_input(val_str)))
+        except Exception:
+            return False
+
+        ref = self.points[-1] if self.points else self.pivot
+        if ref is None:
+            return False
+
+        direction = None
+        if self.current is not None:
+            delta = self.current - ref
+            if delta.length_squared > 1e-10:
+                direction = delta.normalized()
+
+        if direction is None:
+            direction = self.state.get("current_axis_vector") or self.Xp or Vector((1, 0, 0))
+            if direction.length_squared <= 1e-10:
+                direction = Vector((1, 0, 0))
+            else:
+                direction = direction.normalized()
+
+        self.locked_length = length
+        self.current = ref + direction * length
+        self.preview_pts = self.points + [self.current]
+        self.radius = length
+        return True
+
     def handle_click(self, context, event, snap_point, snap_normal, button_id=None):
         if self.stage == 0:
             self.pivot = snap_point

@@ -642,6 +642,8 @@ def modal_arc_common(self, ctx, ev):
                          and ev.value == 'PRESS'
                          and state.get("stage", 0) > 0
                      ):
+                         if hasattr(self.manager.active_tool, "apply_typed_length_now"):
+                             self.manager.active_tool.apply_typed_length_now()
                          tool_current = getattr(self.manager.active_tool, "current", None)
                          self.manager.active_tool.handle_click(ctx, ev, tool_current, state.get("locked_normal"))
                          state["stage"] = self.manager.active_tool.stage
