@@ -2,11 +2,13 @@
 
 import bmesh
 import math
+import time
 from mathutils import Vector, geometry
 from bpy_extras import view3d_utils
 from bpy_extras.view3d_utils import location_3d_to_region_2d
 
 ELEMENT_SNAP_RADIUS_PX = 15.0
+DEBUG_SNAP_TIMING = True
 
 
 class ScreenSnapCache:
@@ -85,7 +87,7 @@ class ScreenSnapCache:
             do_face_center, max_px
         )
         if key == self._key:
-            return
+            return False
 
         self.invalidate()
         self._key = key
@@ -130,6 +132,7 @@ class ScreenSnapCache:
                 p2d = location_3d_to_region_2d(region, rv3d, wco)
                 if p2d is not None:
                     self._add_point(self.face_center_bins, p2d, (p2d, wco))
+        return True
 
     def query(self, x, y, max_px):
         margin = max_px + 5.0
@@ -166,6 +169,11 @@ _screen_snap_cache = ScreenSnapCache()
 
 def invalidate_snap_cache():
     _screen_snap_cache.invalidate()
+    try:
+        from .snap_pick_buffer import invalidate_snap_pick_buffer
+        invalidate_snap_pick_buffer()
+    except Exception:
+        pass
 
 
 def raycast_under_mouse(ctx, x, y):
@@ -251,6 +259,27 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
     if obj is None or obj.type != 'MESH':
         return None
 
+    t_total = time.perf_counter()
+    if not getattr(snap_to_mesh_components, "_pick_buffer_failed", False):
+        try:
+            from .snap_pick_buffer import snap_with_pick_buffer
+            debug_stats = {} if DEBUG_SNAP_TIMING else None
+            result = snap_with_pick_buffer(
+                ctx, obj, x, y, max_px,
+                do_verts=do_verts,
+                do_edges=do_edges,
+                do_edge_center=do_edge_center,
+                do_face_center=do_face_center,
+                debug_stats=debug_stats,
+            )
+            if DEBUG_SNAP_TIMING:
+                _log_pick_buffer_perf(debug_stats, t_total, result)
+            return result
+        except Exception as exc:
+            print(f"[radCAD Snap] GPU pick-buffer path disabled, falling back to screen cache: {exc}")
+            snap_to_mesh_components._pick_buffer_failed = True
+
+    t_lookup = time.perf_counter()
     mouse = Vector((x, y))
     bm = bmesh.from_edit_mesh(obj.data)
 
@@ -261,7 +290,8 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
     if do_face_center:
         bm.faces.ensure_lookup_table()
 
-    _screen_snap_cache.ensure(
+    t_cache = time.perf_counter()
+    rebuilt = _screen_snap_cache.ensure(
         ctx, obj, bm,
         do_verts=do_verts,
         do_edges=do_edges,
@@ -269,7 +299,9 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
         do_face_center=do_face_center,
         max_px=max_px,
     )
+    t_after_cache = time.perf_counter()
     verts, edge_centers, face_centers, edges = _screen_snap_cache.query(x, y, max_px)
+    t_query = time.perf_counter()
 
     allow_occluded = False
     if ctx.space_data.type == 'VIEW_3D':
@@ -310,12 +342,75 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
                 candidates.append((2, dist2, pt_3d))
 
     candidates.sort(key=lambda item: (item[0], item[1]))
+    t_candidates = time.perf_counter()
 
     for prio, dist_sq, co in candidates:
         if allow_occluded:
-            return co
+            result = co
+            if DEBUG_SNAP_TIMING:
+                _log_screen_cache_perf(
+                    t_total, t_lookup, t_cache, t_after_cache, t_query, t_candidates,
+                    len(verts), len(edge_centers), len(face_centers), len(edges),
+                    len(candidates), True, "occluded", result, rebuilt
+                )
+            return result
 
         if is_visible_to_view(ctx, co):
-            return co
+            result = co
+            if DEBUG_SNAP_TIMING:
+                _log_screen_cache_perf(
+                    t_total, t_lookup, t_cache, t_after_cache, t_query, t_candidates,
+                    len(verts), len(edge_centers), len(face_centers), len(edges),
+                    len(candidates), True, "visible", result, rebuilt
+                )
+            return result
 
+    if DEBUG_SNAP_TIMING:
+        _log_screen_cache_perf(
+            t_total, t_lookup, t_cache, t_after_cache, t_query, t_candidates,
+            len(verts), len(edge_centers), len(face_centers), len(edges),
+            len(candidates), False, "none", None, rebuilt
+        )
     return None
+
+
+def _fmt_ms(value):
+    return f"{value:.2f}ms"
+
+
+def _log_pick_buffer_perf(stats, t_total, result):
+    if not DEBUG_SNAP_TIMING:
+        return
+    total_ms = (time.perf_counter() - t_total) * 1000.0
+    print(
+        "[SnapPerf] "
+        f"total={_fmt_ms(total_ms)} "
+        f"path=pick_buffer "
+        f"mesh_access={_fmt_ms(stats.get('mesh_access_ms', 0.0))} "
+        f"mesh_build={_fmt_ms(stats.get('mesh_build_ms', 0.0))} "
+        f"draw={_fmt_ms(stats.get('draw_ms', 0.0))} "
+        f"buffer_read={_fmt_ms(stats.get('buffer_read_ms', 0.0))} "
+        f"lookup={_fmt_ms(stats.get('lookup_ms', 0.0))} "
+        f"resolve={_fmt_ms(stats.get('resolve_ms', 0.0))} "
+        f"index={stats.get('index', 0)} "
+        f"result={result is not None}"
+    )
+
+
+def _log_screen_cache_perf(t_total, t_lookup, t_cache, t_after_cache, t_query, t_candidates,
+                           verts_n, edge_centers_n, face_centers_n, edges_n,
+                           cand_n, result_ok, reason, result, rebuilt):
+    if not DEBUG_SNAP_TIMING:
+        return
+    total_ms = (time.perf_counter() - t_total) * 1000.0
+    print(
+        "[SnapPerf] "
+        f"total={_fmt_ms(total_ms)} "
+        f"path=screen_cache "
+        f"lookup={_fmt_ms((t_cache - t_lookup) * 1000.0)} "
+        f"cache={_fmt_ms((t_after_cache - t_cache) * 1000.0)} "
+        f"query={_fmt_ms((t_query - t_after_cache) * 1000.0)} "
+        f"candidates={_fmt_ms((t_candidates - t_query) * 1000.0)} "
+        f"verts={verts_n} edge_centers={edge_centers_n} face_centers={face_centers_n} edges={edges_n} "
+        f"cand={cand_n} result={result_ok} reason={reason} rebuilt={rebuilt}"
+    )
