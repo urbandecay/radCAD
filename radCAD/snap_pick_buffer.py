@@ -77,8 +77,17 @@ class _GpuSnapMesh:
         self.first_edge = 0
         self.first_edge_center = 0
         self.first_face_center = 0
+        self.do_verts = bool(do_verts)
+        self.do_edges = bool(do_edges)
+        self.do_edge_center = bool(do_edge_center)
+        self.do_face_center = bool(do_face_center)
+        self.source_vert_count = 0
+        self.source_edge_count = 0
+        self.source_face_count = 0
+        self.uses_direct_bmesh_indices = False
 
         self._build_arrays(bm, do_verts, do_edges, do_edge_center, do_face_center)
+        self._store_source_counts(bm)
         self._build_batches()
 
     @classmethod
@@ -134,6 +143,7 @@ class _GpuSnapMesh:
         has_hidden_verts = any(v.hide for v in bm.verts)
         if np is not None and not has_hidden_verts:
             self._build_arrays_numpy(bm, do_verts, do_edges, do_edge_center, do_face_center)
+            self.uses_direct_bmesh_indices = True
             return
 
         index_map = {}
@@ -179,6 +189,7 @@ class _GpuSnapMesh:
                 self.face_tri_indices.append(tuple(indices))
 
         self._visible_vert_count = len(self.vert_coords) if do_verts else 0
+        self.uses_direct_bmesh_indices = len(self.vert_coords) == len(bm.verts)
 
     def _build_arrays_numpy(self, bm, do_verts, do_edges, do_edge_center, do_face_center):
         self.vert_coords = np.array([v.co for v in bm.verts], "f4")
@@ -216,6 +227,139 @@ class _GpuSnapMesh:
                 self.face_tri_indices = np.array(tris, "i4")
 
         self._visible_vert_count = len(self.vert_coords) if do_verts else 0
+        self.uses_direct_bmesh_indices = True
+
+    def _store_source_counts(self, bm):
+        self.source_vert_count = len(bm.verts)
+        self.source_edge_count = len(bm.edges)
+        self.source_face_count = len(bm.faces)
+
+    def _reset_batches(self):
+        self.batch_faces_depth = None
+        self.batch_verts = None
+        self.batch_edges = None
+        self.batch_edge_centers = None
+        self.batch_face_centers = None
+
+    def _append_coords(self, coords):
+        if not coords:
+            return
+        if np is not None and hasattr(self.vert_coords, "shape"):
+            self.vert_coords = np.concatenate((self.vert_coords, np.array(coords, "f4")), axis=0)
+        else:
+            self.vert_coords.extend(tuple(co) for co in coords)
+
+    def _append_edge_indices(self, indices):
+        if not indices:
+            return
+        if np is not None and hasattr(self.edge_indices, "shape"):
+            self.edge_indices = np.concatenate((self.edge_indices, np.array(indices, "i4")), axis=0)
+        elif len(self.edge_indices) == 0 and np is not None and hasattr(self.vert_coords, "shape"):
+            self.edge_indices = np.array(indices, "i4")
+        else:
+            self.edge_indices.extend(indices)
+
+    def _append_point_array(self, attr_name, coords):
+        if not coords:
+            return
+        current = getattr(self, attr_name)
+        if np is not None and hasattr(current, "shape"):
+            setattr(self, attr_name, np.concatenate((current, np.array(coords, "f4")), axis=0))
+        elif len(current) == 0 and np is not None and hasattr(self.vert_coords, "shape"):
+            setattr(self, attr_name, np.array(coords, "f4"))
+        else:
+            current.extend(tuple(co) for co in coords)
+
+    def _append_face_tri_indices(self, indices):
+        if not indices:
+            return
+        if np is not None and hasattr(self.face_tri_indices, "shape"):
+            self.face_tri_indices = np.concatenate((self.face_tri_indices, np.array(indices, "i4")), axis=0)
+        elif len(self.face_tri_indices) == 0 and np is not None and hasattr(self.vert_coords, "shape"):
+            self.face_tri_indices = np.array(indices, "i4")
+        else:
+            self.face_tri_indices.extend(indices)
+
+    def try_append_from_bmesh(self, bm, do_verts, do_edges, do_edge_center, do_face_center):
+        if (
+            bool(do_verts) != self.do_verts
+            or bool(do_edges) != self.do_edges
+            or bool(do_edge_center) != self.do_edge_center
+            or bool(do_face_center) != self.do_face_center
+        ):
+            return False
+
+        bm.verts.ensure_lookup_table()
+        bm.edges.ensure_lookup_table()
+        bm.faces.ensure_lookup_table()
+
+        vert_count = len(bm.verts)
+        edge_count = len(bm.edges)
+        face_count = len(bm.faces)
+        if (
+            vert_count < self.source_vert_count
+            or edge_count < self.source_edge_count
+            or face_count < self.source_face_count
+        ):
+            return False
+        if (
+            vert_count == self.source_vert_count
+            and edge_count == self.source_edge_count
+            and face_count == self.source_face_count
+        ):
+            return False
+        if not self.uses_direct_bmesh_indices:
+            return False
+
+        new_coords = []
+        for i in range(self.source_vert_count, vert_count):
+            v = bm.verts[i]
+            if v.hide:
+                return False
+            new_coords.append(tuple(v.co))
+        self._append_coords(new_coords)
+
+        new_edges = []
+        new_edge_centers = []
+        if do_edges or do_edge_center:
+            for i in range(self.source_edge_count, edge_count):
+                e = bm.edges[i]
+                if e.hide or e.verts[0].hide or e.verts[1].hide:
+                    return False
+                edge = (e.verts[0].index, e.verts[1].index)
+                if edge[0] >= len(self.vert_coords) or edge[1] >= len(self.vert_coords):
+                    return False
+                if do_edges:
+                    new_edges.append(edge)
+                if do_edge_center:
+                    new_edge_centers.append(tuple((e.verts[0].co + e.verts[1].co) * 0.5))
+        self._append_edge_indices(new_edges)
+        self._append_point_array("edge_centers", new_edge_centers)
+
+        new_face_centers = []
+        if do_face_center:
+            for i in range(self.source_face_count, face_count):
+                f = bm.faces[i]
+                if f.hide:
+                    return False
+                new_face_centers.append(tuple(f.calc_center_median()))
+        self._append_point_array("face_centers", new_face_centers)
+
+        if face_count != self.source_face_count:
+            tris = []
+            for tri in bm.calc_loop_triangles():
+                if not tri or tri[0].face.index < self.source_face_count:
+                    continue
+                if tri[0].face.hide or tri[0].vert.hide or tri[1].vert.hide or tri[2].vert.hide:
+                    return False
+                tris.append((tri[0].vert.index, tri[1].vert.index, tri[2].vert.index))
+            self._append_face_tri_indices(tris)
+
+        self._visible_vert_count = len(self.vert_coords) if do_verts else 0
+        self._store_source_counts(bm)
+        self._reset_batches()
+        self._build_batches()
+        return True
 
     def _point_batch(self, coords):
         if len(coords) == 0:
@@ -349,12 +493,19 @@ class SnapPickBuffer:
         self._mesh_key = None
         self._draw_key = None
         self._last_error = None
+        self._incremental_dirty = False
 
-    def invalidate(self):
+    def invalidate(self, allow_incremental=False):
+        if allow_incremental and self._mesh is not None:
+            self._buffer = None
+            self._draw_key = None
+            self._incremental_dirty = True
+            return
         self._buffer = None
         self._mesh = None
         self._mesh_key = None
         self._draw_key = None
+        self._incremental_dirty = False
 
     def free(self):
         self.invalidate()
@@ -484,6 +635,7 @@ class SnapPickBuffer:
         if not self._mouse_near_object_bounds(ctx, obj, x, y, max_px):
             if debug_stats is not None:
                 debug_stats["coarse"] = "bounds_reject"
+                debug_stats["mesh_update"] = "skip"
                 debug_stats["mesh_access_ms"] = 0.0
                 debug_stats["mesh_build_ms"] = 0.0
                 debug_stats["draw_ms"] = 0.0
@@ -498,14 +650,25 @@ class SnapPickBuffer:
         t_mesh = time.perf_counter()
         bm = bmesh.from_edit_mesh(obj.data)
         mesh_key = self._mesh_signature(obj, bm, do_verts, do_edges, do_edge_center, do_face_center)
-        if mesh_key != self._mesh_key:
+        if mesh_key != self._mesh_key or self._incremental_dirty:
             t_build = time.perf_counter()
-            self._mesh = _GpuSnapMesh(obj, bm, do_verts, do_edges, do_edge_center, do_face_center)
+            mesh_update = "full"
+            if self._mesh is not None and self._mesh.try_append_from_bmesh(
+                bm, do_verts, do_edges, do_edge_center, do_face_center
+            ):
+                mesh_update = "append"
+            else:
+                self._mesh = _GpuSnapMesh(obj, bm, do_verts, do_edges, do_edge_center, do_face_center)
             self._mesh_key = mesh_key
+            self._incremental_dirty = False
             self._draw_key = None
             self._buffer = None
             if debug_stats is not None:
                 debug_stats["mesh_build_ms"] = (time.perf_counter() - t_build) * 1000.0
+                debug_stats["mesh_update"] = mesh_update
+        elif debug_stats is not None:
+            debug_stats["mesh_build_ms"] = 0.0
+            debug_stats["mesh_update"] = "reuse"
 
         if self._mesh is None or self._mesh.total_elements() == 0:
             return None
@@ -570,8 +733,8 @@ class SnapPickBuffer:
 _snap_pick_buffer = SnapPickBuffer()
 
 
-def invalidate_snap_pick_buffer():
-    _snap_pick_buffer.invalidate()
+def invalidate_snap_pick_buffer(allow_incremental=False):
+    _snap_pick_buffer.invalidate(allow_incremental=allow_incremental)
 
 
 def snap_with_pick_buffer(ctx, obj, x, y, max_px, do_verts, do_edges, do_edge_center, do_face_center, debug_stats=None):

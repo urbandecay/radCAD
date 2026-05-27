@@ -549,12 +549,19 @@ def commit_arc_to_mesh(ctx):
     bm.edges.ensure_lookup_table()
     bmesh.update_edit_mesh(obj.data, loop_triangles=False, destructive=False)
     
-    if state.get("auto_weld", True): 
+    auto_weld_enabled = state.get("auto_weld", True)
+    if auto_weld_enabled:
         arc_weld_manager.run(ctx, created_verts, created_edges)
         
     bpy.ops.mesh.select_all(action='DESELECT')
     bmesh.update_edit_mesh(obj.data)
-    invalidate_snap_cache()
+    vertex_only_snap = (
+        state.get("snap_verts", True)
+        and not state.get("snap_edges", False)
+        and not state.get("snap_edge_center", False)
+        and not state.get("snap_face_center", False)
+    )
+    invalidate_snap_cache(allow_incremental=(not auto_weld_enabled or vertex_only_snap))
 
 def begin_modal(self, ctx, ev):
     from .tool_previews import draw_cb_3d

@@ -167,11 +167,11 @@ class ScreenSnapCache:
 _screen_snap_cache = ScreenSnapCache()
 
 
-def invalidate_snap_cache():
+def invalidate_snap_cache(allow_incremental=False):
     _screen_snap_cache.invalidate()
     try:
         from .snap_pick_buffer import invalidate_snap_pick_buffer
-        invalidate_snap_pick_buffer()
+        invalidate_snap_pick_buffer(allow_incremental=allow_incremental)
     except Exception:
         pass
 
@@ -387,6 +387,7 @@ def _log_pick_buffer_perf(stats, t_total, result):
         f"total={_fmt_ms(total_ms)} "
         f"path=pick_buffer "
         f"coarse={stats.get('coarse', 'pass')} "
+        f"mesh_update={stats.get('mesh_update', 'unknown')} "
         f"mesh_access={_fmt_ms(stats.get('mesh_access_ms', 0.0))} "
         f"mesh_build={_fmt_ms(stats.get('mesh_build_ms', 0.0))} "
         f"draw={_fmt_ms(stats.get('draw_ms', 0.0))} "
