@@ -218,6 +218,8 @@ class ModalManager:
 
     def get_snap_data(self, ctx, x, y):
         snapped_pos = None
+        snapped_normal = None
+        surface_result = None
         
         reg, rv3d = self.region, self.rv3d
         if not reg or not rv3d: return Vector((0,0,0)), Vector((0,0,1))
@@ -233,18 +235,25 @@ class ModalManager:
         # --- OPTIMIZATION: Skip expensive mesh snapping for Freehand tool ---
         if state.get("tool_mode") != "CURVE_FREEHAND" and mesh_snap_enabled:
             try:
-                from .snapping_utils import snap_to_mesh_components
+                from .snapping_utils import snap_mesh
             except ImportError:
-                def snap_to_mesh_components(**kwargs): return None
+                def snap_mesh(*args, **kwargs): return None
 
-            snapped_pos = snap_to_mesh_components(
+            snap_result = snap_mesh(
                 ctx, ctx.edit_object, x, y, max_px=snap_radius,
-                do_verts=state.get("snap_verts", True),
-                do_edges=state.get("snap_edges", True),
-                do_edge_center=state.get("snap_edge_center", True),
-                do_faces=state.get("snap_faces", False),
-                do_face_center=state.get("snap_face_center", True)
+                snap_verts=state.get("snap_verts", True),
+                snap_edges=state.get("snap_edges", True),
+                snap_edge_center=state.get("snap_edge_center", True),
+                snap_faces=state.get("snap_faces", False),
+                snap_face_center=state.get("snap_face_center", True),
+                include_surface=True,
             )
+            if snap_result is not None:
+                if snap_result.kind == "SURFACE":
+                    surface_result = snap_result
+                else:
+                    snapped_pos = snap_result.location
+                    snapped_normal = snap_result.normal
 
             # --- PREVIEW SNAPPING (SELF-SNAP) ---
             self_snap_targets = []
@@ -309,6 +318,7 @@ class ModalManager:
                                 use_self = False
                     if use_self:
                         snapped_pos = best_self_pt
+                        snapped_normal = None
 
         # --- FALLBACK TO SURFACE/PLANE (STILL ACTIVE FOR FREEHAND) ---
         state["snap_point"] = None 
@@ -319,7 +329,9 @@ class ModalManager:
             locked_normal = state.get("locked_normal")
             if locked_normal and state.get("locked"):
                 return snapped_pos, locked_normal
-            _, nrm, _ = raycast_under_mouse(ctx, x, y)
+            nrm = snapped_normal
+            if nrm is None:
+                _, nrm, _ = raycast_under_mouse(ctx, x, y)
             if nrm is not None:
                 state["last_surface_normal"] = nrm
             return snapped_pos, nrm if nrm else Vector((0,0,1))
@@ -339,6 +351,13 @@ class ModalManager:
 
         view_vec = region_2d_to_vector_3d(reg, rv3d, (x,y))
         ray_origin = region_2d_to_origin_3d(reg, rv3d, (x,y))
+
+        if surface_result is not None:
+            nrm = surface_result.normal if surface_result.normal is not None else Vector((0,0,1))
+            state["geometry_snap"] = False
+            state["last_surface_hit"] = surface_result.location
+            state["last_surface_normal"] = nrm
+            return surface_result.location, nrm
 
         if mesh_snap_enabled:
             depsgraph = ctx.evaluated_depsgraph_get()

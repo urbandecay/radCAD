@@ -3,7 +3,6 @@
 from dataclasses import dataclass
 
 import bmesh
-from bpy_extras import view3d_utils
 from bpy_extras.view3d_utils import location_3d_to_region_2d
 from mathutils import Vector
 
@@ -17,6 +16,7 @@ ELEMENT_SNAP_RADIUS_PX = 15.0
 class SnapResult:
     location: Vector
     kind: str
+    normal: Vector = None
 
 
 class _RadCADSnapEngine:
@@ -24,10 +24,10 @@ class _RadCADSnapEngine:
 
     def __init__(self):
         self.sctx = None
-        self.component_sctx = None
         self.context_key = None
+        self.main_obj = None
+        self.main_snap_obj = None
         self.dirty = True
-        self.component_dirty = True
         self.pixel_dist = ELEMENT_SNAP_RADIUS_PX
 
     @staticmethod
@@ -52,20 +52,19 @@ class _RadCADSnapEngine:
     def free(self):
         if self.sctx is not None:
             self.sctx.free()
-        if self.component_sctx is not None:
-            self.component_sctx.free()
         self.sctx = None
-        self.component_sctx = None
         self.context_key = None
+        self.main_obj = None
+        self.main_snap_obj = None
         self.dirty = True
-        self.component_dirty = True
 
     def invalidate(self):
         self.dirty = True
-        self.component_dirty = True
 
     def _rebuild_objects(self, sctx, ctx):
         sctx.clear_snap_objects(True)
+        self.main_obj = None
+        self.main_snap_obj = None
 
         for obj, matrix in self._visible_meshes(ctx):
             sctx.add_obj(obj, matrix)
@@ -108,40 +107,31 @@ class _RadCADSnapEngine:
 
         # Connected vertices are resolved from selected edges by SnapContext.
         search_edges = snap_verts or snap_edges or snap_edge_center
-        search_faces = snap_faces or snap_face_center
+        shading = ctx.space_data.shading
+        occlude_components = search_edges and not (
+            shading.show_xray or shading.type == 'WIREFRAME'
+        )
+        # Snap Utilities draws faces in solid view even when face snapping is
+        # disabled. They block hidden components without becoming valid results.
+        search_faces = snap_faces or snap_face_center or occlude_components
         self.sctx.set_snap_mode(snap_verts, search_edges, search_faces)
 
         if self.dirty:
             self._rebuild_objects(self.sctx, ctx)
             self.dirty = False
 
-    def query(self, ctx, x, y):
+    def query(self, x, y, main_obj):
+        if main_obj is not self.main_obj:
+            self.main_obj = main_obj
+            self.main_snap_obj = (
+                self.sctx._get_snap_obj_by_obj(main_obj)
+                if main_obj is not None
+                else None
+            )
         snap_obj, location, element, element_co = self.sctx.snap_get(
             (x, y),
-            None,
+            self.main_snap_obj,
         )
-        if snap_obj is None or location is None or element is None:
-            return None
-        return snap_obj, location, element, element_co
-
-    def query_components(self, ctx, x, y, snap_verts, snap_edges):
-        if self.component_sctx is None:
-            self.component_sctx = SnapContext(
-                ctx.evaluated_depsgraph_get(),
-                ctx.region,
-                ctx.space_data,
-            )
-            self.component_dirty = True
-        else:
-            self._update_context(self.component_sctx, ctx)
-
-        self.component_sctx.set_pixel_dist(self.pixel_dist)
-        self.component_sctx.set_snap_mode(snap_verts, snap_edges, False)
-        if self.component_dirty:
-            self._rebuild_objects(self.component_sctx, ctx)
-            self.component_dirty = False
-
-        snap_obj, location, element, element_co = self.component_sctx.snap_get((x, y), None)
         if snap_obj is None or location is None or element is None:
             return None
         return snap_obj, location, element, element_co
@@ -164,29 +154,6 @@ def _point_within_radius(ctx, point, x, y, max_px):
     if point_2d is None:
         return False
     return (point_2d - Vector((x, y))).length_squared <= max_px * max_px
-
-
-def _point_visible(ctx, point):
-    if ctx.space_data.shading.type == 'WIREFRAME' or ctx.space_data.shading.show_xray:
-        return True
-
-    point_2d = location_3d_to_region_2d(ctx.region, ctx.region_data, point)
-    if point_2d is None:
-        return False
-
-    ray_origin = view3d_utils.region_2d_to_origin_3d(ctx.region, ctx.region_data, point_2d)
-    ray_direction = view3d_utils.region_2d_to_vector_3d(ctx.region, ctx.region_data, point_2d)
-    hit, location, _, _, _, _ = ctx.scene.ray_cast(
-        ctx.evaluated_depsgraph_get(),
-        ray_origin,
-        ray_direction,
-    )
-    if not hit:
-        return True
-
-    target_depth = (point - ray_origin).length
-    hit_depth = (location - ray_origin).length
-    return hit_depth >= target_depth - max(1e-4, target_depth * 1e-5)
 
 
 def _face_center(sctx, snap_obj, element):
@@ -235,20 +202,37 @@ def _component_result(ctx, hit, x, y, max_px, snap_verts, snap_edges, snap_edge_
     return None
 
 
-def _face_result(ctx, hit, x, y, max_px, snap_face_center, snap_faces):
+def _face_result(
+    ctx,
+    hit,
+    x,
+    y,
+    max_px,
+    snap_face_center,
+    snap_faces,
+    include_surface,
+):
     if hit is None:
         return None
 
-    snap_obj, location, element, _ = hit
+    snap_obj, location, element, element_co = hit
     if len(element) != 3:
         return None
+
+    normal = (element_co[1] - element_co[0]).cross(element_co[2] - element_co[0])
+    if normal.length_squared > 1e-12:
+        normal.normalize()
+    else:
+        normal = None
 
     if snap_face_center:
         center = _face_center(_snap_engine.sctx, snap_obj, element)
         if center is not None and _point_within_radius(ctx, center, x, y, max_px):
-            return SnapResult(center, "FACE_CENTER")
+            return SnapResult(center, "FACE_CENTER", normal)
     if snap_faces:
-        return SnapResult(location.copy(), "FACE")
+        return SnapResult(location.copy(), "FACE", normal)
+    if include_surface:
+        return SnapResult(location.copy(), "SURFACE", normal)
     return None
 
 
@@ -263,8 +247,8 @@ def snap_mesh(
     snap_edge_center=True,
     snap_face_center=True,
     snap_faces=False,
+    include_surface=False,
 ):
-    del obj
     if ctx.region is None or ctx.region_data is None or ctx.space_data.type != 'VIEW_3D':
         return None
 
@@ -277,7 +261,7 @@ def snap_mesh(
         snap_face_center,
         snap_faces,
     )
-    hit = _snap_engine.query(ctx, x, y)
+    hit = _snap_engine.query(x, y, obj)
     if hit is None:
         return None
 
@@ -294,25 +278,16 @@ def snap_mesh(
     if component is not None:
         return component
 
-    # Snap Utilities can return a covering face before an edge. Retry components
-    # without face IDs, then reject anything actually hidden by that face.
-    search_edges = snap_verts or snap_edges or snap_edge_center
-    if len(hit[2]) == 3 and search_edges:
-        component_hit = _snap_engine.query_components(ctx, x, y, snap_verts, search_edges)
-        component = _component_result(
-            ctx,
-            component_hit,
-            x,
-            y,
-            max_px,
-            snap_verts,
-            snap_edges,
-            snap_edge_center,
-        )
-        if component is not None and _point_visible(ctx, component.location):
-            return component
-
-    return _face_result(ctx, hit, x, y, max_px, snap_face_center, snap_faces)
+    return _face_result(
+        ctx,
+        hit,
+        x,
+        y,
+        max_px,
+        snap_face_center,
+        snap_faces,
+        include_surface,
+    )
 
 
 def snap_to_mesh_components(
