@@ -54,6 +54,36 @@ IMPLEMENTED_TOOLS = {
     "rectangle_3_points", 
 }
 
+TOOL_OPERATORS = {
+    "point_by_arcs": "view3d.point_by_arcs",
+    "point_center": "view3d.point_center",
+    "line": "view3d.line_polyline",
+    "line_perpendicular_from_curve": "view3d.line_perp_from_curve",
+    "line_tangent_to_two_curves": "view3d.line_tan_tan",
+    "line_perpendicular_to_two_curves": "view3d.line_perp_to_two_curves",
+    "line_tangent_from_curve": "view3d.line_tangent_from_curve",
+    "curve_interpolate_points": "view3d.curve_interpolate",
+    "curve_freehand": "view3d.curve_freehand",
+    "arc_1_point": "view3d.arc_overlay_preview",
+    "arc_2_point": "view3d.arc_2pt",
+    "arc_3_point": "view3d.arc_3pt",
+    "circle_2_points": "view3d.circle_2pt",
+    "circle_3_points": "view3d.circle_3pt",
+    "circle_tangent_to_three_curves": "view3d.radcad_circle_tan_tan_tan",
+    "circle_tangent_to_two_curves": "view3d.radcad_circle_tan_tan",
+    "ellipse_from_radius": "view3d.ellipse_radius",
+    "ellipse_foci_point": "view3d.ellipse_foci",
+    "ellipse_from_endpoints": "view3d.ellipse_endpoints",
+    "ellipse_from_corners": "view3d.ellipse_corners",
+    "polygon_cen_cor": "view3d.polygon_cen_cor",
+    "polygon_cen_tan": "view3d.polygon_cen_tan",
+    "polygon_cor_cor": "view3d.polygon_cor_cor",
+    "polygon_size_size": "view3d.polygon_edge",
+    "rectangle_from_center": "view3d.rectangle_cen_cor",
+    "rectangle_from_corners": "view3d.rectangle_cor_cor",
+    "rectangle_3_points": "view3d.rectangle_3_points",
+}
+
 SVG_FILES = {
     "arc_1_point": "1_point_arc.svg",
     "arc_2_point": "2_point_arc.svg",
@@ -196,18 +226,17 @@ def draw_header(layout, icon_key):
         col.label(text=" ")
     layout.separator()
 
-def draw_tool_button(layout, key, panel_name):
+def draw_tool_button(layout, key):
     row = layout.row()
-    if key not in IMPLEMENTED_TOOLS:
+    operator_id = TOOL_OPERATORS.get(key)
+    if key not in IMPLEMENTED_TOOLS or operator_id is None:
         row.enabled = False 
-    
+
+    row.operator_context = 'INVOKE_REGION_WIN'
     if _has_icon(key):
-        op = row.operator("radcad.generic", text=key, icon_value=preview_collection[key].icon_id)
+        row.operator(operator_id or "radcad.generic", text=key, icon_value=preview_collection[key].icon_id)
     else:
-        op = row.operator("radcad.generic", text=key)
-        
-    op.name = key
-    op.panel = panel_name
+        row.operator(operator_id or "radcad.generic", text=key)
 
 class RADCAD_PT_Main(bpy.types.Panel):
     bl_label = "radCAD"
@@ -231,8 +260,8 @@ class RADCAD_PT_Point(bpy.types.Panel):
 
     def draw(self, context):
         draw_header(self.layout, context.scene.radcad_point_icon)
-        draw_tool_button(self.layout, "point_by_arcs", "point")
-        draw_tool_button(self.layout, "point_center", "point")
+        draw_tool_button(self.layout, "point_by_arcs")
+        draw_tool_button(self.layout, "point_center")
 
 class RADCAD_PT_Line(bpy.types.Panel):
     bl_label = "Line"
@@ -244,7 +273,7 @@ class RADCAD_PT_Line(bpy.types.Panel):
     def draw(self, context):
         draw_header(self.layout, context.scene.radcad_line_icon)
         for key in sorted(k for k in SVG_FILES if k.startswith("line")):
-            draw_tool_button(self.layout, key, "line")
+            draw_tool_button(self.layout, key)
 
 class RADCAD_PT_Arc(bpy.types.Panel):
     bl_label = "Arc"
@@ -257,7 +286,7 @@ class RADCAD_PT_Arc(bpy.types.Panel):
         draw_header(self.layout, context.scene.radcad_arc_icon)
         keys = [k for k in SVG_FILES if k.startswith("arc")]
         for key in sorted(keys):
-            draw_tool_button(self.layout, key, "arc")
+            draw_tool_button(self.layout, key)
 
 class RADCAD_PT_Circle(bpy.types.Panel):
     bl_label = "Circle"
@@ -269,7 +298,7 @@ class RADCAD_PT_Circle(bpy.types.Panel):
     def draw(self, context):
         draw_header(self.layout, context.scene.radcad_circle_icon)
         for key in sorted(k for k in SVG_FILES if k.startswith("circle")):
-            draw_tool_button(self.layout, key, "circle")
+            draw_tool_button(self.layout, key)
 
 class RADCAD_PT_Ellipse(bpy.types.Panel):
     bl_label = "Ellipse"
@@ -281,7 +310,7 @@ class RADCAD_PT_Ellipse(bpy.types.Panel):
     def draw(self, context):
         draw_header(self.layout, context.scene.radcad_ellipse_icon)
         for key in sorted(k for k in SVG_FILES if k.startswith("ellipse")):
-            draw_tool_button(self.layout, key, "ellipse")
+            draw_tool_button(self.layout, key)
 
 class RADCAD_PT_Polygon(bpy.types.Panel):
     bl_label = "Polygon"
@@ -293,7 +322,7 @@ class RADCAD_PT_Polygon(bpy.types.Panel):
     def draw(self, context):
         draw_header(self.layout, context.scene.radcad_polygon_icon)
         for key in sorted(k for k in SVG_FILES if k.startswith("polygon")):
-            draw_tool_button(self.layout, key, "polygon")
+            draw_tool_button(self.layout, key)
 
 class RADCAD_PT_Curve(bpy.types.Panel):
     bl_label = "Curve"
@@ -305,7 +334,7 @@ class RADCAD_PT_Curve(bpy.types.Panel):
     def draw(self, context):
         draw_header(self.layout, context.scene.radcad_curve_icon)
         for key in sorted(k for k in SVG_FILES if k.startswith("curve")):
-            draw_tool_button(self.layout, key, "curve")
+            draw_tool_button(self.layout, key)
 
 class RADCAD_PT_Rectangle(bpy.types.Panel):
     bl_label = "Rectangle"
@@ -317,7 +346,7 @@ class RADCAD_PT_Rectangle(bpy.types.Panel):
     def draw(self, context):
         draw_header(self.layout, context.scene.radcad_rectangle_icon)
         for key in sorted(k for k in SVG_FILES if k.startswith("rectangle")):
-            draw_tool_button(self.layout, key, "rectangle")
+            draw_tool_button(self.layout, key)
 
 classes = (
     RADCAD_OT_reset_overlays, 

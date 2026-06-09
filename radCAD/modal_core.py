@@ -594,6 +594,40 @@ def begin_modal(self, ctx, ev):
     if ctx.area.type != 'VIEW_3D' or ctx.mode != 'EDIT_MESH':
         self.report({'WARNING'}, "Run in Edit Mode on a mesh")
         return {'CANCELLED'}
+
+    tool_icons = {
+        "POINT_BY_ARCS": ("point", "point_by_arcs"),
+        "POINT_CENTER": ("point", "point_center"),
+        "LINE_POLY": ("line", "line"),
+        "LINE_PERP_FROM_CURVE": ("line", "line_perpendicular_from_curve"),
+        "LINE_TAN_TAN": ("line", "line_tangent_to_two_curves"),
+        "LINE_PERP_TO_TWO_CURVES": ("line", "line_perpendicular_to_two_curves"),
+        "LINE_TANGENT_FROM_CURVE": ("line", "line_tangent_from_curve"),
+        "CURVE_INTERPOLATE": ("curve", "curve_interpolate_points"),
+        "CURVE_FREEHAND": ("curve", "curve_freehand"),
+        "1POINT": ("arc", "arc_1_point"),
+        "2POINT": ("arc", "arc_2_point"),
+        "3POINT": ("arc", "arc_3_point"),
+        "CIRCLE_2POINT": ("circle", "circle_2_points"),
+        "CIRCLE_3POINT": ("circle", "circle_3_points"),
+        "CIRCLE_TAN_TAN_TAN": ("circle", "circle_tangent_to_three_curves"),
+        "CIRCLE_TAN_TAN": ("circle", "circle_tangent_to_two_curves"),
+        "ELLIPSE_RADIUS": ("ellipse", "ellipse_from_radius"),
+        "ELLIPSE_FOCI": ("ellipse", "ellipse_foci_point"),
+        "ELLIPSE_ENDPOINTS": ("ellipse", "ellipse_from_endpoints"),
+        "ELLIPSE_CORNERS": ("ellipse", "ellipse_from_corners"),
+        "POLYGON_CENTER_CORNER": ("polygon", "polygon_cen_cor"),
+        "POLYGON_CENTER_TANGENT": ("polygon", "polygon_cen_tan"),
+        "POLYGON_CORNER_CORNER": ("polygon", "polygon_cor_cor"),
+        "POLYGON_EDGE": ("polygon", "polygon_size_size"),
+        "RECTANGLE_CENTER_CORNER": ("rectangle", "rectangle_from_center"),
+        "RECTANGLE_CORNER_CORNER": ("rectangle", "rectangle_from_corners"),
+        "RECTANGLE_3_POINTS": ("rectangle", "rectangle_3_points"),
+    }
+    panel_icon = tool_icons.get(state.get("tool_mode"))
+    if panel_icon is not None:
+        panel_name, icon_name = panel_icon
+        setattr(ctx.scene, f"radcad_{panel_name}_icon", icon_name)
         
     # --- CURSOR FIX: FORCE 'DEFAULT' ARROW ---
     ctx.window.cursor_modal_set('DEFAULT')
