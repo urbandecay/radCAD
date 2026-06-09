@@ -331,6 +331,8 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
                 candidates.append((1, d2, wco))
 
     if do_edges:
+        from .snap_pick_buffer import closest_world_point_on_edge_under_cursor
+
         for edge_id, p1_2d, p2_2d, v1_world, v2_world in edges:
             edge_hit = _edge_screen_hit(mouse, p1_2d, p2_2d)
             if edge_hit is None:
@@ -338,7 +340,11 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
 
             dist2, factor = edge_hit
             if dist2 < limit_sq:
-                pt_3d = v1_world + (v2_world - v1_world) * factor
+                closest_2d = p1_2d.lerp(p2_2d, factor)
+                pt_3d = closest_world_point_on_edge_under_cursor(
+                    ctx, closest_2d.x, closest_2d.y,
+                    v1_world, v2_world, fallback_factor=factor
+                )
                 candidates.append((2, dist2, pt_3d))
 
     candidates.sort(key=lambda item: (item[0], item[1]))
