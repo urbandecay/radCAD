@@ -242,6 +242,60 @@ def _edge_screen_hit(mouse, p1_2d, p2_2d):
     return dist2, max(0.0, min(1.0, factor))
 
 
+def snap_edge_or_face_under_mouse(ctx, obj, x, y, max_px, snap_edges=True):
+    """Return a nearby visible-face edge, otherwise the visible face point."""
+    region, rv3d = ctx.region, ctx.region_data
+    mouse = Vector((x, y))
+    ray_origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, mouse)
+    ray_vector = view3d_utils.region_2d_to_vector_3d(region, rv3d, mouse)
+    depsgraph = ctx.evaluated_depsgraph_get()
+
+    hit, hit_loc, hit_normal, face_index, hit_obj, _ = ctx.scene.ray_cast(
+        depsgraph, ray_origin, ray_vector
+    )
+    hit_original = getattr(hit_obj, "original", hit_obj)
+    if not hit or (hit_obj != obj and hit_original != obj) or face_index < 0:
+        return None, None, None
+
+    bm = bmesh.from_edit_mesh(obj.data)
+    bm.faces.ensure_lookup_table()
+    if face_index >= len(bm.faces):
+        return hit_loc, hit_normal, "FACE"
+
+    if snap_edges:
+        mw = obj.matrix_world
+        best = None
+        limit_sq = max_px * max_px
+        for edge in bm.faces[face_index].edges:
+            p0 = mw @ edge.verts[0].co
+            p1 = mw @ edge.verts[1].co
+            edge_vec = p1 - p0
+            edge_len_sq = edge_vec.length_squared
+            if edge_len_sq <= 1e-12:
+                continue
+
+            closest = geometry.intersect_line_line(
+                ray_origin, ray_origin + ray_vector, p0, p1
+            )
+            if closest is None:
+                continue
+
+            factor = (closest[1] - p0).dot(edge_vec) / edge_len_sq
+            candidate = p0.lerp(p1, max(0.0, min(1.0, factor)))
+            candidate_2d = location_3d_to_region_2d(region, rv3d, candidate)
+            if candidate_2d is None:
+                continue
+
+            dist_sq = (mouse - candidate_2d).length_squared
+            if dist_sq < limit_sq and (best is None or dist_sq < best[0]):
+                best = (dist_sq, candidate)
+
+        if best:
+            return best[1], hit_normal, "EDGE"
+
+    return hit_loc, hit_normal, "FACE"
+
+
 def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
                             do_verts=True,
                             do_edges=True,
@@ -274,10 +328,18 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
             )
             if DEBUG_SNAP_TIMING:
                 _log_pick_buffer_perf(debug_stats, t_total, result)
-            return result
+            if result is not None:
+                return result
         except Exception as exc:
             print(f"[radCAD Snap] GPU pick-buffer path disabled, falling back to screen cache: {exc}")
             snap_to_mesh_components._pick_buffer_failed = True
+
+    if do_edges:
+        result, _, snap_kind = snap_edge_or_face_under_mouse(
+            ctx, obj, x, y, max_px, snap_edges=True
+        )
+        if snap_kind == "EDGE":
+            return result
 
     t_lookup = time.perf_counter()
     mouse = Vector((x, y))
@@ -331,8 +393,6 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
                 candidates.append((1, d2, wco))
 
     if do_edges:
-        from .snap_pick_buffer import closest_world_point_on_edge_under_cursor
-
         for edge_id, p1_2d, p2_2d, v1_world, v2_world in edges:
             edge_hit = _edge_screen_hit(mouse, p1_2d, p2_2d)
             if edge_hit is None:
@@ -340,11 +400,7 @@ def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
 
             dist2, factor = edge_hit
             if dist2 < limit_sq:
-                closest_2d = p1_2d.lerp(p2_2d, factor)
-                pt_3d = closest_world_point_on_edge_under_cursor(
-                    ctx, closest_2d.x, closest_2d.y,
-                    v1_world, v2_world, fallback_factor=factor
-                )
+                pt_3d = v1_world.lerp(v2_world, factor)
                 candidates.append((2, dist2, pt_3d))
 
     candidates.sort(key=lambda item: (item[0], item[1]))

@@ -6,34 +6,13 @@ import time
 import bmesh
 import gpu
 from mathutils import Vector
-from mathutils.geometry import intersect_line_line, intersect_point_line
-from bpy_extras.view3d_utils import (
-    location_3d_to_region_2d,
-    region_2d_to_origin_3d,
-    region_2d_to_vector_3d,
-)
+from mathutils.geometry import intersect_point_line
+from bpy_extras.view3d_utils import location_3d_to_region_2d
 
 try:
     import numpy as np
 except Exception:
     np = None
-
-
-def closest_world_point_on_edge_under_cursor(ctx, x, y, p0, p1, fallback_factor=0.0):
-    """Return the point on a world-space edge that projects closest to the cursor."""
-    edge = p1 - p0
-    edge_len_sq = edge.length_squared
-    if edge_len_sq <= 1e-12:
-        return p0.copy()
-
-    ray_origin = region_2d_to_origin_3d(ctx.region, ctx.region_data, (x, y))
-    ray_vector = region_2d_to_vector_3d(ctx.region, ctx.region_data, (x, y))
-    closest = intersect_line_line(ray_origin, ray_origin + ray_vector, p0, p1)
-    if closest is None:
-        return p0.lerp(p1, max(0.0, min(1.0, fallback_factor)))
-
-    factor = (closest[1] - p0).dot(edge) / edge_len_sq
-    return p0.lerp(p1, max(0.0, min(1.0, factor)))
 
 
 class _SnapOffscreen:
@@ -493,9 +472,7 @@ class _GpuSnapMesh:
             closest = p0_2d.lerp(p1_2d, factor)
             if (Vector((x, y)) - closest).length > max_px:
                 return None
-            return closest_world_point_on_edge_under_cursor(
-                ctx, closest.x, closest.y, p0, p1, fallback_factor=factor
-            )
+            return p0.lerp(p1, factor)
 
         if self.first_edge_center <= index < self.first_edge_center + len(self.edge_centers):
             local = Vector(self.edge_centers[index - self.first_edge_center])

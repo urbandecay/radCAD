@@ -226,11 +226,19 @@ class ModalManager:
             state.get("snap_verts", True) or
             state.get("snap_edges", True) or
             state.get("snap_edge_center", True) or
+            state.get("snap_face_center", True) or
+            state.get("snap_faces", False)
+        )
+        component_snap_enabled = (
+            state.get("snap_verts", True) or
+            (state.get("snap_edges", True) and not state.get("snap_faces", False)) or
+            state.get("snap_edge_center", True) or
             state.get("snap_face_center", True)
         )
+        snapped_normal = None
 
         # --- OPTIMIZATION: Skip expensive mesh snapping for Freehand tool ---
-        if state.get("tool_mode") != "CURVE_FREEHAND" and mesh_snap_enabled:
+        if state.get("tool_mode") != "CURVE_FREEHAND" and component_snap_enabled:
             try:
                 from .snapping_utils import snap_to_mesh_components
             except ImportError:
@@ -239,7 +247,7 @@ class ModalManager:
             snapped_pos = snap_to_mesh_components(
                 ctx, ctx.edit_object, x, y, max_px=snap_radius,
                 do_verts=state.get("snap_verts", True),
-                do_edges=state.get("snap_edges", True),
+                do_edges=state.get("snap_edges", True) and not state.get("snap_faces", False),
                 do_edge_center=state.get("snap_edge_center", True),
                 do_faces=False, 
                 do_face_center=state.get("snap_face_center", True)
@@ -309,6 +317,13 @@ class ModalManager:
                     if use_self:
                         snapped_pos = best_self_pt
 
+        if snapped_pos is None and state.get("snap_faces", False) and state.get("tool_mode") != "CURVE_FREEHAND":
+            from .snapping_utils import snap_edge_or_face_under_mouse
+            snapped_pos, snapped_normal, _ = snap_edge_or_face_under_mouse(
+                ctx, ctx.edit_object, x, y, snap_radius,
+                snap_edges=state.get("snap_edges", False),
+            )
+
         # --- FALLBACK TO SURFACE/PLANE (STILL ACTIVE FOR FREEHAND) ---
         state["snap_point"] = None 
         if snapped_pos is not None:
@@ -318,7 +333,11 @@ class ModalManager:
             locked_normal = state.get("locked_normal")
             if locked_normal and state.get("locked"):
                 return snapped_pos, locked_normal
-            _, nrm, _ = raycast_under_mouse(ctx, x, y)
+            nrm = snapped_normal
+            if nrm is None:
+                _, nrm, _ = raycast_under_mouse(ctx, x, y)
+            if nrm is not None:
+                state["last_surface_normal"] = nrm
             return snapped_pos, nrm if nrm else Vector((0,0,1))
         
         is_locked = state.get("locked")
@@ -560,6 +579,7 @@ def commit_arc_to_mesh(ctx):
         and not state.get("snap_edges", False)
         and not state.get("snap_edge_center", False)
         and not state.get("snap_face_center", False)
+        and not state.get("snap_faces", False)
     )
     invalidate_snap_cache(allow_incremental=(not auto_weld_enabled or vertex_only_snap))
 
@@ -751,6 +771,7 @@ def modal_arc_common(self, ctx, ev):
         if ev.type == 'F2': state["snap_edges"] = not state.get("snap_edges", False); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
         if ev.type == 'F3': state["snap_edge_center"] = not state.get("snap_edge_center", False); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
         if ev.type == 'F4': state["snap_face_center"] = not state.get("snap_face_center", False); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
+        if ev.type == 'F5': state["snap_faces"] = not state.get("snap_faces", False); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
         if ev.type == 'C': state["use_angle_snap"] = not state.get("use_angle_snap", True); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
         if ev.type == 'W': state["auto_weld"] = not state.get("auto_weld", True); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
         
@@ -825,6 +846,7 @@ def modal_arc_common(self, ctx, ev):
                     elif k == "snap_edges": state["snap_edges"] = not state.get("snap_edges", False)
                     elif k == "snap_edge_center": state["snap_edge_center"] = not state.get("snap_edge_center", False)
                     elif k == "snap_face_center": state["snap_face_center"] = not state.get("snap_face_center", False)
+                    elif k == "snap_faces": state["snap_faces"] = not state.get("snap_faces", False)
                     elif k == "toggle_angle": state["use_angle_snap"] = not state.get("use_angle_snap", True)
                     elif k == "weld_btn": state["auto_weld"] = not state.get("auto_weld", True)
                     ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
