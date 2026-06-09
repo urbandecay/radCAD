@@ -93,6 +93,10 @@ def register():
         panel.register()
 
 def unregister():
+    from .snapping_utils import free_snap_context
+
+    free_snap_context()
+
     if hasattr(panel, "unregister"):
         panel.unregister()
 

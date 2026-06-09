@@ -229,16 +229,9 @@ class ModalManager:
             state.get("snap_face_center", True) or
             state.get("snap_faces", False)
         )
-        component_snap_enabled = (
-            state.get("snap_verts", True) or
-            (state.get("snap_edges", True) and not state.get("snap_faces", False)) or
-            state.get("snap_edge_center", True) or
-            state.get("snap_face_center", True)
-        )
-        snapped_normal = None
 
         # --- OPTIMIZATION: Skip expensive mesh snapping for Freehand tool ---
-        if state.get("tool_mode") != "CURVE_FREEHAND" and component_snap_enabled:
+        if state.get("tool_mode") != "CURVE_FREEHAND" and mesh_snap_enabled:
             try:
                 from .snapping_utils import snap_to_mesh_components
             except ImportError:
@@ -247,9 +240,9 @@ class ModalManager:
             snapped_pos = snap_to_mesh_components(
                 ctx, ctx.edit_object, x, y, max_px=snap_radius,
                 do_verts=state.get("snap_verts", True),
-                do_edges=state.get("snap_edges", True) and not state.get("snap_faces", False),
+                do_edges=state.get("snap_edges", True),
                 do_edge_center=state.get("snap_edge_center", True),
-                do_faces=False, 
+                do_faces=state.get("snap_faces", False),
                 do_face_center=state.get("snap_face_center", True)
             )
 
@@ -317,13 +310,6 @@ class ModalManager:
                     if use_self:
                         snapped_pos = best_self_pt
 
-        if snapped_pos is None and state.get("snap_faces", False) and state.get("tool_mode") != "CURVE_FREEHAND":
-            from .snapping_utils import snap_edge_or_face_under_mouse
-            snapped_pos, snapped_normal, _ = snap_edge_or_face_under_mouse(
-                ctx, ctx.edit_object, x, y, snap_radius,
-                snap_edges=state.get("snap_edges", False),
-            )
-
         # --- FALLBACK TO SURFACE/PLANE (STILL ACTIVE FOR FREEHAND) ---
         state["snap_point"] = None 
         if snapped_pos is not None:
@@ -333,9 +319,7 @@ class ModalManager:
             locked_normal = state.get("locked_normal")
             if locked_normal and state.get("locked"):
                 return snapped_pos, locked_normal
-            nrm = snapped_normal
-            if nrm is None:
-                _, nrm, _ = raycast_under_mouse(ctx, x, y)
+            _, nrm, _ = raycast_under_mouse(ctx, x, y)
             if nrm is not None:
                 state["last_surface_normal"] = nrm
             return snapped_pos, nrm if nrm else Vector((0,0,1))
@@ -612,6 +596,8 @@ def begin_modal(self, ctx, ev):
     return {'RUNNING_MODAL'}
 
 def finish_modal(self, ctx):
+    from .snapping_utils import free_snap_context
+
     current_id = getattr(ctx.scene, "active_cad_tool_id", "")
     if current_id == self.tool_instance_id:
         # --- RESTORE CURSOR ---
@@ -619,6 +605,7 @@ def finish_modal(self, ctx):
         DrawManager.clear_all()
         state["active"] = False
         ctx.scene.active_cad_tool_id = ""
+        free_snap_context()
     ctx.area.tag_redraw()
 
 def modal_arc_common(self, ctx, ev):

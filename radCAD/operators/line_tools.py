@@ -601,7 +601,7 @@ class LineTool_Poly(SurfaceDrawTool):
             if res: target = res[1]
 
         # 2. Axis Inference (Override target if active and applicable)
-        elif not self.shift_lock_vec:
+        elif not self.shift_lock_vec and not self.state.get("geometry_snap", False):
             strength = max(0.1, min(89.0, self.state.get("snap_strength", 6.0)))
             inf_loc, inf_axis, _ = get_axis_snapped_location(ref, (event.mouse_region_x, event.mouse_region_y), context, snap_threshold=math.cos(math.radians(strength)))
             if inf_loc: 
@@ -685,6 +685,15 @@ class LineTool_Poly(SurfaceDrawTool):
             self.points.append(snap_point)
             self.state["locked"], self.state["locked_normal"], self.stage = True, self.Zp, 1
             return 'NEXT_STAGE'
+        if (
+            self.state.get("geometry_snap", False)
+            and snap_point is not None
+            and self.constraint_axis is None
+            and self.shift_lock_vec is None
+            and not self.state.get("input_string")
+        ):
+            self.current = snap_point.copy()
+            self.preview_pts = self.points + [self.current]
         if (self.current - self.points[-1]).length < 1e-5: return None
         self.points.append(self.current)
         self.constraint_axis = self.state["constraint_axis"] = None

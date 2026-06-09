@@ -1,480 +1,383 @@
 # snapping_utils.py
 
+from dataclasses import dataclass
+
 import bmesh
-import math
-import time
-from mathutils import Vector, geometry
 from bpy_extras import view3d_utils
 from bpy_extras.view3d_utils import location_3d_to_region_2d
+from mathutils import Vector
+
+from .snap_context_l import SnapContext
+
 
 ELEMENT_SNAP_RADIUS_PX = 15.0
-DEBUG_SNAP_TIMING = True
 
 
-class ScreenSnapCache:
-    """Caches mesh elements after projecting them into viewport screen space."""
+@dataclass
+class SnapResult:
+    location: Vector
+    kind: str
 
-    def __init__(self, cell_px=48):
-        self.cell_px = float(cell_px)
-        self._key = None
-        self.vert_bins = {}
-        self.edge_center_bins = {}
-        self.face_center_bins = {}
-        self.edge_bins = {}
+
+class _RadCADSnapEngine:
+    """Own a Snap Utilities-style GPU snap context for the active radCAD tool."""
+
+    def __init__(self):
+        self.sctx = None
+        self.component_sctx = None
+        self.context_key = None
+        self.dirty = True
+        self.component_dirty = True
+        self.pixel_dist = ELEMENT_SNAP_RADIUS_PX
+
+    @staticmethod
+    def _key(ctx):
+        return (
+            ctx.region.as_pointer(),
+            ctx.space_data.as_pointer(),
+        )
+
+    @staticmethod
+    def _visible_meshes(ctx):
+        for obj in ctx.visible_objects:
+            if obj.type == 'MESH':
+                yield obj, obj.matrix_world
+
+            if obj.instance_type == 'COLLECTION' and obj.instance_collection:
+                instance_matrix = obj.matrix_world.copy()
+                for child in obj.instance_collection.objects:
+                    if child.type == 'MESH':
+                        yield child, instance_matrix @ child.matrix_world
+
+    def free(self):
+        if self.sctx is not None:
+            self.sctx.free()
+        if self.component_sctx is not None:
+            self.component_sctx.free()
+        self.sctx = None
+        self.component_sctx = None
+        self.context_key = None
+        self.dirty = True
+        self.component_dirty = True
 
     def invalidate(self):
-        self._key = None
-        self.vert_bins.clear()
-        self.edge_center_bins.clear()
-        self.face_center_bins.clear()
-        self.edge_bins.clear()
+        self.dirty = True
+        self.component_dirty = True
 
-    def _bin_key(self, p2d):
-        return (
-            int(math.floor(p2d.x / self.cell_px)),
-            int(math.floor(p2d.y / self.cell_px)),
+    def _rebuild_objects(self, sctx, ctx):
+        sctx.clear_snap_objects(True)
+
+        for obj, matrix in self._visible_meshes(ctx):
+            sctx.add_obj(obj, matrix)
+
+    @staticmethod
+    def _update_context(sctx, ctx):
+        sctx.update_viewport_context(
+            ctx.evaluated_depsgraph_get(),
+            ctx.region,
+            ctx.space_data,
+            True,
         )
 
-    def _add_point(self, bins, p2d, item):
-        key = self._bin_key(p2d)
-        bins.setdefault(key, []).append(item)
+    def ensure(
+        self,
+        ctx,
+        max_px,
+        snap_verts,
+        snap_edges,
+        snap_edge_center,
+        snap_face_center,
+        snap_faces,
+    ):
+        context_key = self._key(ctx)
+        if self.sctx is None or self.context_key != context_key:
+            self.free()
+            self.sctx = SnapContext(
+                ctx.evaluated_depsgraph_get(),
+                ctx.region,
+                ctx.space_data,
+            )
+            self.context_key = context_key
+            self.dirty = True
+        else:
+            self._update_context(self.sctx, ctx)
 
-    def _add_edge(self, edge_id, p1_2d, p2_2d, v1_world, v2_world, max_px):
-        margin = max_px + 5.0
-        min_x = min(p1_2d.x, p2_2d.x) - margin
-        max_x = max(p1_2d.x, p2_2d.x) + margin
-        min_y = min(p1_2d.y, p2_2d.y) - margin
-        max_y = max(p1_2d.y, p2_2d.y) + margin
+        ui_scale = ctx.preferences.system.ui_scale
+        self.pixel_dist = max(1, round(max_px * ui_scale))
+        self.sctx.set_pixel_dist(self.pixel_dist)
 
-        min_i = int(math.floor(min_x / self.cell_px))
-        max_i = int(math.floor(max_x / self.cell_px))
-        min_j = int(math.floor(min_y / self.cell_px))
-        max_j = int(math.floor(max_y / self.cell_px))
+        # Connected vertices are resolved from selected edges by SnapContext.
+        search_edges = snap_verts or snap_edges or snap_edge_center
+        search_faces = snap_faces or snap_face_center
+        self.sctx.set_snap_mode(snap_verts, search_edges, search_faces)
 
-        item = (edge_id, p1_2d, p2_2d, v1_world, v2_world)
-        for i in range(min_i, max_i + 1):
-            for j in range(min_j, max_j + 1):
-                self.edge_bins.setdefault((i, j), []).append(item)
+        if self.dirty:
+            self._rebuild_objects(self.sctx, ctx)
+            self.dirty = False
 
-    def _matrix_key(self, matrix):
-        return tuple(round(v, 5) for row in matrix for v in row)
-
-    def _cache_key(self, ctx, obj, bm, do_verts, do_edges, do_edge_center,
-                   do_face_center, max_px):
-        region, rv3d = ctx.region, ctx.region_data
-        return (
-            obj.name,
-            len(bm.verts),
-            len(bm.edges),
-            len(bm.faces),
-            self._matrix_key(obj.matrix_world),
-            region.width,
-            region.height,
-            rv3d.view_perspective,
-            self._matrix_key(rv3d.perspective_matrix),
-            bool(do_verts),
-            bool(do_edges),
-            bool(do_edge_center),
-            bool(do_face_center),
-            round(float(max_px), 3),
+    def query(self, ctx, x, y):
+        snap_obj, location, element, element_co = self.sctx.snap_get(
+            (x, y),
+            None,
         )
+        if snap_obj is None or location is None or element is None:
+            return None
+        return snap_obj, location, element, element_co
 
-    def ensure(self, ctx, obj, bm, do_verts=True, do_edges=True,
-               do_edge_center=True, do_face_center=True,
-               max_px=ELEMENT_SNAP_RADIUS_PX):
-        key = self._cache_key(
-            ctx, obj, bm, do_verts, do_edges, do_edge_center,
-            do_face_center, max_px
-        )
-        if key == self._key:
-            return False
+    def query_components(self, ctx, x, y, snap_verts, snap_edges):
+        if self.component_sctx is None:
+            self.component_sctx = SnapContext(
+                ctx.evaluated_depsgraph_get(),
+                ctx.region,
+                ctx.space_data,
+            )
+            self.component_dirty = True
+        else:
+            self._update_context(self.component_sctx, ctx)
 
-        self.invalidate()
-        self._key = key
+        self.component_sctx.set_pixel_dist(self.pixel_dist)
+        self.component_sctx.set_snap_mode(snap_verts, snap_edges, False)
+        if self.component_dirty:
+            self._rebuild_objects(self.component_sctx, ctx)
+            self.component_dirty = False
 
-        region, rv3d = ctx.region, ctx.region_data
-        mw = obj.matrix_world
-
-        if do_verts:
-            for v in bm.verts:
-                if v.hide:
-                    continue
-                wco = mw @ v.co
-                p2d = location_3d_to_region_2d(region, rv3d, wco)
-                if p2d is not None:
-                    self._add_point(self.vert_bins, p2d, (p2d, wco))
-
-        if do_edges or do_edge_center:
-            for edge_id, e in enumerate(bm.edges):
-                if e.hide:
-                    continue
-
-                v1_world = mw @ e.verts[0].co
-                v2_world = mw @ e.verts[1].co
-
-                if do_edge_center:
-                    center = (v1_world + v2_world) * 0.5
-                    center_2d = location_3d_to_region_2d(region, rv3d, center)
-                    if center_2d is not None:
-                        self._add_point(self.edge_center_bins, center_2d, (center_2d, center))
-
-                if do_edges:
-                    p1_2d = location_3d_to_region_2d(region, rv3d, v1_world)
-                    p2_2d = location_3d_to_region_2d(region, rv3d, v2_world)
-                    if p1_2d is not None and p2_2d is not None:
-                        self._add_edge(edge_id, p1_2d, p2_2d, v1_world, v2_world, max_px)
-
-        if do_face_center:
-            for f in bm.faces:
-                if f.hide:
-                    continue
-                wco = mw @ f.calc_center_median()
-                p2d = location_3d_to_region_2d(region, rv3d, wco)
-                if p2d is not None:
-                    self._add_point(self.face_center_bins, p2d, (p2d, wco))
-        return True
-
-    def query(self, x, y, max_px):
-        margin = max_px + 5.0
-        min_i = int(math.floor((x - margin) / self.cell_px))
-        max_i = int(math.floor((x + margin) / self.cell_px))
-        min_j = int(math.floor((y - margin) / self.cell_px))
-        max_j = int(math.floor((y + margin) / self.cell_px))
-
-        verts = []
-        edge_centers = []
-        face_centers = []
-        edges = []
-        seen_edges = set()
-
-        for i in range(min_i, max_i + 1):
-            for j in range(min_j, max_j + 1):
-                key = (i, j)
-                verts.extend(self.vert_bins.get(key, ()))
-                edge_centers.extend(self.edge_center_bins.get(key, ()))
-                face_centers.extend(self.face_center_bins.get(key, ()))
-
-                for item in self.edge_bins.get(key, ()):
-                    edge_id = item[0]
-                    if edge_id in seen_edges:
-                        continue
-                    seen_edges.add(edge_id)
-                    edges.append(item)
-
-        return verts, edge_centers, face_centers, edges
+        snap_obj, location, element, element_co = self.component_sctx.snap_get((x, y), None)
+        if snap_obj is None or location is None or element is None:
+            return None
+        return snap_obj, location, element, element_co
 
 
-_screen_snap_cache = ScreenSnapCache()
+_snap_engine = _RadCADSnapEngine()
 
 
 def invalidate_snap_cache(allow_incremental=False):
-    _screen_snap_cache.invalidate()
-    try:
-        from .snap_pick_buffer import invalidate_snap_pick_buffer
-        invalidate_snap_pick_buffer(allow_incremental=allow_incremental)
-    except Exception:
-        pass
+    del allow_incremental
+    _snap_engine.invalidate()
 
 
-def raycast_under_mouse(ctx, x, y):
-    region, rv3d = ctx.region, ctx.region_data
-    coord = (x, y)
-    view_vec = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
-    ray_origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, coord)
-    depsgraph = ctx.evaluated_depsgraph_get()
-
-    hit, loc, norm, face_index, obj, _ = ctx.scene.ray_cast(
-        depsgraph, ray_origin, view_vec
-    )
-
-    if hit and obj and obj.type == 'MESH':
-        return loc, norm, obj
-    return None, None, None
+def free_snap_context():
+    _snap_engine.free()
 
 
-def is_visible_to_view(ctx, target_co, tolerance=0.1):
-    region, rv3d = ctx.region, ctx.region_data
-    depsgraph = ctx.evaluated_depsgraph_get()
+def _point_within_radius(ctx, point, x, y, max_px):
+    point_2d = location_3d_to_region_2d(ctx.region, ctx.region_data, point)
+    if point_2d is None:
+        return False
+    return (point_2d - Vector((x, y))).length_squared <= max_px * max_px
 
-    p2d = location_3d_to_region_2d(region, rv3d, target_co)
-    if p2d is None:
+
+def _point_visible(ctx, point):
+    if ctx.space_data.shading.type == 'WIREFRAME' or ctx.space_data.shading.show_xray:
+        return True
+
+    point_2d = location_3d_to_region_2d(ctx.region, ctx.region_data, point)
+    if point_2d is None:
         return False
 
-    ray_origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, p2d)
-    ray_vector = view3d_utils.region_2d_to_vector_3d(region, rv3d, p2d)
-
-    success, hit_loc, hit_normal, face_idx, hit_obj, hit_mat = ctx.scene.ray_cast(
-        depsgraph,
+    ray_origin = view3d_utils.region_2d_to_origin_3d(ctx.region, ctx.region_data, point_2d)
+    ray_direction = view3d_utils.region_2d_to_vector_3d(ctx.region, ctx.region_data, point_2d)
+    hit, location, _, _, _, _ = ctx.scene.ray_cast(
+        ctx.evaluated_depsgraph_get(),
         ray_origin,
-        ray_vector,
-        distance=10000.0
+        ray_direction,
     )
+    if not hit:
+        return True
 
-    if success:
-        dist_hit = (hit_loc - ray_origin).length
-        dist_target = (target_co - ray_origin).length
-
-        if dist_hit < (dist_target - tolerance):
-            return False
-
-    return True
+    target_depth = (point - ray_origin).length
+    hit_depth = (location - ray_origin).length
+    return hit_depth >= target_depth - max(1e-4, target_depth * 1e-5)
 
 
-def _edge_screen_hit(mouse, p1_2d, p2_2d):
-    intersect_2d = geometry.intersect_point_line(mouse, p1_2d, p2_2d)
-    if not intersect_2d:
+def _face_center(sctx, snap_obj, element):
+    obj = snap_obj.data[0]
+    if obj.type != 'MESH':
         return None
 
-    pt_on_seg_2d = intersect_2d[0]
-    min_x, max_x = min(p1_2d.x, p2_2d.x), max(p1_2d.x, p2_2d.x)
-    min_y, max_y = min(p1_2d.y, p2_2d.y), max(p1_2d.y, p2_2d.y)
-
-    if not ((min_x - 5 <= pt_on_seg_2d.x <= max_x + 5) and
-            (min_y - 5 <= pt_on_seg_2d.y <= max_y + 5)):
-        return None
-
-    seg_len = (p2_2d - p1_2d).length
-    if seg_len <= 0.001:
-        return None
-
-    dist2 = (mouse - pt_on_seg_2d).length_squared
-    factor = (pt_on_seg_2d - p1_2d).length / seg_len
-    return dist2, max(0.0, min(1.0, factor))
-
-
-def snap_edge_or_face_under_mouse(ctx, obj, x, y, max_px, snap_edges=True):
-    """Return a nearby visible-face edge, otherwise the visible face point."""
-    region, rv3d = ctx.region, ctx.region_data
-    mouse = Vector((x, y))
-    ray_origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, mouse)
-    ray_vector = view3d_utils.region_2d_to_vector_3d(region, rv3d, mouse)
-    depsgraph = ctx.evaluated_depsgraph_get()
-
-    hit, hit_loc, hit_normal, face_index, hit_obj, _ = ctx.scene.ray_cast(
-        depsgraph, ray_origin, ray_vector
-    )
-    hit_original = getattr(hit_obj, "original", hit_obj)
-    if not hit or (hit_obj != obj and hit_original != obj) or face_index < 0:
-        return None, None, None
-
-    bm = bmesh.from_edit_mesh(obj.data)
-    bm.faces.ensure_lookup_table()
-    if face_index >= len(bm.faces):
-        return hit_loc, hit_normal, "FACE"
-
-    if snap_edges:
-        mw = obj.matrix_world
-        best = None
-        limit_sq = max_px * max_px
-        for edge in bm.faces[face_index].edges:
-            p0 = mw @ edge.verts[0].co
-            p1 = mw @ edge.verts[1].co
-            edge_vec = p1 - p0
-            edge_len_sq = edge_vec.length_squared
-            if edge_len_sq <= 1e-12:
-                continue
-
-            closest = geometry.intersect_line_line(
-                ray_origin, ray_origin + ray_vector, p0, p1
-            )
-            if closest is None:
-                continue
-
-            factor = (closest[1] - p0).dot(edge_vec) / edge_len_sq
-            candidate = p0.lerp(p1, max(0.0, min(1.0, factor)))
-            candidate_2d = location_3d_to_region_2d(region, rv3d, candidate)
-            if candidate_2d is None:
-                continue
-
-            dist_sq = (mouse - candidate_2d).length_squared
-            if dist_sq < limit_sq and (best is None or dist_sq < best[0]):
-                best = (dist_sq, candidate)
-
-        if best:
-            return best[1], hit_normal, "EDGE"
-
-    return hit_loc, hit_normal, "FACE"
-
-
-def snap_to_mesh_components(ctx, obj, x, y, max_px=ELEMENT_SNAP_RADIUS_PX,
-                            do_verts=True,
-                            do_edges=True,
-                            do_edge_center=True,
-                            do_face_center=True,
-                            **kwargs):
-    """
-    Screen-space snap logic using a cached projected index.
-
-    Priority:
-    0. Verts
-    1. Edge/face centers
-    2. Nearest point on edge
-    """
-    if obj is None or obj.type != 'MESH':
-        return None
-
-    t_total = time.perf_counter()
-    if not getattr(snap_to_mesh_components, "_pick_buffer_failed", False):
-        try:
-            from .snap_pick_buffer import snap_with_pick_buffer
-            debug_stats = {} if DEBUG_SNAP_TIMING else None
-            result = snap_with_pick_buffer(
-                ctx, obj, x, y, max_px,
-                do_verts=do_verts,
-                do_edges=do_edges,
-                do_edge_center=do_edge_center,
-                do_face_center=do_face_center,
-                debug_stats=debug_stats,
-            )
-            if DEBUG_SNAP_TIMING:
-                _log_pick_buffer_perf(debug_stats, t_total, result)
-            if result is not None:
-                return result
-        except Exception as exc:
-            print(f"[radCAD Snap] GPU pick-buffer path disabled, falling back to screen cache: {exc}")
-            snap_to_mesh_components._pick_buffer_failed = True
-
-    if do_edges:
-        result, _, snap_kind = snap_edge_or_face_under_mouse(
-            ctx, obj, x, y, max_px, snap_edges=True
-        )
-        if snap_kind == "EDGE":
-            return result
-
-    t_lookup = time.perf_counter()
-    mouse = Vector((x, y))
-    bm = bmesh.from_edit_mesh(obj.data)
-
-    if do_verts:
+    vertex_indices = {int(index) for index in element}
+    if obj.data.is_editmode:
+        bm = bmesh.from_edit_mesh(obj.data)
         bm.verts.ensure_lookup_table()
-    if do_edges or do_edge_center:
-        bm.edges.ensure_lookup_table()
-    if do_face_center:
-        bm.faces.ensure_lookup_table()
+        if not vertex_indices or max(vertex_indices) >= len(bm.verts):
+            return None
 
-    t_cache = time.perf_counter()
-    rebuilt = _screen_snap_cache.ensure(
-        ctx, obj, bm,
-        do_verts=do_verts,
-        do_edges=do_edges,
-        do_edge_center=do_edge_center,
-        do_face_center=do_face_center,
-        max_px=max_px,
-    )
-    t_after_cache = time.perf_counter()
-    verts, edge_centers, face_centers, edges = _screen_snap_cache.query(x, y, max_px)
-    t_query = time.perf_counter()
+        faces = set(bm.verts[next(iter(vertex_indices))].link_faces)
+        for index in vertex_indices:
+            faces.intersection_update(bm.verts[index].link_faces)
+        if not faces:
+            return None
+        return snap_obj.mat @ next(iter(faces)).calc_center_median()
 
-    allow_occluded = False
-    if ctx.space_data.type == 'VIEW_3D':
-        shading = ctx.space_data.shading
-        if shading.type == 'WIREFRAME' or shading.show_xray:
-            allow_occluded = True
-
-    candidates = []
-    limit_sq = max_px * max_px
-
-    if do_verts:
-        for p2d, wco in verts:
-            d2 = (mouse - p2d).length_squared
-            if d2 < limit_sq:
-                candidates.append((0, d2, wco))
-
-    if do_edge_center:
-        for p2d, wco in edge_centers:
-            d2 = (mouse - p2d).length_squared
-            if d2 < limit_sq:
-                candidates.append((1, d2, wco))
-
-    if do_face_center:
-        for p2d, wco in face_centers:
-            d2 = (mouse - p2d).length_squared
-            if d2 < limit_sq:
-                candidates.append((1, d2, wco))
-
-    if do_edges:
-        for edge_id, p1_2d, p2_2d, v1_world, v2_world in edges:
-            edge_hit = _edge_screen_hit(mouse, p1_2d, p2_2d)
-            if edge_hit is None:
-                continue
-
-            dist2, factor = edge_hit
-            if dist2 < limit_sq:
-                pt_3d = v1_world.lerp(v2_world, factor)
-                candidates.append((2, dist2, pt_3d))
-
-    candidates.sort(key=lambda item: (item[0], item[1]))
-    t_candidates = time.perf_counter()
-
-    for prio, dist_sq, co in candidates:
-        if allow_occluded:
-            result = co
-            if DEBUG_SNAP_TIMING:
-                _log_screen_cache_perf(
-                    t_total, t_lookup, t_cache, t_after_cache, t_query, t_candidates,
-                    len(verts), len(edge_centers), len(face_centers), len(edges),
-                    len(candidates), True, "occluded", result, rebuilt
-                )
-            return result
-
-        if is_visible_to_view(ctx, co):
-            result = co
-            if DEBUG_SNAP_TIMING:
-                _log_screen_cache_perf(
-                    t_total, t_lookup, t_cache, t_after_cache, t_query, t_candidates,
-                    len(verts), len(edge_centers), len(face_centers), len(edges),
-                    len(candidates), True, "visible", result, rebuilt
-                )
-            return result
-
-    if DEBUG_SNAP_TIMING:
-        _log_screen_cache_perf(
-            t_total, t_lookup, t_cache, t_after_cache, t_query, t_candidates,
-            len(verts), len(edge_centers), len(face_centers), len(edges),
-            len(candidates), False, "none", None, rebuilt
-        )
+    mesh = obj.evaluated_get(sctx.depsgraph).data
+    for polygon in mesh.polygons:
+        if vertex_indices.issubset(polygon.vertices):
+            return snap_obj.mat @ polygon.center
     return None
 
 
-def _fmt_ms(value):
-    return f"{value:.2f}ms"
+def _component_result(ctx, hit, x, y, max_px, snap_verts, snap_edges, snap_edge_center):
+    if hit is None:
+        return None
+
+    _, location, element, element_co = hit
+    element_size = len(element)
+    if element_size == 1 and snap_verts:
+        return SnapResult(location.copy(), "VERT")
+
+    if element_size == 2:
+        if snap_edge_center:
+            center = (element_co[0] + element_co[1]) * 0.5
+            if _point_within_radius(ctx, center, x, y, max_px):
+                return SnapResult(center, "EDGE_CENTER")
+        if snap_edges:
+            return SnapResult(location.copy(), "EDGE")
+
+    return None
 
 
-def _log_pick_buffer_perf(stats, t_total, result):
-    if not DEBUG_SNAP_TIMING:
-        return
-    total_ms = (time.perf_counter() - t_total) * 1000.0
-    print(
-        "[SnapPerf] "
-        f"total={_fmt_ms(total_ms)} "
-        f"path=pick_buffer "
-        f"coarse={stats.get('coarse', 'pass')} "
-        f"mesh_update={stats.get('mesh_update', 'unknown')} "
-        f"mesh_access={_fmt_ms(stats.get('mesh_access_ms', 0.0))} "
-        f"mesh_build={_fmt_ms(stats.get('mesh_build_ms', 0.0))} "
-        f"draw={_fmt_ms(stats.get('draw_ms', 0.0))} "
-        f"buffer_read={_fmt_ms(stats.get('buffer_read_ms', 0.0))} "
-        f"lookup={_fmt_ms(stats.get('lookup_ms', 0.0))} "
-        f"resolve={_fmt_ms(stats.get('resolve_ms', 0.0))} "
-        f"index={stats.get('index', 0)} "
-        f"result={result is not None}"
+def _face_result(ctx, hit, x, y, max_px, snap_face_center, snap_faces):
+    if hit is None:
+        return None
+
+    snap_obj, location, element, _ = hit
+    if len(element) != 3:
+        return None
+
+    if snap_face_center:
+        center = _face_center(_snap_engine.sctx, snap_obj, element)
+        if center is not None and _point_within_radius(ctx, center, x, y, max_px):
+            return SnapResult(center, "FACE_CENTER")
+    if snap_faces:
+        return SnapResult(location.copy(), "FACE")
+    return None
+
+
+def snap_mesh(
+    ctx,
+    obj,
+    x,
+    y,
+    max_px=ELEMENT_SNAP_RADIUS_PX,
+    snap_verts=True,
+    snap_edges=True,
+    snap_edge_center=True,
+    snap_face_center=True,
+    snap_faces=False,
+):
+    del obj
+    if ctx.region is None or ctx.region_data is None or ctx.space_data.type != 'VIEW_3D':
+        return None
+
+    _snap_engine.ensure(
+        ctx,
+        max_px,
+        snap_verts,
+        snap_edges,
+        snap_edge_center,
+        snap_face_center,
+        snap_faces,
     )
+    hit = _snap_engine.query(ctx, x, y)
+    if hit is None:
+        return None
+
+    component = _component_result(
+        ctx,
+        hit,
+        x,
+        y,
+        max_px,
+        snap_verts,
+        snap_edges,
+        snap_edge_center,
+    )
+    if component is not None:
+        return component
+
+    # Snap Utilities can return a covering face before an edge. Retry components
+    # without face IDs, then reject anything actually hidden by that face.
+    search_edges = snap_verts or snap_edges or snap_edge_center
+    if len(hit[2]) == 3 and search_edges:
+        component_hit = _snap_engine.query_components(ctx, x, y, snap_verts, search_edges)
+        component = _component_result(
+            ctx,
+            component_hit,
+            x,
+            y,
+            max_px,
+            snap_verts,
+            snap_edges,
+            snap_edge_center,
+        )
+        if component is not None and _point_visible(ctx, component.location):
+            return component
+
+    return _face_result(ctx, hit, x, y, max_px, snap_face_center, snap_faces)
 
 
-def _log_screen_cache_perf(t_total, t_lookup, t_cache, t_after_cache, t_query, t_candidates,
-                           verts_n, edge_centers_n, face_centers_n, edges_n,
-                           cand_n, result_ok, reason, result, rebuilt):
-    if not DEBUG_SNAP_TIMING:
-        return
-    total_ms = (time.perf_counter() - t_total) * 1000.0
-    print(
-        "[SnapPerf] "
-        f"total={_fmt_ms(total_ms)} "
-        f"path=screen_cache "
-        f"lookup={_fmt_ms((t_cache - t_lookup) * 1000.0)} "
-        f"cache={_fmt_ms((t_after_cache - t_cache) * 1000.0)} "
-        f"query={_fmt_ms((t_query - t_after_cache) * 1000.0)} "
-        f"candidates={_fmt_ms((t_candidates - t_query) * 1000.0)} "
-        f"verts={verts_n} edge_centers={edge_centers_n} face_centers={face_centers_n} edges={edges_n} "
-        f"cand={cand_n} result={result_ok} reason={reason} rebuilt={rebuilt}"
+def snap_to_mesh_components(
+    ctx,
+    obj,
+    x,
+    y,
+    max_px=ELEMENT_SNAP_RADIUS_PX,
+    do_verts=True,
+    do_edges=True,
+    do_edge_center=True,
+    do_face_center=True,
+    **kwargs,
+):
+    result = snap_mesh(
+        ctx,
+        obj,
+        x,
+        y,
+        max_px=max_px,
+        snap_verts=do_verts,
+        snap_edges=do_edges,
+        snap_edge_center=do_edge_center,
+        snap_face_center=do_face_center,
+        snap_faces=kwargs.get("do_faces", False),
+    )
+    return result.location if result is not None else None
+
+
+def snap_visible_face_components(
+    ctx,
+    obj,
+    x,
+    y,
+    max_px,
+    snap_verts=False,
+    snap_edges=False,
+    snap_edge_center=False,
+    snap_face_center=False,
+    snap_faces=False,
+):
+    result = snap_mesh(
+        ctx,
+        obj,
+        x,
+        y,
+        max_px=max_px,
+        snap_verts=snap_verts,
+        snap_edges=snap_edges,
+        snap_edge_center=snap_edge_center,
+        snap_face_center=snap_face_center,
+        snap_faces=snap_faces,
+    )
+    if result is None:
+        return None, None, None
+    return result.location, None, result.kind
+
+
+def snap_edge_or_face_under_mouse(ctx, obj, x, y, max_px, snap_edges=True):
+    return snap_visible_face_components(
+        ctx,
+        obj,
+        x,
+        y,
+        max_px,
+        snap_edges=snap_edges,
+        snap_faces=True,
     )
