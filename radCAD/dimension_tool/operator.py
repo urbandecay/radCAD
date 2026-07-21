@@ -9,10 +9,18 @@ from ..modal_core import DrawManager, is_event_over_ui
 from ..modal_state import state
 from ..snapping_utils import free_snap_context, invalidate_snap_cache
 from .constants import DRAW_HANDLER_2D, DRAW_HANDLER_3D
-from .drawing import draw_preview_2d, draw_preview_3d
+from .drawing import dimension_hit_distance, draw_preview_2d, draw_preview_3d
 from .formatting import format_dimension_length
 from .geometry import dimension_basis, signed_offset_from_point
-from .model import create_dimension, delete_dimension, resolve_anchor, selected_dimension, update_dimension
+from .model import (
+    create_dimension,
+    delete_dimension,
+    dimension_layout,
+    iter_dimensions,
+    resolve_anchor,
+    selected_dimension,
+    update_dimension,
+)
 from .snapping import pick_point, project_to_plane
 
 
@@ -262,19 +270,58 @@ class VIEW3D_OT_radcad_dimension_refresh(bpy.types.Operator):
         return {"FINISHED"}
 
 
-class VIEW3D_OT_radcad_dimension_set_active(bpy.types.Operator):
-    bl_idname = "view3d.radcad_dimension_set_active"
-    bl_label = "Edit Dimension"
+class VIEW3D_OT_radcad_dimension_pick(bpy.types.Operator):
+    bl_idname = "view3d.radcad_dimension_pick"
+    bl_label = "Select Dimension"
+    bl_description = "Select a radCAD dimension by clicking its viewport annotation"
     bl_options = {"INTERNAL"}
 
-    root_name: bpy.props.StringProperty()
+    @classmethod
+    def poll(cls, context):
+        return context.area is not None and context.area.type == "VIEW_3D"
 
-    def execute(self, context):
-        root = bpy.data.objects.get(self.root_name)
-        data = getattr(root, "radcad_dimension", None) if root is not None else None
-        if data is None or not data.is_dimension:
-            return {"CANCELLED"}
-        context.scene.radcad_active_dimension = root
+    def invoke(self, context, event):
+        if (
+            context.region is None
+            or context.region.type != "WINDOW"
+            or not getattr(context.scene, "radcad_dimensions_visible", True)
+            or getattr(context.scene, "active_cad_tool_id", "")
+        ):
+            return {"PASS_THROUGH"}
+
+        mouse = Vector((event.mouse_region_x, event.mouse_region_y))
+        picked = None
+        best_distance = float("inf")
+        for root in reversed(iter_dimensions(context.scene)):
+            layout, label = dimension_layout(root)
+            if layout is None:
+                continue
+            data = root.radcad_dimension
+            distance = dimension_hit_distance(
+                context,
+                mouse,
+                layout.p1,
+                layout.p2,
+                layout.plane_normal,
+                data.offset_distance,
+                label,
+                data.text_size if data.text_size >= 4.0 else 14.0,
+                data.arrow_size if data.arrow_size >= 2.0 else 10.0,
+                data.line_width if data.line_width >= 0.5 else 1.5,
+                data.extension_gap,
+                data.extension_overshoot,
+            )
+            if distance is not None and distance < best_distance:
+                picked = root
+                best_distance = distance
+
+        if picked is None:
+            if context.scene.radcad_active_dimension is not None:
+                context.scene.radcad_active_dimension = None
+                context.area.tag_redraw()
+            return {"PASS_THROUGH"}
+
+        context.scene.radcad_active_dimension = picked
         context.area.tag_redraw()
         return {"FINISHED"}
 
@@ -298,6 +345,6 @@ CLASSES = (
     VIEW3D_OT_radcad_dimension_linear,
     VIEW3D_OT_radcad_dimension_reposition,
     VIEW3D_OT_radcad_dimension_refresh,
-    VIEW3D_OT_radcad_dimension_set_active,
+    VIEW3D_OT_radcad_dimension_pick,
     VIEW3D_OT_radcad_dimension_delete,
 )

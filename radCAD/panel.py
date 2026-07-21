@@ -9,7 +9,7 @@ import bpy.utils.previews
 import os
 from .modal_state import state 
 from .modal_core import DrawManager
-from .dimension_tool.model import dimension_layout, iter_dimensions, selected_dimension
+from .dimension_tool.model import selected_dimension
 
 CURRENT_DIR = os.path.dirname(__file__)
 POSSIBLE_PATHS = [
@@ -364,20 +364,6 @@ class RADCAD_PT_Dimension(bpy.types.Panel):
         row.scale_y = 1.2
         row.operator("view3d.radcad_dimension_linear", text="Linear Dimension", icon="DRIVER_DISTANCE")
         layout.prop(context.scene, "radcad_dimensions_visible", toggle=True)
-
-        dimensions = iter_dimensions(context.scene)
-        if dimensions:
-            box = layout.box()
-            box.label(text="Dimensions")
-            active = selected_dimension(context)
-            for root_item in dimensions:
-                _layout, label = dimension_layout(root_item)
-                op = box.operator(
-                    "view3d.radcad_dimension_set_active",
-                    text=f"{root_item.name}: {label}",
-                    depress=(root_item == active),
-                )
-                op.root_name = root_item.name
 
         root = selected_dimension(context)
         if root is not None:

@@ -11,6 +11,9 @@ from mathutils import Vector
 from .geometry import dimension_basis
 
 
+DIMENSION_HIT_RADIUS = 9.0
+
+
 def _shader():
     try:
         return gpu.shader.from_builtin("UNIFORM_COLOR")
@@ -66,24 +69,22 @@ def _draw_segments_2d(segments, color, width=1.5):
     gpu.state.blend_set("NONE")
 
 
-def draw_screen_dimension(
+def _screen_dimension_geometry(
     context,
     p1,
     p2,
     plane_normal,
     offset_distance,
     label,
-    color,
     text_size,
     arrow_size,
-    line_width,
     extension_gap,
     extension_overshoot,
 ):
-    """Draw one complete dimension in POST_PIXEL; no scene geometry is used."""
+    """Build the exact screen-space geometry used for drawing and picking."""
     basis = dimension_basis(p1, p2, plane_normal)
     if basis is None:
-        return
+        return None
     _line_world, offset_world, _normal = basis
     p1 = Vector(p1)
     p2 = Vector(p2)
@@ -103,11 +104,11 @@ def draw_screen_dimension(
     )
     projected = [location_3d_to_region_2d(context.region, context.region_data, point) for point in world_points]
     if any(point is None for point in projected):
-        return
+        return None
     ext_1_start, ext_1_end, ext_2_start, ext_2_end, d1_2d, d2_2d = projected
     screen_line = d2_2d - d1_2d
     if screen_line.length_squared <= 1.0e-8:
-        return
+        return None
     screen_line.normalize()
     screen_perp = Vector((-screen_line.y, screen_line.x))
     midpoint = (d1_2d + d2_2d) * 0.5
@@ -144,13 +145,120 @@ def draw_screen_dimension(
             (d2_2d, right_back - screen_perp * wing),
         )
     )
-    _draw_segments_2d(segments, tuple(color), line_width)
 
     text_direction = screen_line.copy()
     if text_direction.x < 0.0:
         text_direction.negate()
     text_up = Vector((-text_direction.y, text_direction.x))
     text_position = midpoint - text_direction * (text_width * 0.5) + text_up * (4.0 - text_height * 0.2)
+    return {
+        "segments": segments,
+        "midpoint": midpoint,
+        "text_direction": text_direction,
+        "text_up": text_up,
+        "text_position": text_position,
+        "text_width": text_width,
+        "text_height": text_height,
+        "font_size": font_size,
+    }
+
+
+def _distance_to_segment_2d(point, start, end):
+    segment = end - start
+    if segment.length_squared <= 1.0e-8:
+        return (point - start).length
+    factor = max(0.0, min(1.0, (point - start).dot(segment) / segment.length_squared))
+    return (point - (start + segment * factor)).length
+
+
+def dimension_hit_distance(
+    context,
+    mouse,
+    p1,
+    p2,
+    plane_normal,
+    offset_distance,
+    label,
+    text_size,
+    arrow_size,
+    line_width,
+    extension_gap,
+    extension_overshoot,
+):
+    """Return a pixel hit distance, or None when the dimension was not clicked."""
+    geometry = _screen_dimension_geometry(
+        context,
+        p1,
+        p2,
+        plane_normal,
+        offset_distance,
+        label,
+        text_size,
+        arrow_size,
+        extension_gap,
+        extension_overshoot,
+    )
+    if geometry is None:
+        return None
+
+    mouse = Vector(mouse)
+    line_distance = min(
+        (_distance_to_segment_2d(mouse, start, end) for start, end in geometry["segments"]),
+        default=float("inf"),
+    )
+    line_radius = max(DIMENSION_HIT_RADIUS, float(line_width) * 0.5 + 5.0)
+    best = line_distance if line_distance <= line_radius else None
+
+    # The text is rotated around its lower-left draw position. Use the same
+    # local axes and a small pad so labels remain comfortable click targets.
+    delta = mouse - geometry["text_position"]
+    text_x = delta.dot(geometry["text_direction"])
+    text_y = delta.dot(geometry["text_up"])
+    pad = DIMENSION_HIT_RADIUS
+    if (
+        -pad <= text_x <= geometry["text_width"] + pad
+        and -pad <= text_y <= geometry["text_height"] + pad
+    ):
+        text_distance = 0.0
+        best = text_distance if best is None else min(best, text_distance)
+    return best
+
+
+def draw_screen_dimension(
+    context,
+    p1,
+    p2,
+    plane_normal,
+    offset_distance,
+    label,
+    color,
+    text_size,
+    arrow_size,
+    line_width,
+    extension_gap,
+    extension_overshoot,
+):
+    """Draw one complete dimension in POST_PIXEL; no scene geometry is used."""
+    geometry = _screen_dimension_geometry(
+        context,
+        p1,
+        p2,
+        plane_normal,
+        offset_distance,
+        label,
+        text_size,
+        arrow_size,
+        extension_gap,
+        extension_overshoot,
+    )
+    if geometry is None:
+        return
+
+    _draw_segments_2d(geometry["segments"], tuple(color), line_width)
+    font_size = geometry["font_size"]
+    text_position = geometry["text_position"]
+    text_direction = geometry["text_direction"]
+    blf.size(0, font_size)
     blf.color(0, *tuple(color))
     blf.position(0, text_position.x, text_position.y, 0)
     try:
