@@ -17,6 +17,9 @@ class SnapResult:
     location: Vector
     kind: str
     normal: Vector = None
+    target_object: object = None
+    element_indices: tuple = ()
+    element_weights: tuple = ()
 
 
 class _RadCADSnapEngine:
@@ -173,12 +176,17 @@ def _face_center(sctx, snap_obj, element):
             faces.intersection_update(bm.verts[index].link_faces)
         if not faces:
             return None
-        return snap_obj.mat @ next(iter(faces)).calc_center_median()
+        face = next(iter(faces))
+        indices = tuple(vertex.index for vertex in face.verts)
+        weights = tuple(1.0 / len(indices) for _index in indices)
+        return snap_obj.mat @ face.calc_center_median(), indices, weights
 
     mesh = obj.evaluated_get(sctx.depsgraph).data
     for polygon in mesh.polygons:
         if vertex_indices.issubset(polygon.vertices):
-            return snap_obj.mat @ polygon.center
+            indices = tuple(polygon.vertices)
+            weights = tuple(1.0 / len(indices) for _index in indices)
+            return snap_obj.mat @ polygon.center, indices, weights
     return None
 
 
@@ -186,18 +194,22 @@ def _component_result(ctx, hit, x, y, max_px, snap_verts, snap_edges, snap_edge_
     if hit is None:
         return None
 
-    _, location, element, element_co = hit
+    snap_obj, location, element, element_co = hit
+    target = snap_obj.data[0]
     element_size = len(element)
     if element_size == 1 and snap_verts:
-        return SnapResult(location.copy(), "VERT")
+        return SnapResult(location.copy(), "VERT", None, target, tuple(element), (1.0,))
 
     if element_size == 2:
         if snap_edge_center:
             center = (element_co[0] + element_co[1]) * 0.5
             if _point_within_radius(ctx, center, x, y, max_px):
-                return SnapResult(center, "EDGE_CENTER")
+                return SnapResult(center, "EDGE_CENTER", None, target, tuple(element), (0.5, 0.5))
         if snap_edges:
-            return SnapResult(location.copy(), "EDGE")
+            edge = element_co[1] - element_co[0]
+            t = 0.0 if edge.length_squared <= 1e-12 else (location - element_co[0]).dot(edge) / edge.length_squared
+            t = max(0.0, min(1.0, t))
+            return SnapResult(location.copy(), "EDGE", None, target, tuple(element), (1.0 - t, t))
 
     return None
 
@@ -226,13 +238,31 @@ def _face_result(
         normal = None
 
     if snap_face_center:
-        center = _face_center(_snap_engine.sctx, snap_obj, element)
-        if center is not None and _point_within_radius(ctx, center, x, y, max_px):
-            return SnapResult(center, "FACE_CENTER", normal)
+        center_data = _face_center(_snap_engine.sctx, snap_obj, element)
+        if center_data is not None:
+            center, center_indices, center_weights = center_data
+            if _point_within_radius(ctx, center, x, y, max_px):
+                return SnapResult(center, "FACE_CENTER", normal, snap_obj.data[0], center_indices, center_weights)
+    v0 = element_co[1] - element_co[0]
+    v1 = element_co[2] - element_co[0]
+    v2 = location - element_co[0]
+    d00 = v0.dot(v0)
+    d01 = v0.dot(v1)
+    d11 = v1.dot(v1)
+    d20 = v2.dot(v0)
+    d21 = v2.dot(v1)
+    denom = d00 * d11 - d01 * d01
+    if abs(denom) <= 1e-12:
+        weights = ()
+    else:
+        w1 = (d11 * d20 - d01 * d21) / denom
+        w2 = (d00 * d21 - d01 * d20) / denom
+        weights = (1.0 - w1 - w2, w1, w2)
+    target = snap_obj.data[0]
     if snap_faces:
-        return SnapResult(location.copy(), "FACE", normal)
+        return SnapResult(location.copy(), "FACE", normal, target, tuple(element), weights)
     if include_surface:
-        return SnapResult(location.copy(), "SURFACE", normal)
+        return SnapResult(location.copy(), "SURFACE", normal, target, tuple(element), weights)
     return None
 
 

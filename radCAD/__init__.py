@@ -1,9 +1,9 @@
 bl_info = {
-    "name": "radCAD",
+    "name": "rCAD",
     "author": "You",
-    "version": (2, 7, 9),
+    "version": (2, 8, 1),
     "blender": (4, 2, 0),
-    "location": "View3D > N-panel > radCAD",
+    "location": "View3D > N-panel > rCAD",
     "category": "3D View",
     "description": "CAD-style drawing tools including Arc Tool."
 }
@@ -18,6 +18,7 @@ def _import(name):
 prefs = _import("preferences")
 panel = _import("panel")
 modal_core = _import("modal_core") 
+dimension_tool = _import("dimension_tool")
 
 # 2. Import The Operators
 op_1pt = _import("operators.op_arc_1pt")
@@ -61,6 +62,8 @@ def register():
     # Register the main modal operator
     bpy.utils.register_class(modal_core.VIEW3D_OT_radcad_modal)
 
+    dimension_tool.register()
+
     bpy.utils.register_class(op_1pt.VIEW3D_OT_arc_overlay_preview)
     bpy.utils.register_class(op_2pt.VIEW3D_OT_arc_2pt)
     bpy.utils.register_class(op_3pt.VIEW3D_OT_arc_3pt)
@@ -99,6 +102,8 @@ def unregister():
 
     if hasattr(panel, "unregister"):
         panel.unregister()
+
+    dimension_tool.unregister()
 
     bpy.utils.unregister_class(op_point_center.VIEW3D_OT_point_center)
     bpy.utils.unregister_class(op_point_by_arcs.VIEW3D_OT_point_by_arcs)

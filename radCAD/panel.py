@@ -1,5 +1,5 @@
 bl_info = {
-    "name": "radCAD",
+    "name": "rCAD",
     "blender": (4, 2, 0),
     "category": "3D View",
 }
@@ -9,6 +9,7 @@ import bpy.utils.previews
 import os
 from .modal_state import state 
 from .modal_core import DrawManager
+from .dimension_tool.model import dimension_layout, iter_dimensions, selected_dimension
 
 CURRENT_DIR = os.path.dirname(__file__)
 POSSIBLE_PATHS = [
@@ -52,6 +53,7 @@ IMPLEMENTED_TOOLS = {
     "rectangle_from_center",
     "rectangle_from_corners",
     "rectangle_3_points", 
+    "dimension_linear",
 }
 
 TOOL_OPERATORS = {
@@ -82,6 +84,7 @@ TOOL_OPERATORS = {
     "rectangle_from_center": "view3d.rectangle_cen_cor",
     "rectangle_from_corners": "view3d.rectangle_cor_cor",
     "rectangle_3_points": "view3d.rectangle_3_points",
+    "dimension_linear": "view3d.radcad_dimension_linear",
 }
 
 SVG_FILES = {
@@ -239,10 +242,10 @@ def draw_tool_button(layout, key):
         row.operator(operator_id or "radcad.generic", text=key)
 
 class RADCAD_PT_Main(bpy.types.Panel):
-    bl_label = "radCAD"
+    bl_label = "rCAD"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "radCAD"
+    bl_category = "rCAD"
 
     def draw(self, context):
         layout = self.layout
@@ -255,7 +258,7 @@ class RADCAD_PT_Point(bpy.types.Panel):
     bl_label = "Point"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "radCAD"
+    bl_category = "rCAD"
     bl_parent_id = "RADCAD_PT_Main"
 
     def draw(self, context):
@@ -267,7 +270,7 @@ class RADCAD_PT_Line(bpy.types.Panel):
     bl_label = "Line"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "radCAD"
+    bl_category = "rCAD"
     bl_parent_id = "RADCAD_PT_Main"
 
     def draw(self, context):
@@ -279,7 +282,7 @@ class RADCAD_PT_Arc(bpy.types.Panel):
     bl_label = "Arc"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "radCAD"
+    bl_category = "rCAD"
     bl_parent_id = "RADCAD_PT_Main"
 
     def draw(self, context):
@@ -292,7 +295,7 @@ class RADCAD_PT_Circle(bpy.types.Panel):
     bl_label = "Circle"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "radCAD"
+    bl_category = "rCAD"
     bl_parent_id = "RADCAD_PT_Main"
 
     def draw(self, context):
@@ -304,7 +307,7 @@ class RADCAD_PT_Ellipse(bpy.types.Panel):
     bl_label = "Ellipse"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "radCAD"
+    bl_category = "rCAD"
     bl_parent_id = "RADCAD_PT_Main"
 
     def draw(self, context):
@@ -316,7 +319,7 @@ class RADCAD_PT_Polygon(bpy.types.Panel):
     bl_label = "Polygon"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "radCAD"
+    bl_category = "rCAD"
     bl_parent_id = "RADCAD_PT_Main"
 
     def draw(self, context):
@@ -328,7 +331,7 @@ class RADCAD_PT_Curve(bpy.types.Panel):
     bl_label = "Curve"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "radCAD"
+    bl_category = "rCAD"
     bl_parent_id = "RADCAD_PT_Main"
 
     def draw(self, context):
@@ -340,13 +343,69 @@ class RADCAD_PT_Rectangle(bpy.types.Panel):
     bl_label = "Rectangle"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "radCAD"
+    bl_category = "rCAD"
     bl_parent_id = "RADCAD_PT_Main"
 
     def draw(self, context):
         draw_header(self.layout, context.scene.radcad_rectangle_icon)
         for key in sorted(k for k in SVG_FILES if k.startswith("rectangle")):
             draw_tool_button(self.layout, key)
+
+class RADCAD_PT_Dimension(bpy.types.Panel):
+    bl_label = "Dimension"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "rCAD"
+    bl_parent_id = "RADCAD_PT_Main"
+
+    def draw(self, context):
+        layout = self.layout
+        row = layout.row()
+        row.scale_y = 1.2
+        row.operator("view3d.radcad_dimension_linear", text="Linear Dimension", icon="DRIVER_DISTANCE")
+        layout.prop(context.scene, "radcad_dimensions_visible", toggle=True)
+
+        dimensions = iter_dimensions(context.scene)
+        if dimensions:
+            box = layout.box()
+            box.label(text="Dimensions")
+            active = selected_dimension(context)
+            for root_item in dimensions:
+                _layout, label = dimension_layout(root_item)
+                op = box.operator(
+                    "view3d.radcad_dimension_set_active",
+                    text=f"{root_item.name}: {label}",
+                    depress=(root_item == active),
+                )
+                op.root_name = root_item.name
+
+        root = selected_dimension(context)
+        if root is not None:
+            data = root.radcad_dimension
+            layout.separator()
+            layout.label(text="Selected Dimension")
+            layout.prop(root, "name", text="Name")
+            layout.prop(data, "text_override")
+            layout.prop(data, "offset_distance")
+            layout.prop(data, "text_size")
+            layout.prop(data, "arrow_size")
+            layout.prop(data, "extension_gap")
+            layout.prop(data, "extension_overshoot")
+            layout.prop(data, "line_width")
+            layout.prop(data, "color")
+            row = layout.row(align=True)
+            row.operator("view3d.radcad_dimension_reposition", text="Reposition")
+            row.operator("view3d.radcad_dimension_refresh", text="Refresh", icon="FILE_REFRESH")
+            layout.operator("view3d.radcad_dimension_delete", text="Delete Dimension", icon="TRASH")
+        else:
+            box = layout.box()
+            box.label(text="New Dimension Style")
+            box.prop(context.scene, "radcad_dimension_text_size")
+            box.prop(context.scene, "radcad_dimension_arrow_size")
+            box.prop(context.scene, "radcad_dimension_extension_gap")
+            box.prop(context.scene, "radcad_dimension_extension_overshoot")
+            box.prop(context.scene, "radcad_dimension_line_width")
+            box.prop(context.scene, "radcad_dimension_color")
 
 classes = (
     RADCAD_OT_reset_overlays, 
@@ -360,6 +419,7 @@ classes = (
     RADCAD_PT_Polygon,
     RADCAD_PT_Curve,
     RADCAD_PT_Rectangle,
+    RADCAD_PT_Dimension,
 )
 
 def register():
@@ -380,6 +440,7 @@ def register():
     bpy.types.Scene.radcad_curve_icon = bpy.props.StringProperty(default="curve_interpolate_points")
     bpy.types.Scene.radcad_rectangle_icon = bpy.props.StringProperty(default="rectangle_from_center")
     bpy.types.Scene.radcad_point_icon = bpy.props.StringProperty(default="point_by_arcs")
+    bpy.types.Scene.radcad_dimension_icon = bpy.props.StringProperty(default="dimension_linear")
 
     for cls in classes:
         bpy.utils.register_class(cls)
@@ -395,6 +456,7 @@ def unregister():
     del bpy.types.Scene.radcad_curve_icon
     del bpy.types.Scene.radcad_rectangle_icon
     del bpy.types.Scene.radcad_point_icon
+    del bpy.types.Scene.radcad_dimension_icon
 
     if preview_collection:
         bpy.utils.previews.remove(preview_collection)
