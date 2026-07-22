@@ -19,6 +19,7 @@ class RADCAD_PG_dimension_anchor(bpy.types.PropertyGroup):
     target: bpy.props.PointerProperty(type=bpy.types.Object)
     kind: bpy.props.StringProperty(default="FREE")
     indices: bpy.props.StringProperty(default="[]")
+    vertex_ids: bpy.props.StringProperty(default="[]")
     weights: bpy.props.StringProperty(default="[]")
     fallback: bpy.props.FloatVectorProperty(size=3, subtype="XYZ")
 
