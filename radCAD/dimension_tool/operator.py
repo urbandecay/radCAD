@@ -1,17 +1,19 @@
 """Interactive creation and editing operators for linear dimensions."""
 
+import math
 import time
 
 import bpy
 from mathutils import Vector
 
+from ..inference_utils import get_axis_snapped_location
 from ..modal_core import DrawManager, is_event_over_ui
 from ..modal_state import state
 from ..snapping_utils import free_snap_context, invalidate_snap_cache
 from .constants import DRAW_HANDLER_2D, DRAW_HANDLER_3D
 from .drawing import dimension_hit_distance, draw_preview_2d, draw_preview_3d
 from .formatting import format_dimension_length
-from .geometry import dimension_basis, signed_offset_from_point
+from .geometry import dimension_basis
 from .model import (
     create_dimension,
     delete_dimension,
@@ -22,6 +24,73 @@ from .model import (
     update_dimension,
 )
 from .snapping import pick_point, project_to_plane
+
+
+def _cursor_driven_offset(context, event, p1, p2, fallback_normal, fallback_distance):
+    """Resolve a dimension offset from the cursor, with line-style axis inference."""
+    basis = dimension_basis(p1, p2, fallback_normal)
+    if basis is None:
+        return None
+
+    line_direction, fallback_direction, _normal = basis
+    midpoint = (Vector(p1) + Vector(p2)) * 0.5
+
+    # Read the mouse on a view-facing plane, then remove its component along
+    # the measured span. Unlike the old fixed dimension plane, this lets the
+    # witness direction rotate all the way around the measured line.
+    view_normal = (
+        context.region_data.view_matrix.inverted().to_3x3()
+        @ Vector((0.0, 0.0, 1.0))
+    ).normalized()
+    placement = project_to_plane(
+        context,
+        event.mouse_region_x,
+        event.mouse_region_y,
+        midpoint,
+        view_normal,
+    )
+    if placement is None:
+        return None
+
+    raw_offset = placement - midpoint
+    raw_offset -= line_direction * raw_offset.dot(line_direction)
+    if raw_offset.length_squared <= 1.0e-10:
+        distance = float(fallback_distance)
+        return midpoint + fallback_direction * distance, _normal, distance, None
+
+    offset_direction = raw_offset.normalized()
+    distance = raw_offset.length
+    inferred_axis = None
+
+    strength = max(0.1, min(89.0, state.get("snap_strength", 6.0)))
+    inferred, axis, _axis_name = get_axis_snapped_location(
+        midpoint,
+        (event.mouse_region_x, event.mouse_region_y),
+        context,
+        snap_threshold=math.cos(math.radians(strength)),
+    )
+    if inferred is not None and axis is not None:
+        # A dimension offset must remain perpendicular to its measured span.
+        # For axis-aligned dimensions this is the exact global X, Y, or Z axis;
+        # for an oblique span it is that axis projected into the cross-plane.
+        projected_axis = axis - line_direction * axis.dot(line_direction)
+        if projected_axis.length_squared > 1.0e-10:
+            projected_axis.normalize()
+            inferred_distance = (inferred - midpoint).dot(projected_axis)
+            if inferred_distance < 0.0:
+                projected_axis.negate()
+                inferred_distance = -inferred_distance
+            if inferred_distance > 1.0e-8:
+                offset_direction = projected_axis
+                distance = inferred_distance
+                inferred_axis = axis
+
+    plane_normal = line_direction.cross(offset_direction)
+    if plane_normal.length_squared <= 1.0e-10:
+        return None
+    plane_normal.normalize()
+    current = midpoint + offset_direction * distance
+    return current, plane_normal, distance, inferred_axis
 
 
 class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
@@ -69,6 +138,7 @@ class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
         return {"RUNNING_MODAL"}
 
     def _update(self, context, event):
+        state["current_axis_vector"] = None
         if self.stage == 0:
             pick = pick_point(context, event)
             self.current = pick.point
@@ -77,19 +147,36 @@ class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
             pick = pick_point(context, event, self.p1, self.plane_normal)
             self.current = pick.point
             self.current_pick = pick
+            # Match the line tool's mouse-driven global X/Y/Z inference. Exact
+            # geometry snaps retain priority; free and surface picks may infer
+            # an axis even when it leaves the first point's drawing plane.
+            if not state.get("geometry_snap", False):
+                strength = max(0.1, min(89.0, state.get("snap_strength", 6.0)))
+                inferred, axis, _axis_name = get_axis_snapped_location(
+                    self.p1,
+                    (event.mouse_region_x, event.mouse_region_y),
+                    context,
+                    snap_threshold=math.cos(math.radians(strength)),
+                )
+                if inferred is not None:
+                    self.current = inferred
+                    state["current_axis_vector"] = axis
+                    # The inferred point is no longer the surface point returned
+                    # by pick_point, so it must not retain that associative anchor.
+                    self.current_pick.snap_result = None
             self.preview_label = format_dimension_length((self.current - self.p1).length, context.scene)
         else:
-            midpoint = (self.p1 + self.p2) * 0.5
-            placement = project_to_plane(
+            resolved = _cursor_driven_offset(
                 context,
-                event.mouse_region_x,
-                event.mouse_region_y,
-                midpoint,
+                event,
+                self.p1,
+                self.p2,
                 self.plane_normal,
+                self.offset_distance,
             )
-            if placement is not None:
-                self.current = placement
-                self.offset_distance = signed_offset_from_point(self.p1, self.p2, self.plane_normal, placement)
+            if resolved is not None:
+                self.current, self.plane_normal, self.offset_distance, axis = resolved
+                state["current_axis_vector"] = axis
             self.preview_label = format_dimension_length((self.p2 - self.p1).length, context.scene)
         context.area.tag_redraw()
 
@@ -110,6 +197,7 @@ class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
             self.plane_normal = basis[2]
             default_offset = max((self.p2 - self.p1).length * 0.25, context.scene.radcad_dimension_text_size * 2.0)
             self.offset_distance = default_offset
+            self.current = (self.p1 + self.p2) * 0.5 + basis[1] * default_offset
             self.stage = 2
             self._update(context, event)
             return {"RUNNING_MODAL"}
@@ -165,6 +253,7 @@ class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
         if not self.running:
             return
         self.running = False
+        state["current_axis_vector"] = None
         DrawManager.remove_handler(DRAW_HANDLER_3D)
         DrawManager.remove_handler(DRAW_HANDLER_2D)
         free_snap_context()
@@ -193,12 +282,14 @@ class VIEW3D_OT_radcad_dimension_reposition(bpy.types.Operator):
         self.root = selected_dimension(context)
         data = self.root.radcad_dimension
         self.original_offset = data.offset_distance
+        self.original_plane_normal = Vector(data.plane_normal)
         self.p1 = resolve_anchor(data.anchor_1)
         self.p2 = resolve_anchor(data.anchor_2)
         self.plane_normal = Vector(data.plane_normal)
         self.context = context
         self.stage = 2
-        self.current = (self.p1 + self.p2) * 0.5
+        basis = dimension_basis(self.p1, self.p2, self.plane_normal)
+        self.current = (self.p1 + self.p2) * 0.5 + basis[1] * data.offset_distance
         self.offset_distance = data.offset_distance
         self.preview_label = format_dimension_length((self.p2 - self.p1).length, context.scene)
         self.running = True
@@ -213,11 +304,18 @@ class VIEW3D_OT_radcad_dimension_reposition(bpy.types.Operator):
         return {"RUNNING_MODAL"}
 
     def _update(self, context, event):
-        midpoint = (self.p1 + self.p2) * 0.5
-        placement = project_to_plane(context, event.mouse_region_x, event.mouse_region_y, midpoint, self.plane_normal)
-        if placement is not None:
-            self.current = placement
-            self.offset_distance = signed_offset_from_point(self.p1, self.p2, self.plane_normal, placement)
+        state["current_axis_vector"] = None
+        resolved = _cursor_driven_offset(
+            context,
+            event,
+            self.p1,
+            self.p2,
+            self.plane_normal,
+            self.offset_distance,
+        )
+        if resolved is not None:
+            self.current, self.plane_normal, self.offset_distance, axis = resolved
+            state["current_axis_vector"] = axis
         context.area.tag_redraw()
 
     def modal(self, context, event):
@@ -231,11 +329,13 @@ class VIEW3D_OT_radcad_dimension_reposition(bpy.types.Operator):
             return {"RUNNING_MODAL"}
         if event.type == "LEFTMOUSE" and event.value == "PRESS":
             self.root.radcad_dimension.offset_distance = self.offset_distance
+            self.root.radcad_dimension.plane_normal = self.plane_normal
             update_dimension(self.root)
             self.finish(context)
             return {"FINISHED"}
         if event.type == "ESC" and event.value == "PRESS":
             self.root.radcad_dimension.offset_distance = self.original_offset
+            self.root.radcad_dimension.plane_normal = self.original_plane_normal
             update_dimension(self.root)
             self.finish(context)
             return {"CANCELLED"}
@@ -245,6 +345,7 @@ class VIEW3D_OT_radcad_dimension_reposition(bpy.types.Operator):
         if not self.running:
             return
         self.running = False
+        state["current_axis_vector"] = None
         DrawManager.remove_handler(DRAW_HANDLER_3D)
         DrawManager.remove_handler(DRAW_HANDLER_2D)
         if context.scene.active_cad_tool_id == self.tool_instance_id:
@@ -307,7 +408,7 @@ class VIEW3D_OT_radcad_dimension_pick(bpy.types.Operator):
                 label,
                 data.text_size if data.text_size >= 4.0 else 14.0,
                 data.arrow_size if data.arrow_size >= 2.0 else 10.0,
-                data.line_width if data.line_width >= 0.5 else 1.5,
+                data.line_width if data.line_width >= 0.5 else 1.0,
                 data.extension_gap,
                 data.extension_overshoot,
             )

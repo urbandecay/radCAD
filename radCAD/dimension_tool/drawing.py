@@ -12,6 +12,7 @@ from .geometry import dimension_basis
 
 
 DIMENSION_HIT_RADIUS = 9.0
+SELECTION_COLOR = (1.0, 121.0 / 255.0, 0.0, 1.0)  # #FF7900
 
 
 def _shader():
@@ -53,7 +54,7 @@ def _draw_points(points, color, size=7.0):
     gpu.state.blend_set("NONE")
 
 
-def _draw_segments_2d(segments, color, width=1.5):
+def _draw_segments_2d(segments, color, width=1.0):
     coords = []
     for start, end in segments:
         coords.extend((start, end))
@@ -345,11 +346,15 @@ def draw_persistent_dimensions_2d():
         return
     from .model import dimension_layout, iter_dimensions
 
+    active = getattr(context.scene, "radcad_active_dimension", None)
     for root in iter_dimensions(context.scene):
         layout, label = dimension_layout(root)
         if layout is None:
             continue
         data = root.radcad_dimension
+        selected = root == active
+        color = SELECTION_COLOR if selected else tuple(data.color)
+        line_width = data.line_width if data.line_width >= 0.5 else 1.0
         draw_screen_dimension(
             context,
             layout.p1,
@@ -357,10 +362,10 @@ def draw_persistent_dimensions_2d():
             layout.plane_normal,
             data.offset_distance,
             label,
-            data.color,
+            color,
             data.text_size if data.text_size >= 4.0 else 14.0,
             data.arrow_size if data.arrow_size >= 2.0 else 10.0,
-            data.line_width if data.line_width >= 0.5 else 1.5,
+            line_width,
             data.extension_gap,
             data.extension_overshoot,
         )

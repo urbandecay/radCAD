@@ -199,7 +199,7 @@ def update_dimension(root):
     # Migrate pixel-style values from the abandoned world-geometry prototype.
     text_size = float(data.text_size) if data.text_size >= 4.0 else 14.0
     arrow_size = float(data.arrow_size) if data.arrow_size >= 2.0 else 10.0
-    line_width = float(data.line_width) if data.line_width >= 0.5 else 1.5
+    line_width = float(data.line_width) if data.line_width >= 0.5 else 1.0
     if data.text_size != text_size:
         data["text_size"] = text_size
     if data.arrow_size != arrow_size:

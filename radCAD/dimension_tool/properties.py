@@ -39,7 +39,7 @@ class RADCAD_PG_dimension_data(bpy.types.PropertyGroup):
     arrow_size: bpy.props.FloatProperty(name="Arrow Size (px)", min=4.0, max=40.0, default=10.0, update=_update_dimension)
     extension_gap: bpy.props.FloatProperty(name="Extension Gap", subtype="DISTANCE", min=0.0, default=0.05, update=_update_dimension)
     extension_overshoot: bpy.props.FloatProperty(name="Extension Overshoot", subtype="DISTANCE", min=0.0, default=0.10, update=_update_dimension)
-    line_width: bpy.props.FloatProperty(name="Line Width (px)", min=1.0, max=10.0, default=1.5, update=_update_dimension)
+    line_width: bpy.props.FloatProperty(name="Line Width (px)", min=1.0, max=10.0, default=1.0, update=_update_dimension)
     color: bpy.props.FloatVectorProperty(
         name="Color",
         subtype="COLOR",
@@ -65,7 +65,7 @@ def register():
         "radcad_dimension_arrow_size": bpy.props.FloatProperty(name="Arrow Size (px)", min=4.0, max=40.0, default=10.0),
         "radcad_dimension_extension_gap": bpy.props.FloatProperty(name="Extension Gap", subtype="DISTANCE", min=0.0, default=0.05),
         "radcad_dimension_extension_overshoot": bpy.props.FloatProperty(name="Extension Overshoot", subtype="DISTANCE", min=0.0, default=0.10),
-        "radcad_dimension_line_width": bpy.props.FloatProperty(name="Line Width (px)", min=1.0, max=10.0, default=1.5),
+        "radcad_dimension_line_width": bpy.props.FloatProperty(name="Line Width (px)", min=1.0, max=10.0, default=1.0),
         "radcad_dimension_color": bpy.props.FloatVectorProperty(name="Color", subtype="COLOR", size=4, min=0.0, max=1.0, default=(0.02, 0.02, 0.02, 1.0)),
         "radcad_dimensions_visible": bpy.props.BoolProperty(name="Show Dimensions", default=True),
         "radcad_active_dimension": bpy.props.PointerProperty(name="Active Dimension", type=bpy.types.Object),
