@@ -385,13 +385,23 @@ class RADCAD_PT_Dimension(bpy.types.Panel):
             layout.operator("view3d.radcad_dimension_delete", text="Delete Dimension", icon="TRASH")
         else:
             box = layout.box()
-            box.label(text="New Dimension Style")
-            box.prop(context.scene, "radcad_dimension_text_size")
-            box.prop(context.scene, "radcad_dimension_arrow_size")
-            box.prop(context.scene, "radcad_dimension_extension_gap")
-            box.prop(context.scene, "radcad_dimension_extension_overshoot")
-            box.prop(context.scene, "radcad_dimension_line_width")
-            box.prop(context.scene, "radcad_dimension_color")
+            scene = context.scene
+            expanded = scene.radcad_new_dimension_style_expanded
+            header = box.row()
+            header.prop(
+                scene,
+                "radcad_new_dimension_style_expanded",
+                text="New Dimension Style",
+                emboss=False,
+                icon="TRIA_DOWN" if expanded else "TRIA_RIGHT",
+            )
+            if expanded:
+                box.prop(scene, "radcad_dimension_text_size")
+                box.prop(scene, "radcad_dimension_arrow_size")
+                box.prop(scene, "radcad_dimension_extension_gap")
+                box.prop(scene, "radcad_dimension_extension_overshoot")
+                box.prop(scene, "radcad_dimension_line_width")
+                box.prop(scene, "radcad_dimension_color")
 
 classes = (
     RADCAD_OT_reset_overlays, 

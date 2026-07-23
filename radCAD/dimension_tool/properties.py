@@ -69,6 +69,11 @@ def register():
         "radcad_dimension_line_width": bpy.props.FloatProperty(name="Line Width (px)", min=1.0, max=10.0, default=1.0),
         "radcad_dimension_color": bpy.props.FloatVectorProperty(name="Color", subtype="COLOR", size=4, min=0.0, max=1.0, default=(0.02, 0.02, 0.02, 1.0)),
         "radcad_dimensions_visible": bpy.props.BoolProperty(name="Show Dimensions", default=True),
+        "radcad_new_dimension_style_expanded": bpy.props.BoolProperty(
+            name="New Dimension Style",
+            description="Show or hide the default style controls for new dimensions",
+            default=True,
+        ),
         "radcad_active_dimension": bpy.props.PointerProperty(name="Active Dimension", type=bpy.types.Object),
     }
     for name, prop in scene_props.items():
@@ -80,6 +85,7 @@ def unregister():
         "radcad_dimension_color",
         "radcad_active_dimension",
         "radcad_dimensions_visible",
+        "radcad_new_dimension_style_expanded",
         "radcad_dimension_line_width",
         "radcad_dimension_extension_overshoot",
         "radcad_dimension_extension_gap",
