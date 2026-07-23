@@ -868,6 +868,7 @@ class LineTool_TangentFromCurve(SurfaceDrawTool):
         else:
             self.all_chains = []
             self.chain_signatures = []
+        self.state["tangent_curve_available"] = len(self.all_chains) >= 2
 
     def update(self, context, event, snap_point, snap_normal):
         if self.Xp is None:
@@ -901,9 +902,15 @@ class LineTool_TangentFromCurve(SurfaceDrawTool):
         # Stage 0 uses the mouse ray to choose the source curve.  Once the
         # source is chosen, an enabled vertex/edge/center snap must become the
         # actual tangent-line endpoint (the HUD snap marker is drawn there).
+        tangent_curve_snap = (
+            self.stage == 1
+            and self.state.get("snap_tangent_curve", False)
+            and len(self.splines) >= 2
+        )
         geometry_target = None
         if (
             self.stage == 1
+            and not tangent_curve_snap
             and self.state.get("geometry_snap", False)
             and snap_point is not None
         ):
@@ -953,6 +960,61 @@ class LineTool_TangentFromCurve(SurfaceDrawTool):
 
         # STAGE 1: SLIDE & SNAP (Tangent Logic)
         sourceS = self.splines[self.source_idx]
+
+        # When Tangent Curve snapping is enabled, the mouse chooses a second
+        # selected curve and seeds its Catmull parameter.  Solve both contact
+        # parameters together so both preview endpoints lie on the Catmull
+        # curves and the line is tangent at both ends.
+        if tangent_curve_snap:
+            target_idx = -1
+            target_u = 0.0
+            target_dist = float('inf')
+            for idx, spline in enumerate(self.splines):
+                if idx == self.source_idx:
+                    continue
+                candidate_u = spline.getClosestU_Global(m_2d)
+                candidate = spline.evalCatmull(candidate_u)
+                distance = (candidate - m_2d).length_squared
+                if distance < target_dist:
+                    target_dist = distance
+                    target_idx = idx
+                    target_u = candidate_u
+
+            if target_idx != -1:
+                targetS = self.splines[target_idx]
+                source_u, target_u = solve_rhino_tangent(
+                    sourceS,
+                    targetS,
+                    self.current_u,
+                    target_u,
+                )
+                self.current_u = source_u
+
+                source_point = sourceS.evalCatmull(source_u)
+                target_point = targetS.evalCatmull(target_u)
+                self.head_3d = plane_to_world(
+                    source_point,
+                    self.Xp,
+                    self.Yp,
+                )
+                self.tail_3d = plane_to_world(
+                    target_point,
+                    self.Xp,
+                    self.Yp,
+                )
+                self.state["tan_points"] = [
+                    self.head_3d,
+                    self.tail_3d,
+                ]
+                self.state["tan_source_chains"] = [
+                    self.chain_signatures[self.source_idx],
+                    self.chain_signatures[target_idx],
+                ]
+                self.state["snap_point"] = self.tail_3d
+                self.state["geometry_snap"] = True
+                self.preview_pts = [self.head_3d, self.tail_3d]
+                self.current = self.tail_3d
+                return
         
         constraintRadius = 2.0 # Adjust range
         suggestedU = sourceS.solveRollingContact(m_2d, self.current_u, self.current_u, constraintRadius)

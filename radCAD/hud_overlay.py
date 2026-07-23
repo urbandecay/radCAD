@@ -331,6 +331,15 @@ def draw_bottom_bar():
         ]
         bar_label = "Tangency"
     elif tool_mode == "LINE_TANGENT_FROM_CURVE":
+        if state.get("tangent_curve_available", False):
+            buttons.insert(
+                -1,
+                (
+                    "Tangent Curve",
+                    state.get("snap_tangent_curve", False),
+                    "snap_tangent_curve_btn",
+                ),
+            )
         buttons.insert(
             -1,
             (

@@ -86,6 +86,8 @@ state = {
 
     "auto_weld": True, 
     "make_points_tangent": False,
+    "snap_tangent_curve": False,
+    "tangent_curve_available": False,
     "weld_radius": 0.001,
     "weld_to_faces": True,
     
@@ -255,6 +257,7 @@ def reset_state_from_context(ctx):
     keep_overlay_c3pt = state.get("circle_3pt_overlay_col", (0.2, 0.2, 0.2, 1.0))
     keep_weld    = state.get("auto_weld", True)
     keep_make_points_tangent = state.get("make_points_tangent", False)
+    keep_snap_tangent_curve = state.get("snap_tangent_curve", False)
     keep_min_dist = state.get("min_dist", 0.05)
     
     current_mode = state.get("tool_mode", "1POINT")
@@ -282,6 +285,8 @@ def reset_state_from_context(ctx):
         "circle_3pt_overlay_col": keep_overlay_c3pt,
         "auto_weld": keep_weld,
         "make_points_tangent": keep_make_points_tangent,
+        "snap_tangent_curve": keep_snap_tangent_curve,
+        "tangent_curve_available": False,
         "min_dist": keep_min_dist,
         
         "use_radians": use_rad, "snap_strength": strength,

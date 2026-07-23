@@ -943,6 +943,13 @@ def modal_arc_common(self, ctx, ev):
                     elif k == "snap_faces": state["snap_faces"] = not state.get("snap_faces", False)
                     elif k == "toggle_angle": state["use_angle_snap"] = not state.get("use_angle_snap", True)
                     elif k == "weld_btn": state["auto_weld"] = not state.get("auto_weld", True)
+                    elif k == "snap_tangent_curve_btn":
+                        state["snap_tangent_curve"] = not state.get(
+                            "snap_tangent_curve",
+                            False,
+                        )
+                        state["snap_point"] = None
+                        state["geometry_snap"] = False
                     elif k == "make_points_tangent_btn":
                         state["make_points_tangent"] = not state.get(
                             "make_points_tangent",
