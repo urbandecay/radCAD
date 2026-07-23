@@ -515,8 +515,14 @@ def commit_arc_to_mesh(ctx):
     pts = state["preview_pts"]
     if not pts: return
 
+    tangent_contact_modes = {
+        "CIRCLE_TAN_TAN",
+        "CIRCLE_TAN_TAN_TAN",
+        "LINE_TANGENT_FROM_CURVE",
+        "LINE_TAN_TAN",
+    }
     if (
-        state.get("tool_mode") in {"CIRCLE_TAN_TAN", "CIRCLE_TAN_TAN_TAN"}
+        state.get("tool_mode") in tangent_contact_modes
         and state.get("make_points_tangent", False)
     ):
         from .tangent_resampler import (
@@ -527,6 +533,7 @@ def commit_arc_to_mesh(ctx):
             obj,
             bm,
             state.get("tan_points", []),
+            state.get("tan_source_chains") or None,
         )
         if resampled:
             bmesh.update_edit_mesh(
@@ -845,6 +852,8 @@ def modal_arc_common(self, ctx, ev):
             and state.get("tool_mode") in {
                 "CIRCLE_TAN_TAN",
                 "CIRCLE_TAN_TAN_TAN",
+                "LINE_TANGENT_FROM_CURVE",
+                "LINE_TAN_TAN",
             }
         ):
             state["make_points_tangent"] = not state.get(

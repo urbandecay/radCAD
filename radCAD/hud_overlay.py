@@ -12,6 +12,12 @@ from .units_utils import format_length
 SIZE_KEY = 12
 SIZE_LABEL = 10 
 
+TANGENCY_ONLY_TOOLS = {
+    "CIRCLE_TAN_TAN",
+    "CIRCLE_TAN_TAN_TAN",
+    "LINE_TAN_TAN",
+}
+
 # --- SAFE SHADER LOADER (2D) ---
 def get_2d_shader():
     try:
@@ -178,7 +184,12 @@ def draw_ui_button(x, y, text, is_active, hitbox_id):
     # --- TOP RIGHT HOTKEYS ---
 def draw_hotkeys_panel():
     if not state.get("show_hotkeys", True): return
-    if state.get("tool_mode") in ["LINE_TANGENT_FROM_CURVE", "CURVE_FREEHAND"]: return
+    if state.get("tool_mode") in [
+        "LINE_TANGENT_FROM_CURVE",
+        "LINE_TAN_TAN",
+        "CURVE_FREEHAND",
+    ]:
+        return
 
     if state.get("stage") == 0:
         perp_state = "ON" if state.get("pre_perpendicular") else "OFF"
@@ -308,8 +319,8 @@ def draw_bottom_bar():
     tool_mode = state.get("tool_mode")
     bar_label = "Snap"
 
-    # Tangent-circle tools only need contact generation and weld controls.
-    if tool_mode in {"CIRCLE_TAN_TAN", "CIRCLE_TAN_TAN_TAN"}:
+    # Tangency tools only need contact generation and weld controls.
+    if tool_mode in TANGENCY_ONLY_TOOLS:
         buttons = [
             (
                 "T: Make Points Tangent",
@@ -319,13 +330,19 @@ def draw_bottom_bar():
             ("W: Weld", state.get("auto_weld", True), "weld_btn"),
         ]
         bar_label = "Tangency"
-    elif tool_mode == "LINE_TAN_TAN":
-        buttons = [("W: Weld", state.get("auto_weld", True), "weld_btn")]
-    
+    elif tool_mode == "LINE_TANGENT_FROM_CURVE":
+        buttons.insert(
+            -1,
+            (
+                "T: Make Points Tangent",
+                state.get("make_points_tangent", False),
+                "make_points_tangent_btn",
+            ),
+        )
     # === NEW: "Next Solution" Button ===
     if (
         state.get("choosing_solution")
-        and tool_mode not in {"CIRCLE_TAN_TAN", "CIRCLE_TAN_TAN_TAN"}
+        and tool_mode not in TANGENCY_ONLY_TOOLS
     ):
          # Pink color to indicate action
          buttons.append(("Tab: Next Solution", True, "next_sol"))
@@ -372,7 +389,10 @@ def draw_hud_2d():
     if not state["active"]: return
     try:
         # --- NEW 2D SNAP MARKER (CUSTOMIZABLE) ---
-        if state.get("snap_point") and state.get("tool_mode") != "LINE_TAN_TAN":
+        if (
+            state.get("snap_point")
+            and state.get("tool_mode") not in TANGENCY_ONLY_TOOLS
+        ):
             ctx = bpy.context
             reg, rv3d = ctx.region, ctx.region_data
             

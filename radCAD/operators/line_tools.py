@@ -422,7 +422,7 @@ class Spline:
     def getClosestU_Global(self, point):
         return self.find_nearest_u(point)
 
-def get_disjoint_chains(bm):
+def get_disjoint_chains(bm, include_verts=False):
     if not bm: return []
     try: selected_edges = [e for e in bm.edges if e.select]
     except ReferenceError: return []
@@ -437,30 +437,39 @@ def get_disjoint_chains(bm):
     if not endpoints and vert_map: endpoints = [list(vert_map.keys())[0]]
     for start_node in endpoints:
         if not vert_map.get(start_node): continue
-        curr, path = start_node, [start_node.co.copy()]
+        curr, path = start_node, [start_node]
         while True:
             edges = vert_map.get(curr, [])
             next_edge = next((e for e in edges if e not in processed_edges), None)
             if not next_edge: break
             processed_edges.add(next_edge)
             curr = next_edge.other_vert(curr)
-            path.append(curr.co.copy())
-        if len(path) > 1: chains.append(path)
+            path.append(curr)
+        if len(path) > 1:
+            chains.append(
+                path
+                if include_verts
+                else [vert.co.copy() for vert in path]
+            )
     remaining = [e for e in selected_edges if e not in processed_edges]
     while remaining:
         seed = remaining[0]
-        curr, path = seed.verts[0], [seed.verts[0].co.copy()]
+        curr, path = seed.verts[0], [seed.verts[0]]
         processed_edges.add(seed)
         curr = seed.other_vert(curr)
-        path.append(curr.co.copy())
+        path.append(curr)
         while True:
             edges = vert_map.get(curr, [])
             next_edge = next((e for e in edges if e not in processed_edges), None)
             if not next_edge: break
             processed_edges.add(next_edge)
             curr = next_edge.other_vert(curr)
-            path.append(curr.co.copy())
-        chains.append(path)
+            path.append(curr)
+        chains.append(
+            path
+            if include_verts
+            else [vert.co.copy() for vert in path]
+        )
         remaining = [e for e in selected_edges if e not in processed_edges]
     return chains
 
@@ -844,10 +853,21 @@ class LineTool_TangentFromCurve(SurfaceDrawTool):
         obj = bpy.context.edit_object
         if obj and obj.type == 'MESH':
             bm = bmesh.from_edit_mesh(obj.data)
-            self.all_chains = get_disjoint_chains(bm)
+            bm.verts.ensure_lookup_table()
+            bm.verts.index_update()
+            chain_vertices = get_disjoint_chains(bm, include_verts=True)
+            self.all_chains = [
+                [vert.co.copy() for vert in chain]
+                for chain in chain_vertices
+            ]
+            self.chain_signatures = [
+                tuple(sorted({vert.index for vert in chain}))
+                for chain in chain_vertices
+            ]
             if not self.all_chains: core.report({'WARNING'}, "Select at least one curve")
         else:
             self.all_chains = []
+            self.chain_signatures = []
 
     def update(self, context, event, snap_point, snap_normal):
         if self.Xp is None:
@@ -878,10 +898,24 @@ class LineTool_TangentFromCurve(SurfaceDrawTool):
         ray_origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, coord)
         ray_vector = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
         
-        # --- CALCULATE PURE RAY-PLANE INTERSECTION (no geometry snap) ---
+        # Stage 0 uses the mouse ray to choose the source curve.  Once the
+        # source is chosen, an enabled vertex/edge/center snap must become the
+        # actual tangent-line endpoint (the HUD snap marker is drawn there).
+        geometry_target = None
+        if (
+            self.stage == 1
+            and self.state.get("geometry_snap", False)
+            and snap_point is not None
+        ):
+            geometry_target = snap_point.copy()
+
+        # Calculate the unconstrained mouse target when no component is
+        # snapped.  Tangency is solved in the drawing plane in either case.
         ref_point = self.pivot if self.pivot else self.state.get("last_surface_hit") or Vector((0,0,0))
         raw_world_pos = Vector((0,0,0))
-        if ref_point and self.Zp:
+        if geometry_target is not None:
+            raw_world_pos = geometry_target
+        elif ref_point and self.Zp:
             denom = ray_vector.dot(self.Zp)
             if abs(denom) > 1e-6:
                 t = (ref_point - ray_origin).dot(self.Zp) / denom
@@ -908,6 +942,10 @@ class LineTool_TangentFromCurve(SurfaceDrawTool):
                 s = self.splines[self.source_idx]
                 p = s.evalCatmull(self.current_u)
                 self.head_3d = plane_to_world(p, self.Xp, self.Yp)
+                self.state["tan_points"] = [self.head_3d]
+                self.state["tan_source_chains"] = [
+                    self.chain_signatures[self.source_idx]
+                ]
                 
                 self.current = self.head_3d
                 self.preview_pts = [self.head_3d]
@@ -929,7 +967,15 @@ class LineTool_TangentFromCurve(SurfaceDrawTool):
         t2 = h2 + tan * dist
         
         self.head_3d = plane_to_world(h2, self.Xp, self.Yp)
-        self.tail_3d = plane_to_world(t2, self.Xp, self.Yp)
+        self.tail_3d = (
+            geometry_target
+            if geometry_target is not None
+            else plane_to_world(t2, self.Xp, self.Yp)
+        )
+        self.state["tan_points"] = [self.head_3d]
+        self.state["tan_source_chains"] = [
+            self.chain_signatures[self.source_idx]
+        ]
         
         self.preview_pts = [self.head_3d, self.tail_3d]
         self.current = self.tail_3d
@@ -941,6 +987,10 @@ class LineTool_TangentFromCurve(SurfaceDrawTool):
                 return 'NEXT_STAGE'
             return None
         elif self.stage == 1:
+            # Re-evaluate at the click coordinates.  This both avoids a stale
+            # last-mouse-move preview and guarantees that the committed tail is
+            # exactly the vertex/edge position advertised by the snap marker.
+            self.update(context, event, snap_point, snap_normal)
             return 'FINISHED'
         return 'CANCELLED'
     def handle_input(self, context, event):
@@ -959,12 +1009,24 @@ class LineTool_TanTan(SurfaceDrawTool):
         obj = bpy.context.edit_object
         if obj and obj.type == 'MESH':
             bm = bmesh.from_edit_mesh(obj.data)
-            self.all_chains = get_disjoint_chains(bm)
+            bm.verts.ensure_lookup_table()
+            bm.verts.index_update()
+            chain_vertices = get_disjoint_chains(bm, include_verts=True)
+            self.all_chains = [
+                [vert.co.copy() for vert in chain]
+                for chain in chain_vertices
+            ]
+            self.chain_signatures = [
+                tuple(sorted({vert.index for vert in chain}))
+                for chain in chain_vertices
+            ]
             if len(self.all_chains) < 2:
                 core.report({'WARNING'}, "Select at least 2 disjoint curves")
                 self.all_chains = []
+                self.chain_signatures = []
         else:
             self.all_chains = []
+            self.chain_signatures = []
 
     def update(self, context, event, snap_point, snap_normal):
         # 1. Initialize Plane & Splines
@@ -1051,6 +1113,11 @@ class LineTool_TanTan(SurfaceDrawTool):
                     p2_2d = s2.evalCatmull(res_u2)
                     start_3d = plane_to_world(p1_2d, self.Xp, self.Yp)
                     end_3d = plane_to_world(p2_2d, self.Xp, self.Yp)
+                    self.state["tan_points"] = [start_3d, end_3d]
+                    self.state["tan_source_chains"] = [
+                        self.chain_signatures[best_idx],
+                        self.chain_signatures[best_idx2],
+                    ]
                     self.preview_pts = [start_3d, end_3d]
                     self.current = end_3d
                 else:

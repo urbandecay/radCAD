@@ -381,7 +381,12 @@ def _resize_curve_topology(bm, vertices, coordinates, closed):
     return True
 
 
-def resample_selected_curves_at_tangencies(obj, bm, tangent_points):
+def resample_selected_curves_at_tangencies(
+    obj,
+    bm,
+    tangent_points,
+    source_chain_signatures=None,
+):
     """Give each selected source curve a vertex at its tangent contact."""
     if not tangent_points:
         return False
@@ -392,9 +397,29 @@ def resample_selected_curves_at_tangencies(obj, bm, tangent_points):
         get_selected_edge_chains,
     )
 
-    chains = get_selected_edge_chains(obj, include_verts=True)
-    if len(chains) < len(tangent_points):
+    bm.verts.ensure_lookup_table()
+    bm.verts.index_update()
+    selected_chains = get_selected_edge_chains(obj, include_verts=True)
+    if len(selected_chains) < len(tangent_points):
         return False
+
+    if source_chain_signatures:
+        if len(source_chain_signatures) != len(tangent_points):
+            return False
+
+        chains_by_signature = {
+            tuple(sorted({vertex.index for vertex in chain[2]})): chain
+            for chain in selected_chains
+        }
+        chains = []
+        for signature in source_chain_signatures:
+            normalized = tuple(sorted(set(signature)))
+            chain = chains_by_signature.get(normalized)
+            if chain is None:
+                return False
+            chains.append(chain)
+    else:
+        chains = selected_chains[:len(tangent_points)]
 
     world_matrix = obj.matrix_world
     inverse_world_matrix = world_matrix.inverted()

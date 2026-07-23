@@ -328,6 +328,7 @@ def reset_state_from_context(ctx):
         "tan_2_p2": None,
         "tan_solution_active": False,
         "tan_points": [],
+        "tan_source_chains": [],
         "viz_tangent_line": [],
         "viz_diameter_line": [],
         
