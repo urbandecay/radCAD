@@ -1,9 +1,10 @@
-"""Contact-anchor resampling for the tangent-circle drawing tools.
+"""Contact-anchor resampling for the tangent drawing tools.
 
 The approach mirrors the vertex resampler's Kissing mode: tangency locations
 are mandatory samples.  The circle and each selected source curve therefore
 receive a real vertex at the same coordinate without requiring them to be
-welded into shared topology.
+welded into shared topology.  Existing contacts in the selection are also
+mandatory anchors, so adding another tangent does not destroy an earlier one.
 """
 
 import math
@@ -15,6 +16,7 @@ _ANGLE_EPSILON = 1e-7
 _LENGTH_EPSILON = 1e-10
 _PARAM_EPSILON = 1e-5
 _POINT_EPSILON = 1e-7
+_TOUCH_EPSILON = 1e-4
 
 
 def _allocate_segment_counts(lengths, total_segments):
@@ -202,6 +204,41 @@ def _project_spline_parameter(
     return parameter
 
 
+def _parameter_distance(first, second, period=None):
+    distance = abs(first - second)
+    if period is not None and period > 0.0:
+        distance = min(distance, period - distance)
+    return distance
+
+
+def _contact_anchors(spline, contacts):
+    """Project and deduplicate mandatory contact points on one spline."""
+    period = float(len(spline.segments)) if spline.is_closed else None
+    anchors = []
+
+    for contact in contacts or []:
+        parameter = _project_spline_parameter(spline, contact)
+        if period is not None:
+            parameter %= period
+
+        duplicate = False
+        for existing_parameter, existing_contact in anchors:
+            if (
+                _parameter_distance(
+                    parameter,
+                    existing_parameter,
+                    period,
+                ) <= _PARAM_EPSILON
+                or (contact - existing_contact).length <= _POINT_EPSILON
+            ):
+                duplicate = True
+                break
+        if not duplicate:
+            anchors.append((parameter, contact.copy()))
+
+    return sorted(anchors, key=lambda anchor: anchor[0])
+
+
 def _interval_lut(spline, start, end):
     span = max(0.0, end - start)
     steps = max(24, int(math.ceil(span * 24.0)))
@@ -266,73 +303,131 @@ def _sample_spline_interval(spline, start, end, segment_count):
     return coordinates, total_length
 
 
-def _closed_curve_coordinates(spline, contact_parameter, contact, count):
+def _closed_curve_coordinates(spline, contacts, count):
+    anchors = _contact_anchors(spline, contacts)
+    if not anchors:
+        return []
+
     segment_count = float(len(spline.segments))
-    coordinates, _length = _sample_spline_interval(
-        spline,
-        contact_parameter,
-        contact_parameter + segment_count,
-        count,
+    interval_data = []
+    for index, anchor in enumerate(anchors):
+        next_anchor = anchors[(index + 1) % len(anchors)]
+        start = anchor[0]
+        end = next_anchor[0]
+        if index == len(anchors) - 1 or end <= start:
+            end += segment_count
+        _coordinates, length = _sample_spline_interval(
+            spline,
+            start,
+            end,
+            1,
+        )
+        interval_data.append((anchor, start, end, length))
+
+    sample_counts = _allocate_segment_counts(
+        [item[3] for item in interval_data],
+        max(count, len(anchors)),
     )
-    coordinates[0] = contact.copy()
-    return coordinates[:-1]
+    coordinates = []
+    for sample_count, (anchor, start, end, _length) in zip(
+        sample_counts,
+        interval_data,
+    ):
+        section, _length = _sample_spline_interval(
+            spline,
+            start,
+            end,
+            sample_count,
+        )
+        section[0] = anchor[1].copy()
+        coordinates.extend(section[:-1])
+    return coordinates
 
 
-def _open_curve_coordinates(spline, contact_parameter, contact, count):
+def _open_curve_coordinates(spline, contacts, count):
+    anchors = _contact_anchors(spline, contacts)
     segment_count = float(len(spline.segments))
-    total_segments = count - 1
-
-    if contact_parameter <= _PARAM_EPSILON:
-        coordinates, _length = _sample_spline_interval(
-            spline,
-            0.0,
+    boundary_anchors = [
+        (0.0, _eval_spline_global(spline, 0.0), False),
+        *((parameter, contact, True) for parameter, contact in anchors),
+        (
             segment_count,
-            total_segments,
-        )
-        coordinates[0] = contact.copy()
-        return coordinates
+            _eval_spline_global(spline, segment_count),
+            False,
+        ),
+    ]
 
-    if segment_count - contact_parameter <= _PARAM_EPSILON:
-        coordinates, _length = _sample_spline_interval(
+    unique_anchors = []
+    for anchor in sorted(boundary_anchors, key=lambda item: item[0]):
+        if (
+            unique_anchors
+            and abs(anchor[0] - unique_anchors[-1][0]) <= _PARAM_EPSILON
+        ):
+            # Prefer a supplied contact over the evaluated boundary point.
+            if anchor[2]:
+                unique_anchors[-1] = anchor
+            continue
+        unique_anchors.append(anchor)
+
+    interval_data = []
+    for anchor, next_anchor in zip(
+        unique_anchors,
+        unique_anchors[1:],
+    ):
+        _coordinates, length = _sample_spline_interval(
             spline,
-            0.0,
-            segment_count,
-            total_segments,
+            anchor[0],
+            next_anchor[0],
+            1,
         )
-        coordinates[-1] = contact.copy()
-        return coordinates
+        interval_data.append((anchor, next_anchor, length))
 
-    _before, before_length = _sample_spline_interval(
-        spline,
-        0.0,
-        contact_parameter,
-        1,
+    target_count = max(count, len(unique_anchors))
+    sample_counts = _allocate_segment_counts(
+        [item[2] for item in interval_data],
+        target_count - 1,
     )
-    _after, after_length = _sample_spline_interval(
-        spline,
-        contact_parameter,
-        segment_count,
-        1,
-    )
-    before_count, after_count = _allocate_segment_counts(
-        [before_length, after_length],
-        total_segments,
-    )
-    before, _length = _sample_spline_interval(
-        spline,
-        0.0,
-        contact_parameter,
-        before_count,
-    )
-    after, _length = _sample_spline_interval(
-        spline,
-        contact_parameter,
-        segment_count,
-        after_count,
-    )
-    before[-1] = contact.copy()
-    after[0] = contact.copy()
-    return before + after[1:]
+    coordinates = []
+    for index, (
+        sample_count,
+        (anchor, next_anchor, _length),
+    ) in enumerate(zip(sample_counts, interval_data)):
+        section, _length = _sample_spline_interval(
+            spline,
+            anchor[0],
+            next_anchor[0],
+            sample_count,
+        )
+        section[0] = anchor[1].copy()
+        section[-1] = next_anchor[1].copy()
+        if index:
+            section = section[1:]
+        coordinates.extend(section)
+    return coordinates
+
+
+def _selected_contacts_for_sources(chains, source_indexes):
+    """Find already coincident vertices between sources and the selection."""
+    contacts = {index: [] for index in source_indexes}
+
+    for source_index in source_indexes:
+        source_points = chains[source_index][0]
+        for other_index, (other_points, _closed, _vertices) in enumerate(
+            chains
+        ):
+            if other_index == source_index:
+                continue
+            for source_point in source_points:
+                for other_point in other_points:
+                    if (
+                        source_point - other_point
+                    ).length <= _TOUCH_EPSILON:
+                        # Snap the rebuilt source to the unchanged selected
+                        # curve, matching Kissing's paired-contact behavior.
+                        contacts[source_index].append(other_point.copy())
+                        break
+
+    return contacts
 
 
 def _resize_curve_topology(bm, vertices, coordinates, closed):
@@ -408,49 +503,65 @@ def resample_selected_curves_at_tangencies(
             return False
 
         chains_by_signature = {
-            tuple(sorted({vertex.index for vertex in chain[2]})): chain
-            for chain in selected_chains
+            tuple(sorted({vertex.index for vertex in chain[2]})): (
+                index,
+                chain,
+            )
+            for index, chain in enumerate(selected_chains)
         }
         chains = []
+        source_indexes = []
         for signature in source_chain_signatures:
             normalized = tuple(sorted(set(signature)))
-            chain = chains_by_signature.get(normalized)
-            if chain is None:
+            matched = chains_by_signature.get(normalized)
+            if matched is None:
                 return False
+            index, chain = matched
+            source_indexes.append(index)
             chains.append(chain)
     else:
         chains = selected_chains[:len(tangent_points)]
+        source_indexes = list(range(len(chains)))
 
     world_matrix = obj.matrix_world
     inverse_world_matrix = world_matrix.inverted()
     prepared = []
+    existing_contacts = _selected_contacts_for_sources(
+        selected_chains,
+        source_indexes,
+    )
 
-    for chain, contact in zip(chains, tangent_points):
+    for source_index, chain, contact in zip(
+        source_indexes,
+        chains,
+        tangent_points,
+    ):
         world_points, closed, vertices = chain
         spline = CatmullRomSpline(world_points, is_closed=closed)
         if not spline.segments:
             return False
 
-        contact_parameter = _project_spline_parameter(spline, contact)
+        contacts = [
+            *existing_contacts.get(source_index, []),
+            contact,
+        ]
         current_count = len(vertices)
         target_count = max(3 if closed else 2, current_count)
-        if not closed and current_count < 3:
-            target_count = 3
 
         if closed:
             world_coordinates = _closed_curve_coordinates(
                 spline,
-                contact_parameter,
-                contact,
+                contacts,
                 target_count,
             )
         else:
             world_coordinates = _open_curve_coordinates(
                 spline,
-                contact_parameter,
-                contact,
+                contacts,
                 target_count,
             )
+        if not world_coordinates:
+            return False
 
         local_coordinates = [
             inverse_world_matrix @ coordinate
