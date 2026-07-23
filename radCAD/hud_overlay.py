@@ -289,6 +289,7 @@ def draw_hotkeys_panel():
 def draw_bottom_bar():
     ctx = bpy.context
     width = ctx.region.width
+    state["ui_hitboxes"] = {}
     
     # FIXED: Increased Margin to avoid Header conflict
     margin_bottom = 60 
@@ -304,12 +305,28 @@ def draw_bottom_bar():
         ("W: Weld", state.get("auto_weld", True), "weld_btn"),
     ]
     
-    # --- FIXED: Only show Weld for Tan Tan tool ---
-    if state.get("tool_mode") == "LINE_TAN_TAN":
+    tool_mode = state.get("tool_mode")
+    bar_label = "Snap"
+
+    # Tangent-circle tools only need contact generation and weld controls.
+    if tool_mode in {"CIRCLE_TAN_TAN", "CIRCLE_TAN_TAN_TAN"}:
+        buttons = [
+            (
+                "T: Make Points Tangent",
+                state.get("make_points_tangent", False),
+                "make_points_tangent_btn",
+            ),
+            ("W: Weld", state.get("auto_weld", True), "weld_btn"),
+        ]
+        bar_label = "Tangency"
+    elif tool_mode == "LINE_TAN_TAN":
         buttons = [("W: Weld", state.get("auto_weld", True), "weld_btn")]
     
     # === NEW: "Next Solution" Button ===
-    if state.get("choosing_solution"):
+    if (
+        state.get("choosing_solution")
+        and tool_mode not in {"CIRCLE_TAN_TAN", "CIRCLE_TAN_TAN_TAN"}
+    ):
          # Pink color to indicate action
          buttons.append(("Tab: Next Solution", True, "next_sol"))
     
@@ -330,7 +347,7 @@ def draw_bottom_bar():
     # --- SNAP LABEL ---
     label_size = 16 
     blf.size(font_id, label_size)
-    snap_label = "Snap"
+    snap_label = bar_label
     snap_w = blf.dimensions(font_id, snap_label)[0]
     
     snap_x = start_x + (total_w / 2) - (snap_w / 2)

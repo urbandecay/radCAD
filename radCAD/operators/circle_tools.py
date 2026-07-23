@@ -117,7 +117,7 @@ def solve_medial_axis_point(seed, spline1, spline2, Zp, iterations=5):
 # --- 3. HELPER UTILS ---
 # =========================================================================
 
-def get_selected_edge_chains(obj):
+def get_selected_edge_chains(obj, include_verts=False):
     bm = bmesh.from_edit_mesh(obj.data)
     sel_edges = [e for e in bm.edges if e.select]
     if not sel_edges: return []
@@ -152,7 +152,11 @@ def get_selected_edge_chains(obj):
                 if not found: break
         else: ordered_verts = component
         pts = [mw @ v.co for v in ordered_verts]
-        if len(pts) > 1: chains.append((pts, not endpoints))
+        if len(pts) > 1:
+            chain = (pts, not endpoints)
+            if include_verts:
+                chain = chain + (ordered_verts,)
+            chains.append(chain)
     return chains
 
 # =========================================================================
@@ -641,19 +645,59 @@ class CircleTool_TanTan(SurfaceDrawTool):
             # Visualization of the tangency
             p1_v, _, _ = self.spline_1.project(self.current)
             p2_v, _, _ = self.spline_2.project(self.current)
+            self.state["tan_points"] = [p1_v, p2_v]
             self.state["viz_tangent_line"] = (self.current, p1_v)
             self.state["viz_diameter_line"] = (self.current, p2_v)
             self.state["viz_opposite_dot"] = None
 
             if self.radius > 1e-5:
-                self.preview_pts = arc_points_world(
-                    self.current, self.radius, 0.0, 2 * math.pi, self.segments, self.Xp, self.Yp
-                )
-                self.state["visual_pts"] = arc_points_world(
-                    self.current, self.radius, 0.0, 2 * math.pi, 128, self.Xp, self.Yp
-                )
+                self.refresh_preview()
             else:
-                self.preview_pts = []; self.state["visual_pts"] = []
+                self.preview_pts = []
+                self.state["preview_pts"] = []
+                self.state["visual_pts"] = []
+
+    def refresh_preview(self):
+        if self.current is None or self.radius <= 1e-5:
+            self.preview_pts = []
+            self.state["preview_pts"] = []
+            return
+
+        self.segments = self.state.get("segments", self.segments)
+        if self.state.get("make_points_tangent", False):
+            from ..tangent_resampler import (
+                circle_points_with_tangent_anchors,
+            )
+
+            self.preview_pts = circle_points_with_tangent_anchors(
+                self.current,
+                self.radius,
+                self.segments,
+                self.Xp,
+                self.Yp,
+                self.state.get("tan_points", []),
+            )
+        else:
+            self.preview_pts = arc_points_world(
+                self.current,
+                self.radius,
+                0.0,
+                2 * math.pi,
+                self.segments,
+                self.Xp,
+                self.Yp,
+            )
+
+        self.state["preview_pts"] = self.preview_pts
+        self.state["visual_pts"] = arc_points_world(
+            self.current,
+            self.radius,
+            0.0,
+            2 * math.pi,
+            128,
+            self.Xp,
+            self.Yp,
+        )
 
     def handle_click(self, context, event, snap_point, snap_normal, button_id=None):
         if self.stage == 0:

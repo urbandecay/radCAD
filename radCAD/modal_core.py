@@ -514,6 +514,32 @@ def commit_arc_to_mesh(ctx):
 
     pts = state["preview_pts"]
     if not pts: return
+
+    if (
+        state.get("tool_mode") in {"CIRCLE_TAN_TAN", "CIRCLE_TAN_TAN_TAN"}
+        and state.get("make_points_tangent", False)
+    ):
+        from .tangent_resampler import (
+            resample_selected_curves_at_tangencies,
+        )
+
+        resampled = resample_selected_curves_at_tangencies(
+            obj,
+            bm,
+            state.get("tan_points", []),
+        )
+        if resampled:
+            bmesh.update_edit_mesh(
+                obj.data,
+                loop_triangles=False,
+                destructive=True,
+            )
+            bm = bmesh.from_edit_mesh(obj.data)
+        else:
+            print(
+                "[radCAD] Make Points Tangent could not resample the "
+                "selected source curves."
+            )
     is_closed = abs(state["accum_angle"]) >= (2 * math.pi - 0.001)
     
     # Continuous tools that always have a "floating" mouse point at the end
@@ -814,6 +840,25 @@ def modal_arc_common(self, ctx, ev):
         if ev.type == 'F5': state["snap_faces"] = not state.get("snap_faces", False); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
         if ev.type == 'C': state["use_angle_snap"] = not state.get("use_angle_snap", True); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
         if ev.type == 'W': state["auto_weld"] = not state.get("auto_weld", True); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
+        if (
+            ev.type == 'T'
+            and state.get("tool_mode") in {
+                "CIRCLE_TAN_TAN",
+                "CIRCLE_TAN_TAN_TAN",
+            }
+        ):
+            state["make_points_tangent"] = not state.get(
+                "make_points_tangent",
+                False,
+            )
+            if (
+                self.manager.active_tool
+                and hasattr(self.manager.active_tool, "refresh_preview")
+            ):
+                self.manager.active_tool.refresh_preview()
+                self.manager.sync_tool_from_state()
+            ctx.area.tag_redraw()
+            return {'RUNNING_MODAL'}
         
         if ev.type == 'L':
             if state.get("locked"):
@@ -889,6 +934,20 @@ def modal_arc_common(self, ctx, ev):
                     elif k == "snap_faces": state["snap_faces"] = not state.get("snap_faces", False)
                     elif k == "toggle_angle": state["use_angle_snap"] = not state.get("use_angle_snap", True)
                     elif k == "weld_btn": state["auto_weld"] = not state.get("auto_weld", True)
+                    elif k == "make_points_tangent_btn":
+                        state["make_points_tangent"] = not state.get(
+                            "make_points_tangent",
+                            False,
+                        )
+                        if (
+                            self.manager.active_tool
+                            and hasattr(
+                                self.manager.active_tool,
+                                "refresh_preview",
+                            )
+                        ):
+                            self.manager.active_tool.refresh_preview()
+                            self.manager.sync_tool_from_state()
                     ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
             
             if self.manager.active_tool:

@@ -363,7 +363,21 @@ class CircleTool_TanTanTan:
         state["visual_pts"] = [c + self.Xp*math.cos(a)*r + self.Yp*math.sin(a)*r for a in [i*math.pi*2/128 for i in range(129)]]
         
         # 2. Geometry Preview (Matches segment count for commitment)
-        self.preview_pts = [c + self.Xp*math.cos(a)*r + self.Yp*math.sin(a)*r for a in [i*math.pi*2/self.segments for i in range(self.segments + 1)]]
+        if state.get("make_points_tangent", False):
+            from ..tangent_resampler import (
+                circle_points_with_tangent_anchors,
+            )
+
+            self.preview_pts = circle_points_with_tangent_anchors(
+                c,
+                r,
+                self.segments,
+                self.Xp,
+                self.Yp,
+                state.get("tan_points", []),
+            )
+        else:
+            self.preview_pts = [c + self.Xp*math.cos(a)*r + self.Yp*math.sin(a)*r for a in [i*math.pi*2/self.segments for i in range(self.segments + 1)]]
         state["preview_pts"] = self.preview_pts
         state["tan_solution_active"] = True
 
