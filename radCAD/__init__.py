@@ -19,6 +19,7 @@ prefs = _import("preferences")
 panel = _import("panel")
 modal_core = _import("modal_core") 
 dimension_tool = _import("dimension_tool")
+erase_tool = _import("erase_tool")
 
 # 2. Import The Operators
 op_1pt = _import("operators.op_arc_1pt")
@@ -63,6 +64,7 @@ def register():
     bpy.utils.register_class(modal_core.VIEW3D_OT_radcad_modal)
 
     dimension_tool.register()
+    erase_tool.register()
 
     bpy.utils.register_class(op_1pt.VIEW3D_OT_arc_overlay_preview)
     bpy.utils.register_class(op_2pt.VIEW3D_OT_arc_2pt)
@@ -103,6 +105,7 @@ def unregister():
     if hasattr(panel, "unregister"):
         panel.unregister()
 
+    erase_tool.unregister()
     dimension_tool.unregister()
 
     bpy.utils.unregister_class(op_point_center.VIEW3D_OT_point_center)

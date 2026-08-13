@@ -18,11 +18,7 @@ POSSIBLE_PATHS = [
     "/home/molotovgirl/Desktop/ArcTools/Toolbar Icons/"
 ]
 
-ICON_FOLDER = ""
-for p in POSSIBLE_PATHS:
-    if os.path.exists(p):
-        ICON_FOLDER = p
-        break
+ICON_FOLDERS = tuple(p for p in POSSIBLE_PATHS if os.path.isdir(p))
 
 HEADER_HEIGHT = 1.5 
 
@@ -116,6 +112,7 @@ SVG_FILES = {
     "rectangle_from_center": "rectangle_from_center.svg",
     "rectangle_from_corners": "rectangle_from_corners.svg",
     "rectangle_3_points": "rectangle_3_points.svg",
+    "erase": "erase.svg",
 }
 
 preview_collection = None
@@ -252,6 +249,14 @@ class RADCAD_PT_Main(bpy.types.Panel):
         row = layout.row()
         row.scale_y = 1.2
         row.operator("radcad.reset_overlays", icon='TRASH') 
+        row = layout.row()
+        row.scale_y = 1.2
+        preferences_button = row.operator(
+            "preferences.addon_show",
+            text="Add-on Preferences",
+            icon='PREFERENCES',
+        )
+        preferences_button.module = __package__
         layout.separator()
 
 class RADCAD_PT_Point(bpy.types.Panel):
@@ -403,6 +408,27 @@ class RADCAD_PT_Dimension(bpy.types.Panel):
                 box.prop(scene, "radcad_dimension_line_width")
                 box.prop(scene, "radcad_dimension_color")
 
+
+class RADCAD_PT_Erase(bpy.types.Panel):
+    bl_label = "Erase"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "rCAD"
+    bl_parent_id = "RADCAD_PT_Main"
+
+    def draw(self, context):
+        row = self.layout.row()
+        row.scale_y = 1.2
+        row.operator_context = "INVOKE_REGION_WIN"
+        if _has_icon("erase"):
+            row.operator(
+                "view3d.radcad_erase",
+                text="Erase",
+                icon_value=preview_collection["erase"].icon_id,
+            )
+        else:
+            row.operator("view3d.radcad_erase", text="Erase", icon="BRUSH_DATA")
+
 classes = (
     RADCAD_OT_reset_overlays, 
     RADCAD_OT_generic,
@@ -416,17 +442,19 @@ classes = (
     RADCAD_PT_Curve,
     RADCAD_PT_Rectangle,
     RADCAD_PT_Dimension,
+    RADCAD_PT_Erase,
 )
 
 def register():
     global preview_collection
     preview_collection = bpy.utils.previews.new()
 
-    if ICON_FOLDER and os.path.exists(ICON_FOLDER):
-        for key, filename in SVG_FILES.items():
-            path = os.path.join(ICON_FOLDER, filename)
-            if os.path.exists(path):
+    for key, filename in SVG_FILES.items():
+        for folder in ICON_FOLDERS:
+            path = os.path.join(folder, filename)
+            if os.path.isfile(path):
                 preview_collection.load(key, path, "IMAGE")
+                break
 
     bpy.types.Scene.radcad_line_icon = bpy.props.StringProperty(default="line")
     bpy.types.Scene.radcad_arc_icon = bpy.props.StringProperty(default="arc_1_point")

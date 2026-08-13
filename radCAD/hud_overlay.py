@@ -105,7 +105,7 @@ def draw_ui_box_generic(x, y, text, active=False, bg_color_override=None):
     return box_h
 
 # --- BUTTON DRAWER (Bottom Bar) ---
-def draw_ui_button(x, y, text, is_active, hitbox_id):
+def draw_ui_button(x, y, text, is_active, hitbox_id, hitbox_registry=None):
     font_id = 0
     pad_x = 10
     pad_y = 8 # Increased slightly for easier clicking
@@ -123,7 +123,8 @@ def draw_ui_button(x, y, text, is_active, hitbox_id):
     x2, y2 = x + box_w, y + box_h
     
     if hitbox_id:
-        state["ui_hitboxes"][hitbox_id] = (x1, x2, y1, y2)
+        registry = state["ui_hitboxes"] if hitbox_registry is None else hitbox_registry
+        registry[hitbox_id] = (x1, x2, y1, y2)
     
     # === ROUNDED RECT GENERATION ===
     rad = 5  # Corner Radius

@@ -36,6 +36,7 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
     show_polygon_settings: bpy.props.BoolProperty(name="Polygon Settings", default=True)
     show_rectangle_settings: bpy.props.BoolProperty(name="Rectangle Settings", default=True)
     show_curve_settings: bpy.props.BoolProperty(name="Curve Settings", default=True)
+    show_erase_settings: bpy.props.BoolProperty(name="Erase Settings", default=True)
 
     # =========================================================================
     # SETTINGS PROPERTIES
@@ -772,6 +773,17 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
     )
     weld_to_faces: bpy.props.BoolProperty(name="Cut Faces (Knife Project)", default=True)
 
+    erase_pick_radius: bpy.props.FloatProperty(
+        name="Erase Pickup Radius",
+        description="Maximum cursor distance in pixels for targeting vertices and edges with the Erase tool",
+        default=6.0,
+        min=1.0,
+        max=30.0,
+        precision=1,
+        step=10,
+        subtype='PIXEL',
+    )
+
     lift_compass: bpy.props.FloatProperty(name="Compass Lift (Ortho)", default=4.0, min=0.0, max=500.0)
     lift_arc: bpy.props.FloatProperty(name="Arc Line Lift (Ortho)", default=20.0, min=0.0, max=5000.0)
     lift_perspective: bpy.props.FloatProperty(name="Perspective Bias (%)", default=0.2, min=0.0, max=10.0, precision=3)
@@ -1061,6 +1073,19 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
 
         # 27. Curve Settings
         self.draw_section_header(layout, "Curve Settings", "show_curve_settings", icon='CURVE_BEZCURVE', tool_key='curve_interpolate_points')
+
+        # Erase settings intentionally remain last so the tool-specific pickup
+        # control is easy to find at the bottom of the preferences window.
+        col = self.draw_section_header(
+            layout,
+            "Erase Settings",
+            "show_erase_settings",
+            icon='BRUSH_DATA',
+            tool_key='erase',
+        )
+        if col:
+            self.draw_group_label(col, "Geometry Pickup:", icon='SNAP_ON')
+            self.draw_property_row(col, "Cursor Radius (px):", "erase_pick_radius")
 
 def register():
     bpy.utils.register_class(RADCAD_Preferences)
