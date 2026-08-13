@@ -317,66 +317,6 @@ def _draw_controls(operator):
         )
         current_x += width + spacing
 
-    _draw_cursor(operator)
-
-
-def _draw_cursor(operator):
-    """Draw the reference-style eraser beside the hidden native cursor."""
-    cursor = getattr(operator, "cursor_xy", None)
-    if cursor is None:
-        return
-
-    try:
-        shader = gpu.shader.from_builtin("2D_UNIFORM_COLOR")
-    except Exception:
-        shader = gpu.shader.from_builtin("UNIFORM_COLOR")
-
-    # Keep the actual click point at the lower-left, like a normal tool cursor.
-    cx, cy = float(cursor[0]) + 16.0, float(cursor[1]) - 12.0
-    body = [
-        (cx - 22.0, cy - 4.0),
-        (cx + 25.0, cy - 34.0),
-        (cx + 34.0, cy - 28.0),
-        (cx - 13.0, cy + 2.0),
-    ]
-    bevel = [
-        (cx - 22.0, cy - 4.0),
-        (cx - 13.0, cy + 2.0),
-        (cx - 13.0, cy + 28.0),
-        (cx - 22.0, cy + 22.0),
-    ]
-    end_strip = [
-        (cx + 20.0, cy - 37.0),
-        (cx + 25.0, cy - 34.0),
-        (cx + 34.0, cy - 28.0),
-        (cx + 29.0, cy - 31.0),
-    ]
-
-    gpu.state.blend_set("ALPHA")
-    gpu.state.line_width_set(2.0)
-    try:
-        shader.bind()
-        for polygon, color in (
-            (body, (0.93, 0.35, 0.49, 1.0)),
-            (bevel, (0.82, 0.20, 0.35, 1.0)),
-            (end_strip, (1.0, 0.63, 0.70, 1.0)),
-        ):
-            shader.uniform_float("color", color)
-            batch_for_shader(shader, "TRI_FAN", {"pos": polygon}).draw(shader)
-
-        shader.uniform_float("color", (0.05, 0.05, 0.05, 1.0))
-        batch_for_shader(shader, "LINE_LOOP", {"pos": body}).draw(shader)
-        batch_for_shader(shader, "LINE_LOOP", {"pos": bevel}).draw(shader)
-        batch_for_shader(shader, "LINE_LOOP", {"pos": end_strip}).draw(shader)
-        batch_for_shader(
-            shader,
-            "LINES",
-            {"pos": [(cx - 13.0, cy + 2.0), (cx - 13.0, cy + 28.0)]},
-        ).draw(shader)
-    finally:
-        gpu.state.line_width_set(1.0)
-        gpu.state.blend_set("NONE")
-
 
 class VIEW3D_OT_radcad_erase(bpy.types.Operator):
     bl_idname = "view3d.radcad_erase"
@@ -411,16 +351,16 @@ class VIEW3D_OT_radcad_erase(bpy.types.Operator):
         self.changed = False
         self.hover_target = None
         self.last_drag_mouse = None
-        self.cursor_xy = (event.mouse_region_x, event.mouse_region_y)
         self.ui_hitboxes = {}
         self.erase_verts = True
         self.erase_edges = True
         self.erase_faces = True
         self.tool_instance_id = f"ERASE_{time.time()}"
         context.scene.active_cad_tool_id = self.tool_instance_id
-        # Blender's built-in ERASER cursor cannot use our SVG artwork. Hide it
-        # and draw the matching perspective eraser in the viewport overlay.
-        context.window.cursor_modal_set("NONE")
+        try:
+            context.window.cursor_modal_set("ERASER")
+        except (TypeError, ValueError):
+            context.window.cursor_modal_set("CROSSHAIR")
         context.area.header_text_set(
             "Erase: click or drag over geometry  |  F1 Vert  F2 Edge  F5 Face  |  Esc/right-click: exit"
         )
@@ -541,9 +481,6 @@ class VIEW3D_OT_radcad_erase(bpy.types.Operator):
         if context.mode != "EDIT_MESH":
             self.finish(context)
             return {"FINISHED"} if self.changed else {"CANCELLED"}
-
-        if hasattr(event, "mouse_region_x") and hasattr(event, "mouse_region_y"):
-            self.cursor_xy = (event.mouse_region_x, event.mouse_region_y)
 
         if event.type in {"MIDDLEMOUSE", "WHEELUPMOUSE", "WHEELDOWNMOUSE"}:
             return {"PASS_THROUGH"}

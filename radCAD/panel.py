@@ -418,8 +418,7 @@ class RADCAD_PT_Erase(bpy.types.Panel):
 
     def draw(self, context):
         row = self.layout.row()
-        row.scale_x = 1.15
-        row.scale_y = 1.6
+        row.scale_y = 1.2
         row.operator_context = "INVOKE_REGION_WIN"
         if _has_icon("erase"):
             row.operator(
