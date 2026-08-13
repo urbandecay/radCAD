@@ -23,6 +23,12 @@ DRAW_HANDLER_3D = "RADCAD_ERASE_HOVER_3D"
 DRAW_HANDLER_2D = "RADCAD_ERASE_CONTROLS_2D"
 DEFAULT_PICK_RADIUS_PX = 6.0
 STROKE_SAMPLE_PX = 7.0
+# Native height of the traced SVG reference.
+CURSOR_SIZE_PX = 137.0
+CURSOR_VIEW_MARGIN_PX = 4.0
+
+_cursor_texture = None
+_cursor_texture_source = None
 
 
 @dataclass
@@ -317,6 +323,117 @@ def _draw_controls(operator):
         )
         current_x += width + spacing
 
+    _draw_cursor(operator)
+
+
+def _get_cursor_texture():
+    """Build a GPU texture from the exact SVG preview used by the panel."""
+    global _cursor_texture, _cursor_texture_source
+
+    # Import lazily to avoid coupling module registration order to the panel.
+    from . import panel
+
+    previews = panel.preview_collection
+    if previews is None or "erase" not in previews:
+        return None
+
+    preview = previews["erase"]
+    source = (preview.icon_id, tuple(preview.image_size))
+    if _cursor_texture is not None and source == _cursor_texture_source:
+        return _cursor_texture
+
+    width, height = preview.image_size
+    pixels = preview.image_pixels_float[:]
+    if width <= 0 or height <= 0 or len(pixels) != width * height * 4:
+        return None
+
+    buffer = gpu.types.Buffer("FLOAT", len(pixels), pixels)
+    _cursor_texture = gpu.types.GPUTexture(
+        (width, height),
+        format="RGBA32F",
+        data=buffer,
+    )
+    _cursor_texture.filter_mode(True)
+    _cursor_texture_source = source
+    return _cursor_texture
+
+
+def _draw_cursor(operator):
+    """Draw the shared SVG eraser with its lower front point as the hotspot."""
+    cursor = getattr(operator, "cursor_xy", None)
+    if cursor is None or not getattr(operator, "cursor_in_view", False):
+        return
+
+    try:
+        texture = _get_cursor_texture()
+        if texture is None:
+            return
+        shader = gpu.shader.from_builtin("IMAGE")
+    except Exception:
+        return
+
+    # Background/headless contexts report zero here; interactive windows use
+    # the real display scale.
+    ui_scale = bpy.context.preferences.system.ui_scale or 1.0
+    height = CURSOR_SIZE_PX * ui_scale
+    width = height * (texture.width / texture.height)
+    mouse_x, mouse_y = map(float, cursor)
+
+    # Pin the traced SVG's lower front point. In the 138 x 137 rendered
+    # preview it lands at approximately (58, 131), or 6 px above the bottom.
+    left = mouse_x - width * (58.0 / 138.0)
+    bottom = mouse_y - height * (6.0 / 137.0)
+    right = left + width
+    top = bottom + height
+
+    # A POST_PIXEL handler is clipped to the 3D window region.  Keep the
+    # complete cursor inside that region when the pointer approaches an edge;
+    # otherwise Blender shows only the loop/front corner of the eraser.
+    region = bpy.context.region
+    if region is not None:
+        margin = CURSOR_VIEW_MARGIN_PX * ui_scale
+        if width <= region.width - (margin * 2.0):
+            shift_x = max(margin - left, 0.0)
+            shift_x += min((region.width - margin) - (right + shift_x), 0.0)
+            left += shift_x
+            right += shift_x
+        if height <= region.height - (margin * 2.0):
+            shift_y = max(margin - bottom, 0.0)
+            shift_y += min((region.height - margin) - (top + shift_y), 0.0)
+            bottom += shift_y
+            top += shift_y
+
+    positions = (
+        (left, bottom, 0.0),
+        (right, bottom, 0.0),
+        (right, top, 0.0),
+        (left, top, 0.0),
+    )
+    tex_coords = ((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0))
+
+    gpu.state.blend_set("ALPHA")
+    try:
+        shader.bind()
+        shader.uniform_sampler("image", texture)
+        batch_for_shader(
+            shader,
+            "TRI_FAN",
+            {"pos": positions, "texCoord": tex_coords},
+        ).draw(shader)
+    finally:
+        gpu.state.blend_set("NONE")
+
+
+def _event_is_in_view(context, event):
+    """True only while the pointer is inside the 3D window region."""
+    region = context.region
+    if region is None or region.type != "WINDOW" or is_event_over_ui(context, event):
+        return False
+    return (
+        0 <= event.mouse_region_x < region.width
+        and 0 <= event.mouse_region_y < region.height
+    )
+
 
 class VIEW3D_OT_radcad_erase(bpy.types.Operator):
     bl_idname = "view3d.radcad_erase"
@@ -351,6 +468,8 @@ class VIEW3D_OT_radcad_erase(bpy.types.Operator):
         self.changed = False
         self.hover_target = None
         self.last_drag_mouse = None
+        self.cursor_xy = (event.mouse_region_x, event.mouse_region_y)
+        self.cursor_in_view = _event_is_in_view(context, event)
         self.ui_hitboxes = {}
         self.erase_verts = True
         self.erase_edges = True
@@ -358,9 +477,11 @@ class VIEW3D_OT_radcad_erase(bpy.types.Operator):
         self.tool_instance_id = f"ERASE_{time.time()}"
         context.scene.active_cad_tool_id = self.tool_instance_id
         try:
-            context.window.cursor_modal_set("ERASER")
+            context.window.cursor_modal_set(
+                "NONE" if self.cursor_in_view else "DEFAULT"
+            )
         except (TypeError, ValueError):
-            context.window.cursor_modal_set("CROSSHAIR")
+            context.window.cursor_modal_set("ERASER")
         context.area.header_text_set(
             "Erase: click or drag over geometry  |  F1 Vert  F2 Edge  F5 Face  |  Esc/right-click: exit"
         )
@@ -482,6 +603,14 @@ class VIEW3D_OT_radcad_erase(bpy.types.Operator):
             self.finish(context)
             return {"FINISHED"} if self.changed else {"CANCELLED"}
 
+        if hasattr(event, "mouse_region_x") and hasattr(event, "mouse_region_y"):
+            self.cursor_xy = (event.mouse_region_x, event.mouse_region_y)
+            self.cursor_in_view = _event_is_in_view(context, event)
+            try:
+                context.window.cursor_modal_set("NONE" if self.cursor_in_view else "DEFAULT")
+            except (TypeError, ValueError):
+                pass
+
         if event.type in {"MIDDLEMOUSE", "WHEELUPMOUSE", "WHEELDOWNMOUSE"}:
             return {"PASS_THROUGH"}
 
@@ -576,7 +705,11 @@ def register():
 
 
 def unregister():
+    global _cursor_texture, _cursor_texture_source
+
     DrawManager.remove_handler(DRAW_HANDLER_3D)
     DrawManager.remove_handler(DRAW_HANDLER_2D)
+    _cursor_texture = None
+    _cursor_texture_source = None
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)

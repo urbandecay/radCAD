@@ -1,25 +1,56 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
-  <!-- Flat vector eraser: the reference's pink body, black ink, no drop shadow. -->
-  <g transform="rotate(-35 128 128)" stroke="#171717" stroke-linejoin="round" stroke-linecap="round">
-    <!-- Broad face -->
-    <path d="M54 73H190Q201 73 201 84V151Q201 162 190 162H54Q43 162 43 151V84Q43 73 54 73Z"
-          fill="#ee7893" stroke-width="7"/>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="138" height="137" viewBox="0 -1.08 27.229652 27.032">
+  <title>Pink perspective eraser</title>
 
-    <!-- Lower bevel/end face -->
-    <path d="M43 84L76 103V179L43 160Z" fill="#e25f7d" stroke-width="7"/>
+  <!-- The complete loop is behind the eraser, which hides the overlap. -->
+  <ellipse cx="3.014021" cy="19.550030" rx="2.831526" ry="2.738848"
+           fill="none" stroke="#090909" stroke-width="0.52"/>
 
-    <!-- Clean division between the eraser body and end -->
-    <path d="M76 103V179" fill="none" stroke-width="5"/>
+  <!-- Right bevel, traced from eraserSketchup.svg. -->
+  <path d="M26.985817 3.757850
+           L24.440537 9.010800
+           L11.417807 24.791300
+           L14.379837 18.407600 Z"
+        fill="#592d38"/>
 
-    <!-- Small paper-colored end strip from the reference -->
-    <path d="M177 73H190Q201 73 201 84V151Q201 162 190 162H177Z"
-          fill="#f5b6c2" stroke-width="5"/>
+  <!-- Top face, traced from eraserSketchup.svg. -->
+  <path d="M19.675757 0.217040
+           L26.985817 3.757850
+           L14.379837 18.407600
+           L6.026517 12.210100 Z"
+        fill="#dd7f8f"/>
 
-    <!-- Reference-style label, kept as vector text rather than a copied bitmap. -->
-    <text x="102" y="126" fill="#171717" stroke="none"
-          font-family="Georgia, 'Times New Roman', serif" font-size="25"
-          font-style="italic" text-anchor="middle">pink</text>
-  </g>
+  <!-- Front face, traced from eraserSketchup.svg. -->
+  <path d="M6.026517 12.210100
+           L14.379837 18.407600
+           L11.417807 24.791300
+           L3.706300 18.560810 Z"
+        fill="#f68d9e"/>
 
+  <!-- Single outer outline; internal seams are intentionally not black. -->
+  <path d="M24.440537 9.010800
+           L11.417807 24.791300
+           L3.706300 18.560810
+           L6.026517 12.210100
+           L19.675757 0.217040
+           L26.985817 3.757850 Z"
+        fill="none" stroke="#090909" stroke-width="0.52"
+        stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- The two light construction seams from eraserSketchup.svg. -->
+  <path d="M6.026517 12.210100
+           L14.379837 18.407600
+           L26.985817 3.757850"
+        fill="none" stroke="#cfcfcf" stroke-width="0.264583"
+        stroke-linecap="butt" stroke-linejoin="miter"/>
+  <path d="M14.379837 18.407600
+           L11.417807 24.791300"
+        fill="none" stroke="#e7e7e7" stroke-width="0.264583"
+        stroke-linecap="butt" stroke-linejoin="miter"/>
+
+  <!-- "pink" converted to a path so Blender's SVG loader cannot drop it. -->
+  <path
+        d="M 12.124756,8.0861329 11.821729,8.0153321 V 7.8878907 h 0.747656 l 0.0057,0.1557618 q 0.118945,-0.1019532 0.317188,-0.1642579 0.201074,-0.062305 0.407812,-0.062305 0.509766,0 0.787305,0.354004 0.280371,0.3540039 0.280371,1.0166992 0,0.6768555 -0.305859,1.0478519 -0.303028,0.370996 -0.87793,0.370996 -0.32002,0 -0.608887,-0.06231 0.01699,0.203906 0.01699,0.32002 v 0.719336 l 0.464453,0.06797 v 0.133106 h -1.26875 V 11.65166 l 0.337012,-0.06797 z m 1.733203,1.1016602 q 0,-0.54375 -0.178418,-0.8071289 -0.175586,-0.266211 -0.535254,-0.266211 -0.331347,0 -0.552246,0.093457 v 2.1268557 q 0.252051,0.04814 0.552246,0.04814 0.713672,0 0.713672,-1.1951169 z m 1.809668,-2.169336 q 0,0.1246094 -0.09062,0.2152344 -0.09063,0.090625 -0.218066,0.090625 -0.124609,0 -0.215235,-0.090625 -0.09062,-0.090625 -0.09062,-0.2152344 0,-0.1274414 0.09062,-0.2180664 0.09063,-0.090625 0.215235,-0.090625 0.127441,0 0.218066,0.090625 0.09062,0.090625 0.09062,0.2180664 z m -0.02832,3.3333009 0.455957,0.0708 V 10.55 h -1.379199 v -0.127441 l 0.453125,-0.0708 V 8.0861329 L 14.79253,8.0153321 V 7.8878907 h 0.846777 z m 1.483984,-2.2486329 q 0.218067,-0.1246094 0.464454,-0.2039062 0.246386,-0.082129 0.410644,-0.082129 0.345508,0 0.521094,0.2010743 0.175586,0.2010742 0.175586,0.5833984 v 1.7501954 l 0.322851,0.0708 V 10.55 h -1.146972 v -0.127441 l 0.354004,-0.0708 V 8.6525392 q 0,-0.2350586 -0.116114,-0.3681641 -0.113281,-0.1359375 -0.354004,-0.1359375 -0.254882,0 -0.625878,0.082129 v 2.1211915 l 0.359667,0.0708 V 10.55 h -1.149804 v -0.127441 l 0.320019,-0.0708 V 8.0861329 L 16.338819,8.0153321 V 7.8878907 h 0.758984 z M 20.079932,9.26709 21.170264,8.091797 20.892725,8.0153321 V 7.8878907 h 0.940235 v 0.1274414 l -0.331348,0.065137 -0.758984,0.7759765 0.974218,1.5009766 0.288867,0.06514 V 10.55 h -1.090332 v -0.127441 l 0.243555,-0.0708 -0.730664,-1.1469727 -0.34834,0.3823242 v 0.7646485 l 0.283203,0.0708 V 10.55 h -1.090332 v -0.127441 l 0.337012,-0.0708 V 6.7210938 L 19.216163,6.6531251 V 6.5256837 h 0.863769 z"
+        transform="rotate(-45.2 16.85 10.55)" fill="#090909"/>
 </svg>
