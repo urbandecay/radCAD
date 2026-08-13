@@ -486,7 +486,6 @@ class VIEW3D_OT_radcad_erase(bpy.types.Operator):
         self.hover_target = None
         self.pending_targets = []
         self.pending_target_keys = set()
-        self.stroke_undo_started = False
         self.last_drag_mouse = None
         self.cursor_xy = (event.mouse_region_x, event.mouse_region_y)
         self.cursor_in_view = _event_is_in_view(context, event)
@@ -502,9 +501,6 @@ class VIEW3D_OT_radcad_erase(bpy.types.Operator):
             )
         except (TypeError, ValueError):
             context.window.cursor_modal_set("ERASER")
-        context.area.header_text_set(
-            "Erase: click or drag over geometry  |  F1 Vert  F2 Edge  F5 Face  |  Esc/right-click: exit"
-        )
         DrawManager.add_handler(DRAW_HANDLER_3D, _draw_hover, (self,), "WINDOW", "POST_VIEW")
         DrawManager.add_handler(DRAW_HANDLER_2D, _draw_controls, (self,), "WINDOW", "POST_PIXEL")
         context.window_manager.modal_handler_add(self)
@@ -598,22 +594,9 @@ class VIEW3D_OT_radcad_erase(bpy.types.Operator):
         self.pending_targets.append(target)
         return True
 
-    def _begin_stroke_undo(self):
-        if self.stroke_undo_started:
-            return
-        try:
-            bpy.ops.ed.undo_push(message="Erase stroke start")
-            self.stroke_undo_started = True
-            free_snap_context()
-            invalidate_snap_cache()
-        except RuntimeError:
-            # Keep erasing usable in contexts where Blender's undo system is
-            # unavailable; the operator's normal UNDO flag still applies when
-            # the modal operation finishes.
-            self.stroke_undo_started = False
-
-    def _end_stroke_undo(self):
-        if not self.stroke_undo_started:
+    @staticmethod
+    def _push_stroke_undo(changed):
+        if not changed:
             return
         try:
             bpy.ops.ed.undo_push(message="Erase stroke")
@@ -621,7 +604,6 @@ class VIEW3D_OT_radcad_erase(bpy.types.Operator):
             invalidate_snap_cache()
         except RuntimeError:
             pass
-        self.stroke_undo_started = False
 
     def _collect_at(self, context, x, y):
         target = self._pick(context, x, y)
@@ -633,7 +615,9 @@ class VIEW3D_OT_radcad_erase(bpy.types.Operator):
             if _erase_target(target):
                 changed = True
         self.changed = self.changed or changed
-        self._end_stroke_undo()
+        # One checkpoint per completed stroke. A pre-stroke checkpoint plus
+        # this post-stroke checkpoint creates alternating no-op undo states.
+        self._push_stroke_undo(changed)
         self.pending_targets.clear()
         self.pending_target_keys.clear()
         invalidate_snap_cache()
@@ -703,7 +687,6 @@ class VIEW3D_OT_radcad_erase(bpy.types.Operator):
                 self.last_drag_mouse = None
                 self.pending_targets.clear()
                 self.pending_target_keys.clear()
-                self.stroke_undo_started = False
             try:
                 bpy.ops.ed.redo() if event.shift else bpy.ops.ed.undo()
                 free_snap_context()
@@ -726,7 +709,6 @@ class VIEW3D_OT_radcad_erase(bpy.types.Operator):
             ):
                 return {"RUNNING_MODAL"}
             self.dragging = True
-            self._begin_stroke_undo()
             self.last_drag_mouse = None
             self._erase_stroke_segment(context, event.mouse_region_x, event.mouse_region_y)
             self._update_hover(context, event.mouse_region_x, event.mouse_region_y)
@@ -772,7 +754,6 @@ class VIEW3D_OT_radcad_erase(bpy.types.Operator):
         self.hover_target = None
         self.pending_targets.clear()
         self.pending_target_keys.clear()
-        self.stroke_undo_started = False
         DrawManager.remove_handler(DRAW_HANDLER_3D)
         DrawManager.remove_handler(DRAW_HANDLER_2D)
         free_snap_context()
