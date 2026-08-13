@@ -452,6 +452,30 @@ def _event_is_in_view(context, event):
     )
 
 
+def _view_navigation_is_active(context):
+    """Tell whether Blender currently owns the mouse for view navigation."""
+    navigation_words = (
+        "ROTATE",
+        "MOVE",
+        "PAN",
+        "ROLL",
+        "ZOOM",
+        "ORBIT",
+    )
+    try:
+        operators = context.window_manager.operators
+    except (AttributeError, RuntimeError):
+        return False
+
+    for operator in operators:
+        operator_id = str(getattr(operator, "bl_idname", "")).upper()
+        if "VIEW3D" in operator_id and any(
+            word in operator_id for word in navigation_words
+        ):
+            return True
+    return False
+
+
 class VIEW3D_OT_radcad_erase(bpy.types.Operator):
     bl_idname = "view3d.radcad_erase"
     bl_label = "Erase"
@@ -489,6 +513,7 @@ class VIEW3D_OT_radcad_erase(bpy.types.Operator):
         self.last_drag_mouse = None
         self.cursor_xy = (event.mouse_region_x, event.mouse_region_y)
         self.cursor_in_view = _event_is_in_view(context, event)
+        self.navigation_active = False
         self.ui_hitboxes = {}
         self.erase_verts = True
         self.erase_edges = True
@@ -647,6 +672,29 @@ class VIEW3D_OT_radcad_erase(bpy.types.Operator):
             )
         self.last_drag_mouse = current
 
+    def _set_cursor_from_event(self, context, event):
+        """Move the drawn SVG and keep Blender's hardware cursor hidden in-view."""
+        if not hasattr(event, "mouse_region_x") or not hasattr(event, "mouse_region_y"):
+            return
+        self.cursor_xy = (event.mouse_region_x, event.mouse_region_y)
+        self.cursor_in_view = _event_is_in_view(context, event)
+        try:
+            context.window.cursor_modal_set(
+                "NONE" if self.cursor_in_view else "DEFAULT"
+            )
+        except (TypeError, ValueError):
+            pass
+
+    def _begin_view_navigation(self, context):
+        """Hide the drawn cursor while Blender grabs/wraps the mouse for orbit."""
+        self.navigation_active = True
+        self.cursor_xy = None
+        self.cursor_in_view = False
+        try:
+            context.window.cursor_modal_set("DEFAULT")
+        except (TypeError, ValueError):
+            pass
+
     def modal(self, context, event):
         if context.scene.active_cad_tool_id != self.tool_instance_id:
             self.finish(context)
@@ -656,15 +704,31 @@ class VIEW3D_OT_radcad_erase(bpy.types.Operator):
             self.finish(context)
             return {"FINISHED"} if self.changed else {"CANCELLED"}
 
-        if hasattr(event, "mouse_region_x") and hasattr(event, "mouse_region_y"):
-            self.cursor_xy = (event.mouse_region_x, event.mouse_region_y)
-            self.cursor_in_view = _event_is_in_view(context, event)
-            try:
-                context.window.cursor_modal_set("NONE" if self.cursor_in_view else "DEFAULT")
-            except (TypeError, ValueError):
-                pass
+        if event.type == "MIDDLEMOUSE":
+            if event.value == "PRESS":
+                self._begin_view_navigation(context)
+            elif event.value == "RELEASE":
+                self.navigation_active = False
+                self._set_cursor_from_event(context, event)
+            return {"PASS_THROUGH"}
 
-        if event.type in {"MIDDLEMOUSE", "WHEELUPMOUSE", "WHEELDOWNMOUSE"}:
+        # Blender's native orbit operator is blocking, so it may consume the
+        # middle-button release before this modal operator sees it.  In that
+        # case wait until the first post-orbit mouse move before restoring the
+        # SVG cursor.  This avoids a stale drawn cursor and a visible hardware
+        # cursor being left on top of one another.
+        if self.navigation_active:
+            if _view_navigation_is_active(context):
+                return {"PASS_THROUGH"}
+            if event.type == "MOUSEMOVE":
+                self.navigation_active = False
+                self._set_cursor_from_event(context, event)
+            else:
+                return {"PASS_THROUGH"}
+        elif hasattr(event, "mouse_region_x") and hasattr(event, "mouse_region_y"):
+            self._set_cursor_from_event(context, event)
+
+        if event.type in {"WHEELUPMOUSE", "WHEELDOWNMOUSE"}:
             return {"PASS_THROUGH"}
 
         if event.type == "MOUSEMOVE":
