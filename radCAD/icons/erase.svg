@@ -1,10 +1,25 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
-  <g transform="rotate(-35 128 128)" stroke="#171717" stroke-linejoin="round">
-    <path d="M50 92Q50 70 72 70H184Q206 70 206 92V164Q206 186 184 186H72Q50 186 50 164Z" fill="#f06b8a" stroke-width="12"/>
-    <path d="M139 70H184Q206 70 206 92V164Q206 186 184 186H139Z" fill="#7ac8ff" stroke-width="12"/>
-    <path d="M139 74V182" fill="none" stroke-width="10"/>
+  <!-- Flat vector eraser: the reference's pink body, black ink, no drop shadow. -->
+  <g transform="rotate(-35 128 128)" stroke="#171717" stroke-linejoin="round" stroke-linecap="round">
+    <!-- Broad face -->
+    <path d="M54 73H190Q201 73 201 84V151Q201 162 190 162H54Q43 162 43 151V84Q43 73 54 73Z"
+          fill="#ee7893" stroke-width="7"/>
+
+    <!-- Lower bevel/end face -->
+    <path d="M43 84L76 103V179L43 160Z" fill="#e25f7d" stroke-width="7"/>
+
+    <!-- Clean division between the eraser body and end -->
+    <path d="M76 103V179" fill="none" stroke-width="5"/>
+
+    <!-- Small paper-colored end strip from the reference -->
+    <path d="M177 73H190Q201 73 201 84V151Q201 162 190 162H177Z"
+          fill="#f5b6c2" stroke-width="5"/>
+
+    <!-- Reference-style label, kept as vector text rather than a copied bitmap. -->
+    <text x="102" y="126" fill="#171717" stroke="none"
+          font-family="Georgia, 'Times New Roman', serif" font-size="25"
+          font-style="italic" text-anchor="middle">pink</text>
   </g>
-  <path d="M35 213H126" fill="none" stroke="#171717" stroke-width="12" stroke-linecap="round"/>
-  <path d="M151 213H171M194 213H211" fill="none" stroke="#f06b8a" stroke-width="12" stroke-linecap="round"/>
+
 </svg>
