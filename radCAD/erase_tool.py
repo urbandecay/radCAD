@@ -338,12 +338,14 @@ def _get_cursor_texture():
         return None
 
     preview = previews["erase"]
-    source = (preview.icon_id, tuple(preview.image_size))
+    # Match Blender's button icons: use the preview's UI-sized icon buffer,
+    # rather than the larger source image buffer.
+    source = (preview.icon_id, tuple(preview.icon_size))
     if _cursor_texture is not None and source == _cursor_texture_source:
         return _cursor_texture
 
-    width, height = preview.image_size
-    pixels = preview.image_pixels_float[:]
+    width, height = preview.icon_size
+    pixels = preview.icon_pixels_float[:]
     if width <= 0 or height <= 0 or len(pixels) != width * height * 4:
         return None
 
