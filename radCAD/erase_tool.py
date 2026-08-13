@@ -36,6 +36,7 @@ class _EraseTarget:
     kind: str
     obj: object
     indices: tuple
+    element: object = None
     point: tuple = ()
     line: tuple = ()
     triangles: tuple = ()
@@ -92,7 +93,7 @@ def _target_from_snap(result):
         if index < 0 or index >= len(bm.verts) or bm.verts[index].hide:
             return None
         point = tuple(matrix @ bm.verts[index].co)
-        return _EraseTarget("VERT", obj, (index,), point=point)
+        return _EraseTarget("VERT", obj, (index,), element=bm.verts[index], point=point)
 
     if result.kind == "EDGE":
         if len(indices) != 2 or min(indices) < 0 or max(indices) >= len(bm.verts):
@@ -101,7 +102,7 @@ def _target_from_snap(result):
         if edge is None or edge.hide:
             return None
         line = tuple(tuple(matrix @ vert.co) for vert in edge.verts)
-        return _EraseTarget("EDGE", obj, indices, line=line)
+        return _EraseTarget("EDGE", obj, tuple(sorted(indices)), element=edge, line=line)
 
     face = _face_from_vertex_indices(bm, indices)
     if face is None or face.hide:
@@ -122,7 +123,8 @@ def _target_from_snap(result):
     return _EraseTarget(
         "FACE",
         obj,
-        indices,
+        tuple(sorted(vert.index for vert in face.verts)),
+        element=face,
         triangles=tuple(triangles),
         outline=tuple(outline),
     )
@@ -143,18 +145,24 @@ def _erase_target(target):
 
     if target.kind == "VERT":
         index = target.indices[0]
-        if index < 0 or index >= len(bm.verts):
-            return False
-        element = bm.verts[index]
+        element = target.element
+        if element is None:
+            if index < 0 or index >= len(bm.verts):
+                return False
+            element = bm.verts[index]
         if not element.is_valid or element.hide:
             return False
         bmesh.ops.delete(bm, geom=[element], context="VERTS")
 
     elif target.kind == "EDGE":
         indices = target.indices
-        if len(indices) != 2 or min(indices) < 0 or max(indices) >= len(bm.verts):
+        if len(indices) != 2:
             return False
-        element = bm.edges.get((bm.verts[indices[0]], bm.verts[indices[1]]))
+        element = target.element
+        if element is None or not element.is_valid:
+            if min(indices) < 0 or max(indices) >= len(bm.verts):
+                return False
+            element = bm.edges.get((bm.verts[indices[0]], bm.verts[indices[1]]))
         if element is None or not element.is_valid or element.hide:
             return False
         # EDGES also removes attached faces and orphaned endpoints, matching
@@ -162,7 +170,9 @@ def _erase_target(target):
         bmesh.ops.delete(bm, geom=[element], context="EDGES")
 
     elif target.kind == "FACE":
-        element = _face_from_vertex_indices(bm, target.indices)
+        element = target.element
+        if element is None or not element.is_valid:
+            element = _face_from_vertex_indices(bm, target.indices)
         if element is None or not element.is_valid or element.hide:
             return False
         # Keep the boundary wire when only the face itself is erased.
@@ -243,32 +253,37 @@ def _target_within_pick_area(context, target, x, y, radius):
 
 
 def _draw_hover(operator):
-    target = getattr(operator, "hover_target", None)
-    if target is None:
+    targets = list(getattr(operator, "pending_targets", ()))
+    if not targets:
+        target = getattr(operator, "hover_target", None)
+        if target is not None:
+            targets = [target]
+    if not targets:
         return
 
     shader = _uniform_color_shader()
     gpu.state.blend_set("ALPHA")
     gpu.state.depth_test_set("NONE")
     try:
-        if target.kind == "FACE" and target.triangles:
-            shader.bind()
-            shader.uniform_float("color", (1.0, 0.08, 0.03, 0.22))
-            batch_for_shader(shader, "TRIS", {"pos": target.triangles}).draw(shader)
-            if target.outline:
+        for target in targets:
+            if target.kind == "FACE" and target.triangles:
+                shader.bind()
+                shader.uniform_float("color", (1.0, 0.08, 0.03, 0.22))
+                batch_for_shader(shader, "TRIS", {"pos": target.triangles}).draw(shader)
+                if target.outline:
+                    gpu.state.line_width_set(2.0)
+                    shader.uniform_float("color", (1.0, 0.08, 0.03, 1.0))
+                    batch_for_shader(shader, "LINES", {"pos": target.outline}).draw(shader)
+            elif target.kind == "EDGE" and target.line:
                 gpu.state.line_width_set(2.0)
+                shader.bind()
                 shader.uniform_float("color", (1.0, 0.08, 0.03, 1.0))
-                batch_for_shader(shader, "LINES", {"pos": target.outline}).draw(shader)
-        elif target.kind == "EDGE" and target.line:
-            gpu.state.line_width_set(2.0)
-            shader.bind()
-            shader.uniform_float("color", (1.0, 0.08, 0.03, 1.0))
-            batch_for_shader(shader, "LINES", {"pos": target.line}).draw(shader)
-        elif target.kind == "VERT" and target.point:
-            gpu.state.point_size_set(8.0)
-            shader.bind()
-            shader.uniform_float("color", (1.0, 0.08, 0.03, 1.0))
-            batch_for_shader(shader, "POINTS", {"pos": (target.point,)}).draw(shader)
+                batch_for_shader(shader, "LINES", {"pos": target.line}).draw(shader)
+            elif target.kind == "VERT" and target.point:
+                gpu.state.point_size_set(8.0)
+                shader.bind()
+                shader.uniform_float("color", (1.0, 0.08, 0.03, 1.0))
+                batch_for_shader(shader, "POINTS", {"pos": (target.point,)}).draw(shader)
     finally:
         gpu.state.point_size_set(1.0)
         gpu.state.line_width_set(1.0)
@@ -469,6 +484,8 @@ class VIEW3D_OT_radcad_erase(bpy.types.Operator):
         self.dragging = False
         self.changed = False
         self.hover_target = None
+        self.pending_targets = []
+        self.pending_target_keys = set()
         self.last_drag_mouse = None
         self.cursor_xy = (event.mouse_region_x, event.mouse_region_y)
         self.cursor_in_view = _event_is_in_view(context, event)
@@ -561,22 +578,45 @@ class VIEW3D_OT_radcad_erase(bpy.types.Operator):
 
     def _update_hover(self, context, x, y):
         self.hover_target = self._pick(context, x, y)
+        if self.dragging:
+            self._queue_target(self.hover_target)
         context.area.tag_redraw()
 
-    def _erase_at(self, context, x, y):
+    @staticmethod
+    def _target_key(target):
+        if target is None:
+            return None
+        obj_key = target.obj.as_pointer() if hasattr(target.obj, "as_pointer") else id(target.obj)
+        return (obj_key, target.kind, tuple(target.indices))
+
+    def _queue_target(self, target):
+        key = self._target_key(target)
+        if key is None or key in self.pending_target_keys:
+            return False
+        self.pending_target_keys.add(key)
+        self.pending_targets.append(target)
+        return True
+
+    def _collect_at(self, context, x, y):
         target = self._pick(context, x, y)
-        if _erase_target(target):
-            self.changed = True
-            self.hover_target = None
-            context.area.tag_redraw()
-            return True
-        return False
+        return self._queue_target(target)
+
+    def _commit_pending(self, context):
+        changed = False
+        for target in self.pending_targets:
+            if _erase_target(target):
+                changed = True
+        self.changed = self.changed or changed
+        self.pending_targets.clear()
+        self.pending_target_keys.clear()
+        invalidate_snap_cache()
+        context.area.tag_redraw()
 
     def _erase_stroke_segment(self, context, x, y):
         current = (float(x), float(y))
         previous = self.last_drag_mouse
         if previous is None:
-            self._erase_at(context, *current)
+            self._collect_at(context, *current)
             self.last_drag_mouse = current
             return
 
@@ -589,7 +629,7 @@ class VIEW3D_OT_radcad_erase(bpy.types.Operator):
         steps = max(1, int(math.ceil(distance / STROKE_SAMPLE_PX)))
         for step in range(1, steps + 1):
             factor = step / steps
-            self._erase_at(
+            self._collect_at(
                 context,
                 previous[0] + dx * factor,
                 previous[1] + dy * factor,
@@ -648,11 +688,15 @@ class VIEW3D_OT_radcad_erase(bpy.types.Operator):
             return {"RUNNING_MODAL"}
 
         if event.type == "LEFTMOUSE" and event.value == "RELEASE":
-            if self.dragging and not is_event_over_ui(context, event):
-                self._erase_stroke_segment(context, event.mouse_region_x, event.mouse_region_y)
-                self._update_hover(context, event.mouse_region_x, event.mouse_region_y)
+            if self.dragging:
+                if not is_event_over_ui(context, event):
+                    self._erase_stroke_segment(context, event.mouse_region_x, event.mouse_region_y)
+                    self._update_hover(context, event.mouse_region_x, event.mouse_region_y)
+                self._commit_pending(context)
             self.dragging = False
             self.last_drag_mouse = None
+            self.hover_target = None
+            context.area.tag_redraw()
             return {"RUNNING_MODAL"}
 
         if event.type in {"ESC", "RIGHTMOUSE"} and event.value == "PRESS":
@@ -681,6 +725,8 @@ class VIEW3D_OT_radcad_erase(bpy.types.Operator):
         self.running = False
         self.dragging = False
         self.hover_target = None
+        self.pending_targets.clear()
+        self.pending_target_keys.clear()
         DrawManager.remove_handler(DRAW_HANDLER_3D)
         DrawManager.remove_handler(DRAW_HANDLER_2D)
         free_snap_context()
