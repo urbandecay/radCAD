@@ -5,7 +5,7 @@
 
   <!-- The complete loop is behind the eraser, which hides the overlap. -->
   <ellipse cx="3.014021" cy="19.550030" rx="2.831526" ry="2.738848"
-           fill="none" stroke="#090909" stroke-width="0.52"/>
+           fill="none" stroke="#090909" stroke-width="0.68"/>
 
   <!-- Right bevel, traced from eraserSketchup.svg. -->
   <path d="M26.985817 3.757850
@@ -35,18 +35,18 @@
            L6.026517 12.210100
            L19.675757 0.217040
            L26.985817 3.757850 Z"
-        fill="none" stroke="#090909" stroke-width="0.52"
+        fill="none" stroke="#090909" stroke-width="0.68"
         stroke-linecap="round" stroke-linejoin="round"/>
 
   <!-- The two light construction seams from eraserSketchup.svg. -->
   <path d="M6.026517 12.210100
            L14.379837 18.407600
            L26.985817 3.757850"
-        fill="none" stroke="#cfcfcf" stroke-width="0.264583"
+        fill="none" stroke="#cfcfcf" stroke-width="0.36"
         stroke-linecap="butt" stroke-linejoin="miter"/>
   <path d="M14.379837 18.407600
            L11.417807 24.791300"
-        fill="none" stroke="#e7e7e7" stroke-width="0.264583"
+        fill="none" stroke="#e7e7e7" stroke-width="0.36"
         stroke-linecap="butt" stroke-linejoin="miter"/>
 
   <!-- "pink" converted to a path so Blender's SVG loader cannot drop it. -->
