@@ -64,6 +64,35 @@ def is_number_input(ev):
     }
     return ev.type in valid_keys and ev.value == 'PRESS'
 
+
+def _orthographic_view_axis_normal(rv3d, tolerance=0.999):
+    """Return the world axis normal for an axis-aligned ortho view.
+
+    Vertex and edge snaps identify a point on the mesh, but do not identify a
+    unique drawing plane.  In an exact front/right/top view the least
+    surprising plane is the plane of the screen.  Keep this helper limited to
+    genuinely axis-aligned orthographic views so perspective and oblique views
+    retain their existing surface-raycast fallback.
+    """
+    if rv3d is None or rv3d.view_perspective != 'ORTHO':
+        return None
+
+    view_dir = rv3d.view_matrix.inverted().to_3x3() @ Vector((0, 0, -1))
+    if view_dir.length_squared <= 1.0e-12:
+        return None
+    view_dir.normalize()
+
+    axes = (
+        Vector((1, 0, 0)),
+        Vector((0, 1, 0)),
+        Vector((0, 0, 1)),
+    )
+    axis = max(axes, key=lambda candidate: abs(view_dir.dot(candidate)))
+    alignment = view_dir.dot(axis)
+    if abs(alignment) < tolerance:
+        return None
+    return axis if alignment >= 0.0 else -axis
+
 def apply_custom_orbit(context, pivot, dx, dy):
     rv3d = context.region_data
     if not rv3d: return
@@ -330,6 +359,13 @@ class ModalManager:
             if locked_normal and state.get("locked"):
                 return snapped_pos, locked_normal
             nrm = snapped_normal
+            if nrm is None:
+                # A vertex/edge component has no face normal.  In an exact
+                # axis-aligned ortho view, using the raycast face behind that
+                # component can switch the compass to a different plane (for
+                # example, a Y view can suddenly use Z and become edge-on).
+                # The view plane is the stable, unambiguous fallback there.
+                nrm = _orthographic_view_axis_normal(rv3d)
             if nrm is None:
                 _, nrm, _ = raycast_under_mouse(ctx, x, y)
             if nrm is not None:
