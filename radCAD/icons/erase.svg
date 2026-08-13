@@ -19,14 +19,14 @@
            L26.985817 3.757850
            L14.379837 18.407600
            L6.026517 12.210100 Z"
-        fill="#dd7f8f"/>
+        fill="#f79db9"/>
 
   <!-- Front face, traced from eraserSketchup.svg. -->
   <path d="M6.026517 12.210100
            L14.379837 18.407600
            L11.417807 24.791300
            L3.706300 18.560810 Z"
-        fill="#f68d9e"/>
+        fill="#f57d94"/>
 
   <!-- Single outer outline; internal seams are intentionally not black. -->
   <path d="M24.440537 9.010800
