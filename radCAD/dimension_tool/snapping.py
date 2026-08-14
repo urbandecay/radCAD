@@ -8,7 +8,7 @@ from mathutils.geometry import intersect_line_plane
 
 from ..modal_state import state
 from ..plane_utils import raycast_under_mouse
-from ..snapping_utils import snap_mesh
+from ..snapping_utils import snap_scene_geometry
 
 
 @dataclass
@@ -30,7 +30,14 @@ def _view_plane_normal(context):
 
 def pick_point(context, event, plane_point=None, plane_normal=None):
     radius = state.get("snap_strength", 6.0) * 2.0
-    result = snap_mesh(
+    mesh_snap_enabled = (
+        state.get("snap_verts", True)
+        or state.get("snap_edges", False)
+        or state.get("snap_edge_center", False)
+        or state.get("snap_face_center", False)
+        or state.get("snap_faces", False)
+    )
+    result = snap_scene_geometry(
         context,
         context.edit_object,
         event.mouse_region_x,
@@ -42,6 +49,7 @@ def pick_point(context, event, plane_point=None, plane_normal=None):
         snap_face_center=state.get("snap_face_center", False),
         snap_faces=state.get("snap_faces", False),
         include_surface=True,
+        enable_mesh=mesh_snap_enabled,
     )
     if result is not None:
         normal = result.normal

@@ -465,6 +465,51 @@ class RADCAD_PT_Rotate(bpy.types.Panel):
             icon="ORIENTATION_GIMBAL",
         )
 
+
+class RADCAD_PT_ConstructionLine(bpy.types.Panel):
+    bl_label = "Construction Lines"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "rCAD"
+    bl_parent_id = "RADCAD_PT_Main"
+
+    def draw(self, context):
+        layout = self.layout
+        scene = context.scene
+
+        row = layout.row()
+        row.scale_y = 1.6
+        row.operator_context = "INVOKE_REGION_WIN"
+        row.operator(
+            "view3d.radcad_construction_line",
+            text="Construction Line",
+            icon="TRACKING",
+        )
+
+        layout.prop(
+            scene,
+            "radcad_construction_lines_visible",
+            text="Show Construction Lines",
+            toggle=True,
+        )
+        row = layout.row(align=True)
+        row.operator(
+            "view3d.radcad_construction_delete_last",
+            text="Delete Last",
+            icon="LOOP_BACK",
+        )
+        row.operator(
+            "view3d.radcad_construction_clear",
+            text="Clear All",
+            icon="TRASH",
+        )
+
+        if len(scene.radcad_construction_lines):
+            box = layout.box()
+            box.label(text=f"Guides: {len(scene.radcad_construction_lines)}")
+            box.prop(scene, "radcad_construction_line_color", text="Color")
+            box.prop(scene, "radcad_construction_line_width", text="Width")
+
 classes = (
     RADCAD_OT_reset_overlays, 
     RADCAD_OT_generic,
@@ -480,6 +525,7 @@ classes = (
     RADCAD_PT_Dimension,
     RADCAD_PT_Erase,
     RADCAD_PT_Rotate,
+    RADCAD_PT_ConstructionLine,
 )
 
 def register():

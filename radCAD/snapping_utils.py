@@ -320,6 +320,72 @@ def snap_mesh(
     )
 
 
+def _result_screen_distance(ctx, result, x, y):
+    if result is None:
+        return float("inf")
+    point_2d = location_3d_to_region_2d(
+        ctx.region,
+        ctx.region_data,
+        result.location,
+        default=None,
+    )
+    if point_2d is None:
+        return float("inf")
+    return (Vector(point_2d) - Vector((x, y))).length
+
+
+def snap_scene_geometry(
+    ctx,
+    obj,
+    x,
+    y,
+    max_px=ELEMENT_SNAP_RADIUS_PX,
+    snap_verts=True,
+    snap_edges=True,
+    snap_edge_center=True,
+    snap_face_center=True,
+    snap_faces=False,
+    include_surface=False,
+    enable_mesh=True,
+    snap_guides=True,
+):
+    """Combine mesh and construction-guide candidates into one snap result."""
+    mesh_result = None
+    if enable_mesh:
+        mesh_result = snap_mesh(
+            ctx,
+            obj,
+            x,
+            y,
+            max_px=max_px,
+            snap_verts=snap_verts,
+            snap_edges=snap_edges,
+            snap_edge_center=snap_edge_center,
+            snap_face_center=snap_face_center,
+            snap_faces=snap_faces,
+            include_surface=include_surface,
+        )
+
+    guide_candidate = None
+    if snap_guides:
+        try:
+            from .construction_tool.snapping import snap_construction_lines
+
+            guide_candidate = snap_construction_lines(ctx, x, y, max_px)
+        except (AttributeError, ImportError):
+            guide_candidate = None
+
+    if guide_candidate is None:
+        return mesh_result
+    if mesh_result is None or mesh_result.kind == "SURFACE":
+        return guide_candidate.result
+
+    mesh_distance = _result_screen_distance(ctx, mesh_result, x, y)
+    if guide_candidate.distance_px < mesh_distance:
+        return guide_candidate.result
+    return mesh_result
+
+
 def snap_to_mesh_components(
     ctx,
     obj,

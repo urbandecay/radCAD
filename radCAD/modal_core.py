@@ -265,14 +265,24 @@ class ModalManager:
             state.get("snap_faces", False)
         )
 
-        # --- OPTIMIZATION: Skip expensive mesh snapping for Freehand tool ---
-        if state.get("tool_mode") != "CURVE_FREEHAND" and mesh_snap_enabled:
-            try:
-                from .snapping_utils import snap_mesh
-            except ImportError:
-                def snap_mesh(*args, **kwargs): return None
+        # Freehand still gets inexpensive construction-guide snapping, while
+        # retaining its existing optimization that skips the mesh snap buffer.
+        try:
+            from .construction_tool.model import has_visible_construction_lines
+            guide_snap_available = has_visible_construction_lines(ctx.scene)
+        except (AttributeError, ImportError):
+            guide_snap_available = False
 
-            snap_result = snap_mesh(
+        if (
+            (state.get("tool_mode") != "CURVE_FREEHAND" and mesh_snap_enabled)
+            or guide_snap_available
+        ):
+            try:
+                from .snapping_utils import snap_scene_geometry
+            except ImportError:
+                def snap_scene_geometry(*args, **kwargs): return None
+
+            snap_result = snap_scene_geometry(
                 ctx, ctx.edit_object, x, y, max_px=snap_radius,
                 snap_verts=state.get("snap_verts", True),
                 snap_edges=state.get("snap_edges", True),
@@ -280,6 +290,10 @@ class ModalManager:
                 snap_faces=state.get("snap_faces", False),
                 snap_face_center=state.get("snap_face_center", True),
                 include_surface=True,
+                enable_mesh=(
+                    state.get("tool_mode") != "CURVE_FREEHAND"
+                    and mesh_snap_enabled
+                ),
             )
             if snap_result is not None:
                 if snap_result.kind == "SURFACE":
