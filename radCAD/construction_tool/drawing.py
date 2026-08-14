@@ -8,7 +8,7 @@ from gpu_extras.batch import batch_for_shader
 from mathutils import Vector
 
 from .model import iter_construction_lines
-from .projection import clip_infinite_screen_line, guide_vectors, projected_guide_axis
+from .projection import guide_vectors, projected_visible_guide_segment
 
 
 def _shader():
@@ -63,15 +63,7 @@ def _dashed_line(start, end, dash_length=9.0, gap_length=6.0):
 
 
 def _screen_line_for_vectors(context, anchor, direction):
-    projected = projected_guide_axis(context, anchor, direction)
-    if projected is None:
-        return None
-    return clip_infinite_screen_line(
-        projected[0],
-        projected[1],
-        context.region.width,
-        context.region.height,
-    )
+    return projected_visible_guide_segment(context, anchor, direction)
 
 
 def _draw_guide_vectors(context, guides, color, width, dashed=True):

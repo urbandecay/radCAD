@@ -10,6 +10,17 @@ from .model import (
 
 
 _EPSILON = 1.0e-10
+_PERSPECTIVE_PARALLEL_EPSILON = 1.0e-8
+
+
+def _screen_from_clip(clip, width, height):
+    """Convert a homogeneous clip-space point to region coordinates."""
+    if abs(clip.w) <= _EPSILON:
+        return None
+    return Vector((
+        (clip.x / clip.w + 1.0) * float(width) * 0.5,
+        (clip.y / clip.w + 1.0) * float(height) * 0.5,
+    ))
 
 
 def guide_vectors(line):
@@ -80,16 +91,79 @@ def projected_guide_axis(context, anchor, direction):
     return best_pair
 
 
-def closest_screen_coordinate(context, anchor, direction, mouse):
-    axis = projected_guide_axis(context, anchor, direction)
-    if axis is None:
+def projected_visible_guide_segment(context, anchor, direction):
+    """Return the visible part of a 3D infinite guide in region coordinates.
+
+    An infinite world-space line does *not* remain an infinite screen-space
+    line in a perspective view. Only one half is in front of the eye; that
+    half approaches its vanishing point at the horizon. Extending the 2D
+    projection through that point draws the behind-camera half into the sky.
+    """
+    region = context.region
+    rv3d = context.region_data
+    if region is None or rv3d is None or region.width <= 0 or region.height <= 0:
         return None
-    first, second = axis
+
+    # Orthographic guides really do project to infinite screen-space lines.
+    if not getattr(rv3d, "is_perspective", False):
+        axis = projected_guide_axis(context, anchor, direction)
+        if axis is None:
+            return None
+        return clip_infinite_screen_line(*axis, region.width, region.height)
+
+    anchor = Vector(anchor)
+    direction = Vector(direction)
+    if direction.length_squared <= _EPSILON:
+        return None
+    direction.normalize()
+
+    matrix = rv3d.perspective_matrix
+    anchor_clip = matrix @ Vector((anchor.x, anchor.y, anchor.z, 1.0))
+    direction_clip = matrix @ Vector((direction.x, direction.y, direction.z, 0.0))
+    if abs(direction_clip.w) <= _PERSPECTIVE_PARALLEL_EPSILON:
+        # This guide's vanishing point is effectively at infinity, so it is a
+        # full screen-space line when it is in front of the viewer.
+        if anchor_clip.w <= _EPSILON:
+            return None
+        axis = projected_guide_axis(context, anchor, direction)
+        if axis is None:
+            return None
+        return clip_infinite_screen_line(*axis, region.width, region.height)
+
+    vanishing_screen = _screen_from_clip(direction_clip, region.width, region.height)
+    if vanishing_screen is None:
+        return None
+
+    # Pick a point on the half of the guide in front of the eye. In Blender's
+    # perspective matrix that half has positive clip W. Working in homogeneous
+    # coordinates avoids guessing a world-space span or accidentally sampling
+    # the branch behind the viewer.
+    front_w = max(1.0, abs(anchor_clip.w))
+    factor = (front_w - anchor_clip.w) / direction_clip.w
+    front_clip = anchor_clip + direction_clip * factor
+    front_screen = _screen_from_clip(front_clip, region.width, region.height)
+    if front_screen is None:
+        return None
+
+    return clip_screen_ray(
+        vanishing_screen,
+        front_screen,
+        region.width,
+        region.height,
+    )
+
+
+def closest_screen_coordinate(context, anchor, direction, mouse):
+    segment = projected_visible_guide_segment(context, anchor, direction)
+    if segment is None:
+        return None
+    first, second = segment
     screen_direction = second - first
     if screen_direction.length_squared <= _EPSILON:
         return None
     mouse = Vector(mouse)
     factor = (mouse - first).dot(screen_direction) / screen_direction.length_squared
+    factor = max(0.0, min(1.0, factor))
     return first + screen_direction * factor
 
 
@@ -184,3 +258,38 @@ def clip_infinite_screen_line(first, second, width, height):
         ),
         key=lambda pair: (pair[1] - pair[0]).length_squared,
     )
+
+
+def clip_screen_ray(origin, through, width, height):
+    """Clip a 2D ray from ``origin`` through ``through`` to the viewport."""
+    origin = Vector(origin)
+    direction = Vector(through) - origin
+    if direction.length_squared <= _EPSILON:
+        return None
+
+    bounds = (
+        (origin.x, direction.x, 0.0, max(0.0, float(width) - 1.0)),
+        (origin.y, direction.y, 0.0, max(0.0, float(height) - 1.0)),
+    )
+    start_factor = 0.0
+    end_factor = float("inf")
+    for coordinate, delta, lower, upper in bounds:
+        if abs(delta) <= _EPSILON:
+            if coordinate < lower or coordinate > upper:
+                return None
+            continue
+        first = (lower - coordinate) / delta
+        second = (upper - coordinate) / delta
+        entry, exit_ = min(first, second), max(first, second)
+        start_factor = max(start_factor, entry)
+        end_factor = min(end_factor, exit_)
+        if end_factor < start_factor:
+            return None
+
+    if end_factor == float("inf"):
+        return None
+    start = origin + direction * start_factor
+    end = origin + direction * end_factor
+    if (end - start).length_squared <= _EPSILON:
+        return None
+    return start, end
