@@ -485,9 +485,10 @@ def draw_preview_1point(ctx, shaders, prefs):
             draw_line(ctx, shaders, pv, state["start"], prefs["COL_START"], prefs)
         
         pts = state.get("preview_pts", [])
-        if pts:
+        if pts and state.get("tool_mode") != "ROTATE":
             draw_polyline(ctx, shaders, pts, (0,0,0,1), prefs)
             draw_points(ctx, shaders, pts, (0,0,0,1), pt_size, prefs)
+        if pts:
             draw_line(ctx, shaders, pv, pts[-1], prefs["COL_END"], prefs)
 
 

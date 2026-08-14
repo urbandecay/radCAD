@@ -515,7 +515,7 @@ def draw_hud_2d():
             gpu.state.blend_set("ALPHA")
             
             # --- Standard Arc Fill (TRI_FAN) ---
-            if state.get("tool_mode") not in ("POINT_BY_ARCS", "POINT_CENTER"):
+            if state.get("tool_mode") not in ("POINT_BY_ARCS", "POINT_CENTER", "ROTATE"):
                 base_pt = style.get("point_px", 5)
                 final_pt = max(1, base_pt - 1) if bpy.app.version >= (5, 0, 0) else base_pt
                 r = final_pt / 2.0
