@@ -148,6 +148,19 @@ def draw_construction_preview(operator):
 
     color = (0.05, 0.8, 1.0, 1.0)
     if operator.stage == 0:
+        if operator.hover_edge is not None:
+            edge_points = []
+            for point in (operator.hover_edge.start, operator.hover_edge.end):
+                projected = location_3d_to_region_2d(
+                    context.region,
+                    context.region_data,
+                    point,
+                    default=None,
+                )
+                if projected is not None:
+                    edge_points.append(Vector(projected))
+            if len(edge_points) == 2:
+                _draw_segments([(edge_points[0], edge_points[1])], color, 3.0)
         if operator.current is not None:
             point = location_3d_to_region_2d(
                 context.region,
@@ -157,21 +170,46 @@ def draw_construction_preview(operator):
             )
             if point is not None:
                 _draw_points([Vector(point)], color, 7.0)
-        _draw_prompt(context.region, "Construction Line — click anchor point")
+        _draw_prompt(context.region, "Construction Line — click an edge and drag across a connected face")
         return
 
-    direction = operator.current - operator.anchor
-    if direction.length_squared > 1.0e-12:
-        normal = (
-            operator.plane_normal
-            if operator.plane_normal is not None
-            else Vector((0.0, 0.0, 1.0))
+    source_points = []
+    for point in (operator.source_edge.start, operator.source_edge.end):
+        projected = location_3d_to_region_2d(
+            context.region,
+            context.region_data,
+            point,
+            default=None,
         )
+        if projected is not None:
+            source_points.append(Vector(projected))
+    if len(source_points) == 2:
+        _draw_segments([(source_points[0], source_points[1])], (0.2, 0.55, 0.72, 0.9), 2.0)
+
+    if operator.offset_distance > 1.0e-8:
         _draw_guide_vectors(
             context,
-            [(operator.anchor, direction.normalized(), normal)],
+            [(operator.anchor, operator.edge_direction, operator.plane_normal)],
             color,
             2.0,
             dashed=False,
         )
-    _draw_prompt(context.region, "Construction Line — click to set direction   •   Backspace: previous")
+
+        connector = []
+        for point in (operator.source_point, operator.current):
+            projected = location_3d_to_region_2d(
+                context.region,
+                context.region_data,
+                point,
+                default=None,
+            )
+            if projected is not None:
+                connector.append(Vector(projected))
+        if len(connector) == 2:
+            _draw_segments(_dashed_line(*connector, dash_length=5.0, gap_length=4.0), color, 1.0)
+
+    offset = f"   •   Offset: {operator.preview_label}" if operator.preview_label else ""
+    _draw_prompt(
+        context.region,
+        f"Construction Line — drag on a connected face; release or click to place{offset}   •   Backspace: previous",
+    )

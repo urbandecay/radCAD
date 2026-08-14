@@ -1,18 +1,21 @@
 """Interactive construction-line creation and management operators."""
 
-import math
 import time
 
 import bpy
 from mathutils import Vector
 
-from ..dimension_tool.snapping import pick_point
-from ..inference_utils import get_axis_snapped_location
 from ..modal_core import DrawManager, is_event_over_ui
 from ..modal_state import state
-from ..snapping_utils import free_snap_context, invalidate_snap_cache
+from ..snapping_utils import (
+    free_snap_context,
+    invalidate_snap_cache,
+    snap_scene_geometry,
+)
+from ..units_utils import format_length
 from .drawing import draw_construction_preview
-from .model import add_construction_line, constrain_direction_to_plane
+from .geometry import edge_reference_from_snap, offset_placement_from_cursor
+from .model import add_construction_line
 from .properties import tag_redraw_all_view3d
 
 
@@ -22,7 +25,7 @@ _PREVIEW_HANDLER = "CONSTRUCTION_LINE_PREVIEW_2D"
 class VIEW3D_OT_radcad_construction_line(bpy.types.Operator):
     bl_idname = "view3d.radcad_construction_line"
     bl_label = "Construction Line"
-    bl_description = "Create an infinite, persistent construction guide from two points"
+    bl_description = "Offset an edge on a connected face to create a parallel construction guide"
     bl_options = {"REGISTER", "UNDO", "BLOCKING"}
 
     running = False
@@ -47,7 +50,18 @@ class VIEW3D_OT_radcad_construction_line(bpy.types.Operator):
         self.anchor = None
         self.current = None
         self.current_pick = None
+        self.hover_edge = None
+        self.hover_edge_key = None
+        self.source_edge = None
+        self.source_point = None
+        self.active_face = None
+        self.edge_direction = None
         self.plane_normal = None
+        self.offset_vector = Vector()
+        self.offset_distance = 0.0
+        self.preview_label = ""
+        self.drag_origin = None
+        self.drag_moved = False
         self.running = True
         self.tool_instance_id = f"CONSTRUCTION_LINE_{time.time()}"
         context.scene.active_cad_tool_id = self.tool_instance_id
@@ -66,61 +80,88 @@ class VIEW3D_OT_radcad_construction_line(bpy.types.Operator):
     def _update(self, context, event):
         state["current_axis_vector"] = None
         if self.stage == 0:
-            pick = pick_point(context, event)
-        else:
-            pick = pick_point(context, event, self.anchor, self.plane_normal)
-        self.current = pick.point
-        self.current_pick = pick
-
-        if self.stage == 1 and not state.get("geometry_snap", False):
-            strength = max(0.1, min(89.0, state.get("snap_strength", 6.0)))
-            inferred, axis, _axis_name = get_axis_snapped_location(
-                self.anchor,
-                (event.mouse_region_x, event.mouse_region_y),
+            radius = state.get("snap_strength", 6.0) * 2.0
+            result = snap_scene_geometry(
                 context,
-                snap_threshold=math.cos(math.radians(strength)),
+                context.edit_object,
+                event.mouse_region_x,
+                event.mouse_region_y,
+                max_px=radius,
+                snap_verts=False,
+                snap_edges=True,
+                snap_edge_center=False,
+                snap_face_center=False,
+                snap_faces=False,
+                include_surface=False,
+                enable_mesh=True,
+                snap_guides=False,
             )
-            if inferred is not None:
-                self.current = inferred
-                state["current_axis_vector"] = axis
-                self.current_pick.snap_result = None
-
-        if self.stage == 1 and self.plane_normal is not None:
-            constrained = constrain_direction_to_plane(
-                self.current - self.anchor,
-                self.plane_normal,
+            edge_key = None
+            if result is not None and result.kind in {"EDGE", "EDGE_CENTER"}:
+                edge_key = (
+                    result.target_object.as_pointer() if result.target_object is not None else 0,
+                    tuple(result.element_indices),
+                    tuple(tuple(co) for co in result.element_coordinates),
+                )
+            if edge_key != self.hover_edge_key:
+                self.hover_edge = edge_reference_from_snap(context, result)
+                self.hover_edge_key = edge_key
+            self.current_pick = result
+            self.current = result.location.copy() if self.hover_edge is not None else None
+            state["snap_point"] = self.current.copy() if self.current is not None else None
+            state["geometry_snap"] = self.current is not None
+        else:
+            placement = offset_placement_from_cursor(
+                context,
+                event,
+                self.source_edge,
+                self.source_point,
+                self.active_face,
             )
-            if constrained is not None:
-                self.current = self.anchor + constrained
-                self.current_pick.point = self.current.copy()
-            else:
-                self.current = self.anchor.copy()
-                self.current_pick.point = self.current.copy()
+            if placement is not None:
+                self.active_face = placement.face
+                self.plane_normal = placement.face.normal.copy()
+                self.offset_vector = placement.offset.copy()
+                self.offset_distance = placement.distance
+                self.anchor = placement.point.copy()
+                self.current = placement.point.copy()
+                scale = context.scene.unit_settings.scale_length or 1.0
+                self.preview_label = format_length(self.offset_distance * scale)
+            state["snap_point"] = self.current.copy() if self.current is not None else None
+            state["geometry_snap"] = False
         context.area.tag_redraw()
 
-    def _click(self, context):
-        if self.stage == 0:
-            self.anchor = self.current.copy()
-            self.plane_normal = (
-                self.current_pick.normal.copy()
-                if self.current_pick.normal is not None
-                else Vector((0.0, 0.0, 1.0))
-            )
-            self.stage = 1
+    def _start_from_edge(self):
+        if self.current is None or self.hover_edge is None:
+            self.report({"WARNING"}, "Click an edge that belongs to a face")
             return {"RUNNING_MODAL"}
 
-        direction = self.current - self.anchor
-        if direction.length_squared <= 1.0e-12:
-            self.report({"WARNING"}, "Move away from the anchor to set a line direction")
+        self.source_edge = self.hover_edge
+        self.source_point = self.current.copy()
+        self.anchor = self.source_point.copy()
+        self.current = self.source_point.copy()
+        self.edge_direction = self.source_edge.direction.copy()
+        self.active_face = None
+        self.plane_normal = self.source_edge.faces[0].normal.copy()
+        self.offset_vector = Vector()
+        self.offset_distance = 0.0
+        self.preview_label = ""
+        self.stage = 1
+        return {"RUNNING_MODAL"}
+
+    def _place(self, context):
+        if self.offset_distance <= 1.0e-8:
+            self.report({"WARNING"}, "Drag away from the edge to set the guide offset")
             return {"RUNNING_MODAL"}
+
         line = add_construction_line(
             context.scene,
             self.anchor,
-            direction,
+            self.edge_direction,
             self.plane_normal,
         )
         if line is None:
-            self.report({"WARNING"}, "Construction line direction must lie in the drawing plane")
+            self.report({"WARNING"}, "Could not create a guide on that face")
             return {"RUNNING_MODAL"}
         self.finish(context)
         tag_redraw_all_view3d()
@@ -136,28 +177,41 @@ class VIEW3D_OT_radcad_construction_line(bpy.types.Operator):
         if event.type == "MOUSEMOVE":
             if not is_event_over_ui(context, event):
                 self._update(context, event)
+                if self.drag_origin is not None:
+                    dx = event.mouse_region_x - self.drag_origin[0]
+                    dy = event.mouse_region_y - self.drag_origin[1]
+                    self.drag_moved = self.drag_moved or dx * dx + dy * dy >= 9.0
             return {"RUNNING_MODAL"}
         if event.type == "LEFTMOUSE" and event.value == "PRESS":
             if is_event_over_ui(context, event):
                 return {"PASS_THROUGH"}
-            return self._click(context)
+            if self.stage == 0:
+                result = self._start_from_edge()
+                if self.stage == 1:
+                    self.drag_origin = (event.mouse_region_x, event.mouse_region_y)
+                    self.drag_moved = False
+                return result
+            return self._place(context)
+        if event.type == "LEFTMOUSE" and event.value == "RELEASE":
+            if self.stage == 1 and self.drag_origin is not None:
+                should_place = self.drag_moved
+                self.drag_origin = None
+                self.drag_moved = False
+                if should_place:
+                    return self._place(context)
+            return {"RUNNING_MODAL"}
         if event.type in {"BACK_SPACE", "BACKSPACE"} and event.value == "PRESS":
             if self.stage == 1:
                 self.stage = 0
                 self.anchor = None
+                self.current = None
+                self.source_edge = None
+                self.source_point = None
+                self.active_face = None
+                self.edge_direction = None
+                self.drag_origin = None
+                self.drag_moved = False
                 self._update(context, event)
-            return {"RUNNING_MODAL"}
-        if event.value == "PRESS" and event.type in {"F1", "F2", "F3", "F4", "F5"}:
-            key = {
-                "F1": "snap_verts",
-                "F2": "snap_edges",
-                "F3": "snap_edge_center",
-                "F4": "snap_face_center",
-                "F5": "snap_faces",
-            }[event.type]
-            state[key] = not state.get(key, False)
-            invalidate_snap_cache()
-            self._update(context, event)
             return {"RUNNING_MODAL"}
         if event.type in {"ESC", "RIGHTMOUSE"} and event.value == "PRESS":
             self.finish(context)

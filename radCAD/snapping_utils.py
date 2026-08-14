@@ -20,6 +20,11 @@ class SnapResult:
     target_object: object = None
     element_indices: tuple = ()
     element_weights: tuple = ()
+    # Edge results can carry their exact world-space endpoints and the matrix
+    # used by the snap context.  Tools that derive geometry from an edge need
+    # the complete component, especially for evaluated meshes and instances.
+    element_coordinates: tuple = ()
+    target_matrix: object = None
 
 
 class _RadCADSnapEngine:
@@ -204,12 +209,30 @@ def _component_result(ctx, hit, x, y, max_px, snap_verts, snap_edges, snap_edge_
         if snap_edge_center:
             center = (element_co[0] + element_co[1]) * 0.5
             if _point_within_radius(ctx, center, x, y, max_px):
-                return SnapResult(center, "EDGE_CENTER", None, target, tuple(element), (0.5, 0.5))
+                return SnapResult(
+                    center,
+                    "EDGE_CENTER",
+                    None,
+                    target,
+                    tuple(element),
+                    (0.5, 0.5),
+                    tuple(co.copy() for co in element_co),
+                    snap_obj.mat.copy(),
+                )
         if snap_edges:
             edge = element_co[1] - element_co[0]
             t = 0.0 if edge.length_squared <= 1e-12 else (location - element_co[0]).dot(edge) / edge.length_squared
             t = max(0.0, min(1.0, t))
-            return SnapResult(location.copy(), "EDGE", None, target, tuple(element), (1.0 - t, t))
+            return SnapResult(
+                location.copy(),
+                "EDGE",
+                None,
+                target,
+                tuple(element),
+                (1.0 - t, t),
+                tuple(co.copy() for co in element_co),
+                snap_obj.mat.copy(),
+            )
 
     return None
 
