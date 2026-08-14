@@ -16,6 +16,7 @@ from ..units_utils import format_length
 from .drawing import draw_construction_preview
 from .geometry import edge_reference_from_snap, offset_placement_from_cursor
 from .model import add_construction_line
+from .native_snap import sync_scene_snap_proxy
 from .properties import tag_redraw_all_view3d
 
 
@@ -253,6 +254,7 @@ class VIEW3D_OT_radcad_construction_delete_last(bpy.types.Operator):
     def execute(self, context):
         lines = context.scene.radcad_construction_lines
         lines.remove(len(lines) - 1)
+        sync_scene_snap_proxy(context.scene)
         tag_redraw_all_view3d()
         return {"FINISHED"}
 
@@ -270,6 +272,7 @@ class VIEW3D_OT_radcad_construction_clear(bpy.types.Operator):
 
     def execute(self, context):
         context.scene.radcad_construction_lines.clear()
+        sync_scene_snap_proxy(context.scene)
         tag_redraw_all_view3d()
         return {"FINISHED"}
 

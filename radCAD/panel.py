@@ -507,6 +507,7 @@ class RADCAD_PT_ConstructionLine(bpy.types.Panel):
         if len(scene.radcad_construction_lines):
             box = layout.box()
             box.label(text=f"Guides: {len(scene.radcad_construction_lines)}")
+            box.label(text="Blender snap: enable Vertex or Edge", icon="SNAP_ON")
             box.prop(scene, "radcad_construction_line_color", text="Color")
             box.prop(scene, "radcad_construction_line_width", text="Width")
 

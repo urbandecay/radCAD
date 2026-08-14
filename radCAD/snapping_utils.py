@@ -48,6 +48,10 @@ class _RadCADSnapEngine:
     @staticmethod
     def _visible_meshes(ctx):
         for obj in ctx.visible_objects:
+            # Construction guides have a mesh proxy for Blender's native snap
+            # operators. radCAD uses its exact infinite-guide snapper instead.
+            if obj.get("radcad_construction_snap_proxy", False):
+                continue
             if obj.type == 'MESH':
                 yield obj, obj.matrix_world
 

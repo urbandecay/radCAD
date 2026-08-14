@@ -17,6 +17,16 @@ def _display_property_updated(_self, _context):
     tag_redraw_all_view3d()
 
 
+def _visibility_property_updated(_self, context):
+    try:
+        from .native_snap import sync_scene_snap_proxy
+
+        sync_scene_snap_proxy(context.scene)
+    except (AttributeError, ImportError, RuntimeError):
+        pass
+    tag_redraw_all_view3d()
+
+
 class RADCAD_PG_ConstructionLine(bpy.types.PropertyGroup):
     schema_version: bpy.props.IntProperty(default=0)
     anchor: bpy.props.FloatVectorProperty(
@@ -50,9 +60,9 @@ def register():
     )
     bpy.types.Scene.radcad_construction_lines_visible = bpy.props.BoolProperty(
         name="Show Construction Lines",
-        description="Draw construction lines and make them available to radCAD snapping",
+        description="Draw construction lines and make them available to radCAD and Blender snapping",
         default=True,
-        update=_display_property_updated,
+        update=_visibility_property_updated,
     )
     bpy.types.Scene.radcad_construction_line_color = bpy.props.FloatVectorProperty(
         name="Construction Line Color",

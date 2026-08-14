@@ -1,7 +1,7 @@
 bl_info = {
     "name": "rCAD",
     "author": "You",
-    "version": (2, 8, 1),
+    "version": (2, 8, 2),
     "blender": (4, 2, 0),
     "location": "View3D > N-panel > rCAD",
     "category": "3D View",

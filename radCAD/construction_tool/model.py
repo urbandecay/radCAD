@@ -87,4 +87,9 @@ def add_construction_line(scene, anchor, direction, plane_normal):
     line.direction = direction
     line.plane_normal = normal
     line.schema_version = 2
+    # The GPU overlay is enough for radCAD tools, but Blender's own transform
+    # snapping requires discoverable scene geometry.
+    from .native_snap import sync_scene_snap_proxy
+
+    sync_scene_snap_proxy(scene)
     return line
