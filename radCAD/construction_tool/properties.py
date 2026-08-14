@@ -71,13 +71,13 @@ def register():
         size=4,
         min=0.0,
         max=1.0,
-        default=(0.12, 0.62, 1.0, 0.9),
+        default=(1.0, 1.0, 1.0, 1.0),
         update=_display_property_updated,
     )
     bpy.types.Scene.radcad_construction_line_width = bpy.props.FloatProperty(
         name="Construction Line Width",
         description="Viewport width of construction line dashes",
-        default=1.5,
+        default=1.0,
         min=1.0,
         max=6.0,
         update=_display_property_updated,

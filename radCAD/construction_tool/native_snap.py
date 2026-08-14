@@ -198,7 +198,7 @@ def sync_scene_snap_proxy(scene):
     mesh.clear_geometry()
     mesh.from_pydata(vertices, edges, [])
     mesh.update(calc_edges=True)
-    color = tuple(getattr(scene, "radcad_construction_line_color", (0.12, 0.62, 1.0, 0.9)))
+    color = tuple(getattr(scene, "radcad_construction_line_color", (1.0, 1.0, 1.0, 1.0)))
     obj.color = color
     obj["radcad_construction_snap_half_span"] = half_span
     return obj

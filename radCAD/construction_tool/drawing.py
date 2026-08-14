@@ -109,8 +109,8 @@ def draw_persistent_construction_lines():
     _draw_guide_vectors(
         context,
         guides,
-        getattr(scene, "radcad_construction_line_color", (0.12, 0.62, 1.0, 0.9)),
-        getattr(scene, "radcad_construction_line_width", 1.5),
+        getattr(scene, "radcad_construction_line_color", (1.0, 1.0, 1.0, 1.0)),
+        getattr(scene, "radcad_construction_line_width", 1.0),
         dashed=True,
     )
 
