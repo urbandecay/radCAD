@@ -115,6 +115,23 @@ SVG_FILES = {
     "erase": "erase.svg",
 }
 
+TOOL_LABELS = {
+    "point_by_arcs": "Point by Arcs",
+    "point_center": "Point Center",
+    "line_perpendicular_from_curve": "Line Perpendicular from Curve",
+    "line_perpendicular_to_two_curves": "Line Perpendicular to Two Curves",
+    "line_tangent_from_curve": "Line Tangent from Curve",
+    "line_tangent_to_two_curves": "Line Tangent to Two Curves",
+    "arc_1_point": "1 Point Arc",
+    "arc_2_point": "2 Point Arc",
+    "arc_3_point": "3 Point Arc",
+    "arc_from_endpoint": "Arc from Endpoint",
+    "circle_2_points": "2 Point Circle",
+    "circle_3_points": "3 Point Circle",
+    "circle_tangent_to_three_curves": "Circle Tangent to Three Curves",
+    "circle_tangent_to_two_curves": "Circle Tangent to Two Curves",
+}
+
 preview_collection = None
 
 def _has_icon(key: str) -> bool:
@@ -229,14 +246,15 @@ def draw_header(layout, icon_key):
 def draw_tool_button(layout, key):
     row = layout.row()
     operator_id = TOOL_OPERATORS.get(key)
+    label = TOOL_LABELS.get(key, key.replace("_", " ").title())
     if key not in IMPLEMENTED_TOOLS or operator_id is None:
         row.enabled = False 
 
     row.operator_context = 'INVOKE_REGION_WIN'
     if _has_icon(key):
-        row.operator(operator_id or "radcad.generic", text=key, icon_value=preview_collection[key].icon_id)
+        row.operator(operator_id or "radcad.generic", text=label, icon_value=preview_collection[key].icon_id)
     else:
-        row.operator(operator_id or "radcad.generic", text=key)
+        row.operator(operator_id or "radcad.generic", text=label)
 
 class RADCAD_PT_Main(bpy.types.Panel):
     bl_label = "rCAD"
