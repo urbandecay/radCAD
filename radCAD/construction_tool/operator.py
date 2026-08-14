@@ -12,7 +12,7 @@ from ..modal_core import DrawManager, is_event_over_ui
 from ..modal_state import state
 from ..snapping_utils import free_snap_context, invalidate_snap_cache
 from .drawing import draw_construction_preview
-from .model import add_construction_line
+from .model import add_construction_line, constrain_direction_to_plane
 from .properties import tag_redraw_all_view3d
 
 
@@ -84,6 +84,18 @@ class VIEW3D_OT_radcad_construction_line(bpy.types.Operator):
                 self.current = inferred
                 state["current_axis_vector"] = axis
                 self.current_pick.snap_result = None
+
+        if self.stage == 1 and self.plane_normal is not None:
+            constrained = constrain_direction_to_plane(
+                self.current - self.anchor,
+                self.plane_normal,
+            )
+            if constrained is not None:
+                self.current = self.anchor + constrained
+                self.current_pick.point = self.current.copy()
+            else:
+                self.current = self.anchor.copy()
+                self.current_pick.point = self.current.copy()
         context.area.tag_redraw()
 
     def _click(self, context):
@@ -101,12 +113,15 @@ class VIEW3D_OT_radcad_construction_line(bpy.types.Operator):
         if direction.length_squared <= 1.0e-12:
             self.report({"WARNING"}, "Move away from the anchor to set a line direction")
             return {"RUNNING_MODAL"}
-        add_construction_line(
+        line = add_construction_line(
             context.scene,
             self.anchor,
             direction,
             self.plane_normal,
         )
+        if line is None:
+            self.report({"WARNING"}, "Construction line direction must lie in the drawing plane")
+            return {"RUNNING_MODAL"}
         self.finish(context)
         tag_redraw_all_view3d()
         return {"FINISHED"}

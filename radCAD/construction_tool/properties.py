@@ -18,6 +18,7 @@ def _display_property_updated(_self, _context):
 
 
 class RADCAD_PG_ConstructionLine(bpy.types.PropertyGroup):
+    schema_version: bpy.props.IntProperty(default=0)
     anchor: bpy.props.FloatVectorProperty(
         name="Anchor",
         size=3,

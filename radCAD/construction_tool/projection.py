@@ -3,21 +3,40 @@
 from bpy_extras.view3d_utils import location_3d_to_region_2d
 from mathutils import Vector
 
+from .model import (
+    constrain_direction_to_plane,
+    recover_legacy_plane_normal,
+)
+
 
 _EPSILON = 1.0e-10
 
 
 def guide_vectors(line):
     anchor = Vector(line.anchor)
-    direction = Vector(line.direction)
-    if direction.length_squared <= _EPSILON:
-        return None
-    direction.normalize()
+    raw_direction = Vector(line.direction)
     normal = Vector(line.plane_normal)
     if normal.length_squared <= _EPSILON:
         normal = Vector((0.0, 0.0, 1.0))
     else:
         normal.normalize()
+
+    if getattr(line, "schema_version", 0) < 2:
+        normal = recover_legacy_plane_normal(raw_direction, normal)
+
+    direction = constrain_direction_to_plane(raw_direction, normal)
+    if direction is None:
+        # A legacy guide may have been created parallel to its plane normal,
+        # which has no unique in-plane direction. Keep it visible using a
+        # stable plane tangent instead of projecting it into the sky.
+        reference = min(
+            (Vector((1.0, 0.0, 0.0)), Vector((0.0, 1.0, 0.0)), Vector((0.0, 0.0, 1.0))),
+            key=lambda axis: abs(axis.dot(normal)),
+        )
+        direction = normal.cross(reference)
+        if direction.length_squared <= _EPSILON:
+            return None
+        direction.normalize()
     return anchor, direction, normal
 
 
