@@ -207,7 +207,7 @@ def draw_hotkeys_panel():
         show_perp = True
     elif tool_mode in ["CIRCLE_2POINT", "CIRCLE_3POINT"] and state["stage"] == 1:
         show_perp = True
-    elif tool_mode == "1POINT":
+    elif tool_mode in ["1POINT", "ROTATE"]:
         show_perp = True
     elif tool_mode in ["ELLIPSE_RADIUS", "ELLIPSE_ENDPOINTS", "ELLIPSE_FOCI", "POLYGON_CENTER_CORNER", "POLYGON_CENTER_TANGENT", "POLYGON_CORNER_CORNER", "POLYGON_EDGE", "RECTANGLE_3_POINTS"] and state["stage"] >= 1:
         show_perp = True
@@ -220,7 +220,12 @@ def draw_hotkeys_panel():
     # --- INSERT SPACER IF RADIUS/DISTANCE IS ABOUT TO BE SHOWN ---
     if state["stage"] >= 1:
         lines.append((None, None))
-        if state.get("tool_mode") in ["2POINT", "3POINT", "CIRCLE_2POINT", "CIRCLE_3POINT"]:
+        if tool_mode == "ROTATE":
+            if state["stage"] == 1:
+                lines.append(("Click: Set Reference", None))
+            else:
+                lines.append(("Click: Confirm Rotation", None))
+        elif state.get("tool_mode") in ["2POINT", "3POINT", "CIRCLE_2POINT", "CIRCLE_3POINT"]:
             # --- FIX: Only show Diameter hint in Stage 1 ---
             if state["stage"] == 1:
                 if state["tool_mode"] != "3POINT":
@@ -268,15 +273,18 @@ def draw_hotkeys_panel():
             lines.append(("R: Set Radius", None))
     
     if state["stage"] == 2:
-        if state.get("tool_mode") == "2POINT":
+        if tool_mode == "ROTATE":
+            lines.append(("A: Set Angle", None))
+        elif state.get("tool_mode") == "2POINT":
             lines.append(("H: Set Sagitta Height", None))
             # === NEW: Stage 2 Alt Hint (Bypass 180 Snap) ===
             lines.append(("Alt: Bypass 180\u00B0 Snap", None))
         elif tool_mode not in ["3POINT", "CIRCLE_3POINT", "CIRCLE_TAN_TAN_TAN", "LINE_POLY", "ELLIPSE_FOCI", "ELLIPSE_RADIUS", "ELLIPSE_ENDPOINTS"]:
             lines.append(("A: Set Angle", None))
             
-        lines.append(("S: Set Segments", None))
-        lines.append(("Scroll: +/- Segs", None))
+        if tool_mode != "ROTATE":
+            lines.append(("S: Set Segments", None))
+            lines.append(("Scroll: +/- Segs", None))
 
     ctx = bpy.context
     width = ctx.region.width
@@ -319,6 +327,9 @@ def draw_bottom_bar():
     
     tool_mode = state.get("tool_mode")
     bar_label = "Snap"
+
+    if tool_mode == "ROTATE":
+        buttons = buttons[:-1]
 
     # Tangency tools only need contact generation and weld controls.
     if tool_mode in TANGENCY_ONLY_TOOLS:
@@ -720,7 +731,7 @@ def draw_hud_2d():
                          r_txt = "D: 0"
                          h1 = draw_ui_box_generic(px, current_y, r_txt)
                          current_y -= (h1 + 4)
-                elif tool_mode == "LINE_TANGENT_FROM_CURVE":
+                elif tool_mode in ["LINE_TANGENT_FROM_CURVE", "ROTATE"]:
                     pass
                 else:
                     label = "R: "
@@ -737,13 +748,14 @@ def draw_hud_2d():
                     is_input_a = (state["input_mode"] == 'ANGLE')
                     if is_input_a: a_txt = get_display_str("\u2220", state['input_string'], True)
                     else:
-                        if state.get("use_radians"): a_txt = f"\u2220 {-state['accum_angle']:.3f} rad"
-                        else: a_txt = f"\u2220 {-math.degrees(state['accum_angle']):.1f}\u00B0"
+                        direction = 1.0 if tool_mode == "ROTATE" else -1.0
+                        if state.get("use_radians"): a_txt = f"\u2220 {direction * state['accum_angle']:.3f} rad"
+                        else: a_txt = f"\u2220 {direction * math.degrees(state['accum_angle']):.1f}\u00B0"
                     h2 = draw_ui_box_generic(px, current_y, a_txt, active=is_input_a)
                     current_y -= (h2 + 4)
                 
                 # --- HIDE SEGMENTS FOR LINE_POLY AND CURVE_FREEHAND ---
-                if tool_mode not in ["LINE_POLY", "CURVE_FREEHAND"]:
+                if tool_mode not in ["LINE_POLY", "CURVE_FREEHAND", "ROTATE"]:
                     is_input_s = (state["input_mode"] == 'SEGMENTS')
                     if is_input_s: s_txt = get_display_str("Segments:", state['input_string'], True)
                     else: s_txt = f"Segments: {state['segments']}"

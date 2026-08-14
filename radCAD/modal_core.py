@@ -233,6 +233,10 @@ class ModalManager:
         elif t_mode == "POINT_CENTER":
             from .operators import point_tools
             self.active_tool = point_tools.PointTool_Center(self)
+
+        elif t_mode == "ROTATE":
+            from .operators import rotate_tools
+            self.active_tool = rotate_tools.RotateTool(self, ctx)
             
         else: 
             from .operators import arc_tools
@@ -734,7 +738,11 @@ def modal_arc_common(self, ctx, ev):
     from .text_entry_utils import handle_text_input
     
     current_id = getattr(ctx.scene, "active_cad_tool_id", "")
-    if current_id != self.tool_instance_id: return {'CANCELLED'}
+    if current_id != self.tool_instance_id:
+        tool = getattr(getattr(self, "manager", None), "active_tool", None)
+        if tool is not None:
+            tool.cancel(ctx)
+        return {'CANCELLED'}
 
     if ev.type in {'LEFTMOUSE', 'RIGHTMOUSE', 'MOUSEMOVE', 'WHEELUPMOUSE', 'WHEELDOWNMOUSE', 'MIDDLEMOUSE'}:
         reg = self.manager.region
@@ -782,6 +790,12 @@ def modal_arc_common(self, ctx, ev):
 
     # --- Commit / Finish ---
     if (ev.type in {'SPACE', 'RET', 'NUMPAD_ENTER'} and ev.value == 'PRESS') or (ev.type == 'RIGHTMOUSE' and ev.value == 'PRESS'):
+        if ev.type == 'RIGHTMOUSE' and state.get("tool_mode") == "ROTATE":
+            if self.manager.active_tool:
+                self.manager.active_tool.cancel(ctx)
+            finish_modal(self, ctx)
+            return {'CANCELLED'}
+
         if self.manager.active_tool:
             if state["tool_mode"] == "LINE_POLY":
                 # If we have a keyboard value active, commit it as a click first
@@ -805,11 +819,17 @@ def modal_arc_common(self, ctx, ev):
                     from .operators.curve_tools import solve_catmull_rom_chain
                     state["preview_pts"] = solve_catmull_rom_chain(tool.control_points, num_segments=num_segs)
 
-        commit_arc_to_mesh(ctx)
+        if state.get("tool_mode") == "ROTATE":
+            if self.manager.active_tool:
+                self.manager.active_tool.confirm(ctx)
+        else:
+            commit_arc_to_mesh(ctx)
         finish_modal(self, ctx)
         return {'FINISHED'}
 
     if ev.type == 'ESC':
+        if self.manager.active_tool:
+            self.manager.active_tool.cancel(ctx)
         finish_modal(self, ctx)
         return {'CANCELLED'}
 
@@ -842,7 +862,7 @@ def modal_arc_common(self, ctx, ev):
             return {'RUNNING_MODAL'} 
 
     if ev.type == 'WHEELUPMOUSE':
-        if state.get("tool_mode") not in ["POINT_BY_ARCS", "LINE_POLY"]:
+        if state.get("tool_mode") not in ["POINT_BY_ARCS", "LINE_POLY", "ROTATE"]:
             step = 2 if state.get("tool_mode") == "POLYGON_EDGE" else 1
             state["segments"] = min(256, state["segments"] + step)
             if self.manager.active_tool: 
@@ -853,7 +873,7 @@ def modal_arc_common(self, ctx, ev):
         return {'RUNNING_MODAL'}
         
     if ev.type == 'WHEELDOWNMOUSE':
-        if state.get("tool_mode") not in ["POINT_BY_ARCS", "LINE_POLY"]:
+        if state.get("tool_mode") not in ["POINT_BY_ARCS", "LINE_POLY", "ROTATE"]:
             step = 2 if state.get("tool_mode") == "POLYGON_EDGE" else 1
             state["segments"] = max(1 if "CURVE" in state.get("tool_mode", "") else 3, state["segments"] - step)
             if self.manager.active_tool: 
@@ -882,7 +902,7 @@ def modal_arc_common(self, ctx, ev):
         if ev.type == 'F4': state["snap_face_center"] = not state.get("snap_face_center", False); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
         if ev.type == 'F5': state["snap_faces"] = not state.get("snap_faces", False); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
         if ev.type == 'C': state["use_angle_snap"] = not state.get("use_angle_snap", True); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
-        if ev.type == 'W': state["auto_weld"] = not state.get("auto_weld", True); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
+        if ev.type == 'W' and state.get("tool_mode") != "ROTATE": state["auto_weld"] = not state.get("auto_weld", True); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
         if (
             ev.type == 'T'
             and state.get("tool_mode") in {
@@ -924,9 +944,9 @@ def modal_arc_common(self, ctx, ev):
         target_mode = None
         tool_mode = state.get("tool_mode", "1POINT")
         
-        if ev.type == 'S': target_mode = 'SEGMENTS'
+        if ev.type == 'S' and tool_mode != "ROTATE": target_mode = 'SEGMENTS'
         elif ev.type == 'M' and tool_mode == "CURVE_FREEHAND": target_mode = 'MIN_DIST'
-        elif ev.type == 'R' and tool_mode != "ELLIPSE_CORNERS":
+        elif ev.type == 'R' and tool_mode not in ["ELLIPSE_CORNERS", "ROTATE"]:
             if tool_mode != "ELLIPSE_FOCI" or state["stage"] == 1:
                 target_mode = 'RADIUS'; state["input_target"] = 'RADIUS'
         elif ev.type == 'D' and tool_mode in ["2POINT", "CIRCLE_2POINT", "ELLIPSE_ENDPOINTS", "ELLIPSE_RADIUS"]: target_mode = 'RADIUS'; state["input_target"] = 'DIAMETER'
@@ -938,7 +958,7 @@ def modal_arc_common(self, ctx, ev):
         if is_number_input(ev): 
             # --- FIX: Context-aware number typing ---
             is_angle_stage = False
-            if tool_mode == "1POINT" and state["stage"] == 2:
+            if tool_mode in ["1POINT", "ROTATE"] and state["stage"] == 2:
                 is_angle_stage = True
             elif tool_mode == "POINT_BY_ARCS" and state["stage"] in [2, 5]:
                 is_angle_stage = True
@@ -947,7 +967,7 @@ def modal_arc_common(self, ctx, ev):
                 target_mode = 'ANGLE'
             elif tool_mode == "CURVE_FREEHAND":
                 target_mode = 'MIN_DIST'
-            elif tool_mode != "ELLIPSE_CORNERS":
+            elif tool_mode not in ["ELLIPSE_CORNERS", "ROTATE"]:
                 if tool_mode != "ELLIPSE_FOCI" or state["stage"] == 1:
                     target_mode = 'RADIUS' # Covers 2POINT Sagitta automatically as it's in Stage 2 but not an angle stage
                     if tool_mode == "2POINT" and state["stage"] == 2: state["input_target"] = 'SAGITTA'
@@ -1007,7 +1027,8 @@ def modal_arc_common(self, ctx, ev):
                  result = self.manager.active_tool.handle_click(ctx, ev, snap_pt, snap_n, button_id=clicked_ui_id)
                  state["stage"] = self.manager.active_tool.stage
                  if result == 'FINISHED':
-                     commit_arc_to_mesh(ctx)
+                     if state.get("tool_mode") != "ROTATE":
+                         commit_arc_to_mesh(ctx)
                      finish_modal(self, ctx)
                      return {'FINISHED'}
                  elif result == 'NEXT_STAGE':
@@ -1033,4 +1054,8 @@ class VIEW3D_OT_radcad_modal(bpy.types.Operator):
         return begin_modal(self, context, event)
 
     def cancel(self, context):
+        manager = getattr(self, "manager", None)
+        tool = getattr(manager, "active_tool", None)
+        if tool is not None:
+            tool.cancel(context)
         finish_modal(self, context)

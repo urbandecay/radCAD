@@ -1056,7 +1056,7 @@ def draw_cb_3d():
         elif mode == "CIRCLE_TAN_TAN":
             draw_preview_tan_tan(ctx, shaders, settings)
 
-        elif mode == "1POINT":
+        elif mode in ["1POINT", "ROTATE"]:
             draw_preview_1point(ctx, shaders, settings)
             
         elif mode == "2POINT" or mode == "CIRCLE_2POINT":

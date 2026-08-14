@@ -429,6 +429,24 @@ class RADCAD_PT_Erase(bpy.types.Panel):
         else:
             row.operator("view3d.radcad_erase", text="Erase", icon="BRUSH_DATA")
 
+
+class RADCAD_PT_Rotate(bpy.types.Panel):
+    bl_label = "Rotate"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "rCAD"
+    bl_parent_id = "RADCAD_PT_Main"
+
+    def draw(self, context):
+        row = self.layout.row()
+        row.scale_y = 1.6
+        row.operator_context = "INVOKE_REGION_WIN"
+        row.operator(
+            "view3d.radcad_rotate",
+            text="Rotate",
+            icon="ORIENTATION_GIMBAL",
+        )
+
 classes = (
     RADCAD_OT_reset_overlays, 
     RADCAD_OT_generic,
@@ -443,6 +461,7 @@ classes = (
     RADCAD_PT_Rectangle,
     RADCAD_PT_Dimension,
     RADCAD_PT_Erase,
+    RADCAD_PT_Rotate,
 )
 
 def register():
