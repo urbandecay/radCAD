@@ -8,13 +8,20 @@ from mathutils import Vector
 
 from .constants import COLLECTION_NAME, ROOT_PREFIX
 from .formatting import dimension_label
-from .geometry import build_layout
+from .geometry import build_layout, dimension_basis
 
 
 _UPDATE_SIGNATURES = {}
 _ELEMENT_EXISTENCE_CACHE = {}
 _VERTEX_ID_ATTRIBUTE = ".radcad_dimension_vertex_id"
 _NEXT_VERTEX_ID_KEY = "radcad_dimension_next_vertex_id"
+_ORIENTATION_TARGET_UNSET = object()
+_LOCAL_AXIS_ALIGNMENT = 0.9998476951563913  # cos(1 degree)
+_LOCAL_AXES = (
+    Vector((1.0, 0.0, 0.0)),
+    Vector((0.0, 1.0, 0.0)),
+    Vector((0.0, 0.0, 1.0)),
+)
 
 
 def dimension_root(obj):
@@ -268,6 +275,129 @@ def resolve_anchor(anchor):
     return point_world
 
 
+def _normal_to_local(obj, normal_world):
+    """Convert a world-space plane normal to object-local coordinates."""
+    normal_local = obj.matrix_world.to_3x3().transposed() @ Vector(normal_world)
+    if normal_local.length_squared <= 1.0e-18:
+        return None
+    return normal_local.normalized()
+
+
+def _normal_to_world(obj, normal_local):
+    """Convert an object-local plane normal to world coordinates."""
+    try:
+        normal_matrix = obj.matrix_world.to_3x3().inverted().transposed()
+    except ValueError:
+        return None
+    normal_world = normal_matrix @ Vector(normal_local)
+    if normal_world.length_squared <= 1.0e-18:
+        return None
+    return normal_world.normalized()
+
+
+def set_dimension_plane(data, plane_normal, orientation_target=_ORIENTATION_TARGET_UNSET):
+    """Save a dimension plane in world space and, when attached, object space."""
+    normal_world = Vector(plane_normal)
+    if normal_world.length_squared <= 1.0e-18:
+        return False
+    normal_world.normalize()
+
+    if orientation_target is _ORIENTATION_TARGET_UNSET:
+        orientation_target = data.orientation_target
+
+    data.orientation_initialized = True
+    data.orientation_target = orientation_target
+    data.plane_normal = normal_world
+    if orientation_target is not None:
+        normal_local = _normal_to_local(orientation_target, normal_world)
+        if normal_local is None:
+            data.orientation_target = None
+            return False
+        data.plane_normal_local = normal_local
+    return True
+
+
+def resolve_dimension_plane(data):
+    """Return the live world-space plane normal for a saved dimension."""
+    target = data.orientation_target
+    if target is not None:
+        normal_world = _normal_to_world(target, data.plane_normal_local)
+        if normal_world is not None:
+            return normal_world
+    normal_world = Vector(data.plane_normal)
+    if normal_world.length_squared <= 1.0e-18:
+        return Vector((0.0, 0.0, 1.0))
+    return normal_world.normalized()
+
+
+def _common_anchor_target(data):
+    anchor_1 = data.anchor_1
+    anchor_2 = data.anchor_2
+    if (
+        anchor_1.kind != "FREE"
+        and anchor_2.kind != "FREE"
+        and anchor_1.target is not None
+        and anchor_1.target == anchor_2.target
+    ):
+        return anchor_1.target
+    return None
+
+
+def _migrate_dimension_orientation(data, p1, p2):
+    """Attach legacy world-fixed planes to their measured object when possible."""
+    if data.orientation_initialized:
+        return
+
+    target = _common_anchor_target(data)
+    current_normal = resolve_dimension_plane(data)
+    if target is None:
+        set_dimension_plane(data, current_normal, None)
+        return
+
+    # Legacy axis-aligned dimensions can be repaired even when the object was
+    # already rotated before this migration.  Pick the object's valid local
+    # dimension plane that stays closest to the old on-screen offset direction.
+    line_world = Vector(p2) - Vector(p1)
+    current_basis = dimension_basis(p1, p2, current_normal)
+    try:
+        line_local = target.matrix_world.to_3x3().inverted() @ line_world
+    except ValueError:
+        line_local = Vector((0.0, 0.0, 0.0))
+
+    best_normal = None
+    if (
+        current_basis is not None
+        and line_local.length_squared > 1.0e-18
+        and max(abs(line_local.normalized().dot(axis)) for axis in _LOCAL_AXES)
+        >= _LOCAL_AXIS_ALIGNMENT
+    ):
+        line_local.normalize()
+        current_offset = current_basis[1]
+        best_score = -1.0
+        for local_normal in _LOCAL_AXES:
+            if abs(line_local.dot(local_normal)) >= _LOCAL_AXIS_ALIGNMENT:
+                continue
+            world_normal = _normal_to_world(target, local_normal)
+            if world_normal is None:
+                continue
+            candidate_basis = dimension_basis(p1, p2, world_normal)
+            if candidate_basis is None:
+                continue
+            candidate_offset = candidate_basis[1]
+            score = abs(candidate_offset.dot(current_offset))
+            if score > best_score:
+                if candidate_offset.dot(current_offset) < 0.0:
+                    world_normal.negate()
+                best_score = score
+                best_normal = world_normal
+
+    set_dimension_plane(
+        data,
+        best_normal if best_normal is not None else current_normal,
+        target,
+    )
+
+
 def dimension_anchors_valid(root):
     data = getattr(root, "radcad_dimension", None)
     if data is None or not data.is_dimension:
@@ -318,7 +448,7 @@ def create_dimension(context, p1, p2, plane_normal, offset_distance, snap_1=None
     data.is_dimension = True
     set_anchor(data.anchor_1, p1, snap_1)
     set_anchor(data.anchor_2, p2, snap_2)
-    data.plane_normal = Vector(plane_normal)
+    set_dimension_plane(data, plane_normal, _common_anchor_target(data))
     data.offset_distance = offset_distance
     data.text_size = context.scene.radcad_dimension_text_size
     data.arrow_size = context.scene.radcad_dimension_arrow_size
@@ -338,10 +468,11 @@ def dimension_layout(root):
         return None, ""
     p1 = resolve_anchor(data.anchor_1)
     p2 = resolve_anchor(data.anchor_2)
+    _migrate_dimension_orientation(data, p1, p2)
     layout = build_layout(
         p1,
         p2,
-        data.plane_normal,
+        resolve_dimension_plane(data),
         data.offset_distance,
         0.001,
         0.001,

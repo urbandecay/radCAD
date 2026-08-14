@@ -29,6 +29,14 @@ class RADCAD_PG_dimension_data(bpy.types.PropertyGroup):
     anchor_1: bpy.props.PointerProperty(type=RADCAD_PG_dimension_anchor)
     anchor_2: bpy.props.PointerProperty(type=RADCAD_PG_dimension_anchor)
     plane_normal: bpy.props.FloatVectorProperty(size=3, subtype="XYZ", default=(0.0, 0.0, 1.0))
+    orientation_initialized: bpy.props.BoolProperty(default=False, options={"HIDDEN"})
+    orientation_target: bpy.props.PointerProperty(type=bpy.types.Object, options={"HIDDEN"})
+    plane_normal_local: bpy.props.FloatVectorProperty(
+        size=3,
+        subtype="XYZ",
+        default=(0.0, 0.0, 1.0),
+        options={"HIDDEN"},
+    )
     offset_distance: bpy.props.FloatProperty(name="Offset", subtype="DISTANCE", default=1.0, update=_update_dimension)
     text_override: bpy.props.StringProperty(
         name="Text Override",

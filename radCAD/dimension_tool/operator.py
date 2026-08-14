@@ -6,7 +6,7 @@ import time
 import bpy
 from mathutils import Vector
 
-from ..inference_utils import get_axis_snapped_location
+from ..inference_utils import get_axis_snapped_location, get_direction_snapped_location
 from ..modal_core import DrawManager, is_event_over_ui
 from ..modal_state import state
 from ..snapping_utils import free_snap_context, invalidate_snap_cache
@@ -20,10 +20,30 @@ from .model import (
     dimension_layout,
     iter_dimensions,
     resolve_anchor,
+    resolve_dimension_plane,
     selected_dimension,
+    set_dimension_plane,
     update_dimension,
 )
 from .snapping import pick_point, project_to_plane
+
+
+_GLOBAL_AXES = {
+    "X": Vector((1.0, 0.0, 0.0)),
+    "Y": Vector((0.0, 1.0, 0.0)),
+    "Z": Vector((0.0, 0.0, 1.0)),
+}
+_AXIS_ALIGNED_DOT = math.cos(math.radians(1.0))
+
+
+def _dimension_offset_axes(line_direction):
+    """Return global axes projected into the dimension's cross-plane."""
+    candidates = {}
+    for axis_name, axis in _GLOBAL_AXES.items():
+        projected = axis - line_direction * axis.dot(line_direction)
+        if projected.length_squared > 1.0e-10:
+            candidates[axis_name] = projected.normalized()
+    return candidates
 
 
 def _cursor_driven_offset(context, event, p1, p2, fallback_normal, fallback_distance):
@@ -63,27 +83,31 @@ def _cursor_driven_offset(context, event, p1, p2, fallback_normal, fallback_dist
     inferred_axis = None
 
     strength = max(0.1, min(89.0, state.get("snap_strength", 6.0)))
-    inferred, axis, _axis_name = get_axis_snapped_location(
+    axis_aligned = (
+        max(abs(line_direction.dot(axis)) for axis in _GLOBAL_AXES.values())
+        >= _AXIS_ALIGNED_DOT
+    )
+    # Like SketchUp, a dimension measured along a global axis always pulls out
+    # along whichever remaining global axis is closest to the cursor.  There is
+    # no useful crooked/free plane between those two choices.
+    snap_threshold = 0.0 if axis_aligned else math.cos(math.radians(strength))
+
+    offset_axes = _dimension_offset_axes(line_direction)
+    inferred, offset_axis, axis_name = get_direction_snapped_location(
         midpoint,
         (event.mouse_region_x, event.mouse_region_y),
         context,
-        snap_threshold=math.cos(math.radians(strength)),
+        offset_axes,
+        snap_threshold=snap_threshold,
     )
-    if inferred is not None and axis is not None:
-        # A dimension offset must remain perpendicular to its measured span.
-        # For axis-aligned dimensions this is the exact global X, Y, or Z axis;
-        # for an oblique span it is that axis projected into the cross-plane.
-        projected_axis = axis - line_direction * axis.dot(line_direction)
-        if projected_axis.length_squared > 1.0e-10:
-            projected_axis.normalize()
-            inferred_distance = (inferred - midpoint).dot(projected_axis)
-            if inferred_distance < 0.0:
-                projected_axis.negate()
-                inferred_distance = -inferred_distance
-            if inferred_distance > 1.0e-8:
-                offset_direction = projected_axis
-                distance = inferred_distance
-                inferred_axis = axis
+    if inferred is not None and offset_axis is not None:
+        inferred_distance = (inferred - midpoint).dot(offset_axis)
+        if inferred_distance > 1.0e-8:
+            offset_direction = offset_axis
+            distance = inferred_distance
+            inferred_axis = _GLOBAL_AXES[axis_name].copy()
+            if inferred_axis.dot(offset_direction) < 0.0:
+                inferred_axis.negate()
 
     plane_normal = line_direction.cross(offset_direction)
     if plane_normal.length_squared <= 1.0e-10:
@@ -282,10 +306,10 @@ class VIEW3D_OT_radcad_dimension_reposition(bpy.types.Operator):
         self.root = selected_dimension(context)
         data = self.root.radcad_dimension
         self.original_offset = data.offset_distance
-        self.original_plane_normal = Vector(data.plane_normal)
+        self.original_plane_normal = resolve_dimension_plane(data)
         self.p1 = resolve_anchor(data.anchor_1)
         self.p2 = resolve_anchor(data.anchor_2)
-        self.plane_normal = Vector(data.plane_normal)
+        self.plane_normal = self.original_plane_normal.copy()
         self.context = context
         self.stage = 2
         basis = dimension_basis(self.p1, self.p2, self.plane_normal)
@@ -329,13 +353,12 @@ class VIEW3D_OT_radcad_dimension_reposition(bpy.types.Operator):
             return {"RUNNING_MODAL"}
         if event.type == "LEFTMOUSE" and event.value == "PRESS":
             self.root.radcad_dimension.offset_distance = self.offset_distance
-            self.root.radcad_dimension.plane_normal = self.plane_normal
+            set_dimension_plane(self.root.radcad_dimension, self.plane_normal)
             update_dimension(self.root)
             self.finish(context)
             return {"FINISHED"}
         if event.type == "ESC" and event.value == "PRESS":
             self.root.radcad_dimension.offset_distance = self.original_offset
-            self.root.radcad_dimension.plane_normal = self.original_plane_normal
             update_dimension(self.root)
             self.finish(context)
             return {"CANCELLED"}
