@@ -1,18 +1,19 @@
 """Interactive construction-line creation and management operators."""
 
+import math
 import time
 
 import bpy
 from mathutils import Vector
 
-from ..modal_core import DrawManager, is_event_over_ui
+from ..modal_core import DrawManager, is_event_over_ui, is_number_input
 from ..modal_state import state
 from ..snapping_utils import (
     free_snap_context,
     invalidate_snap_cache,
     snap_scene_geometry,
 )
-from ..units_utils import format_length
+from ..units_utils import format_length, parse_length_input
 from .drawing import draw_construction_preview
 from .geometry import edge_reference_from_snap, offset_placement_from_cursor
 from .model import add_construction_line
@@ -66,6 +67,9 @@ class VIEW3D_OT_radcad_construction_line(bpy.types.Operator):
         self.offset_vector = Vector()
         self.offset_distance = 0.0
         self.preview_label = ""
+        self.distance_input_active = False
+        self.distance_input = ""
+        self.distance_input_cursor = 0
         self.drag_origin = None
         self.drag_moved = False
         self.running = True
@@ -172,8 +176,9 @@ class VIEW3D_OT_radcad_construction_line(bpy.types.Operator):
                     self.offset_distance = offset.length
                     self.anchor = self.source_point + offset
                     self.current = self.anchor.copy()
-                scale = context.scene.unit_settings.scale_length or 1.0
-                self.preview_label = format_length(self.offset_distance * scale)
+                if not self.distance_input_active:
+                    scale = context.scene.unit_settings.scale_length or 1.0
+                    self.preview_label = format_length(self.offset_distance * scale)
             state["snap_point"] = self.current.copy() if self.current is not None else None
             state["geometry_snap"] = False
         context.area.tag_redraw()
@@ -193,7 +198,145 @@ class VIEW3D_OT_radcad_construction_line(bpy.types.Operator):
         self.offset_vector = Vector()
         self.offset_distance = 0.0
         self.preview_label = ""
+        self.distance_input_active = False
+        self.distance_input = ""
+        self.distance_input_cursor = 0
         self.stage = 1
+        return {"RUNNING_MODAL"}
+
+    def _typed_distance(self, context):
+        if not self.distance_input_active or not self.distance_input.strip():
+            return None
+
+        meters = abs(parse_length_input(self.distance_input))
+        if not math.isfinite(meters) or meters <= 1.0e-8:
+            return None
+
+        scale = context.scene.unit_settings.scale_length or 1.0
+        return meters / scale, meters
+
+    def _apply_typed_distance(self, context):
+        parsed = self._typed_distance(context)
+        if parsed is None or self.source_edge is None or self.source_point is None:
+            return False
+
+        distance, meters = parsed
+        face = self.active_face or self.source_edge.faces[0]
+        direction = self.offset_vector.copy()
+        if direction.length_squared <= 1.0e-12:
+            direction = face.inward.copy()
+        if direction.length_squared <= 1.0e-12:
+            return False
+        direction.normalize()
+
+        self.active_face = face
+        self.plane_normal = face.normal.copy()
+        self.offset_vector = direction * distance
+        self.offset_distance = distance
+        self.anchor = self.source_point + self.offset_vector
+        self.current = self.anchor.copy()
+        self.preview_label = format_length(meters)
+        return True
+
+    @staticmethod
+    def _event_text(event):
+        if event.unicode:
+            return event.unicode
+        return {
+            "ZERO": "0",
+            "ONE": "1",
+            "TWO": "2",
+            "THREE": "3",
+            "FOUR": "4",
+            "FIVE": "5",
+            "SIX": "6",
+            "SEVEN": "7",
+            "EIGHT": "8",
+            "NINE": "9",
+            "PERIOD": ".",
+            "MINUS": "-",
+            "NUMPAD_0": "0",
+            "NUMPAD_1": "1",
+            "NUMPAD_2": "2",
+            "NUMPAD_3": "3",
+            "NUMPAD_4": "4",
+            "NUMPAD_5": "5",
+            "NUMPAD_6": "6",
+            "NUMPAD_7": "7",
+            "NUMPAD_8": "8",
+            "NUMPAD_9": "9",
+            "NUMPAD_PERIOD": ".",
+            "NUMPAD_MINUS": "-",
+            "NUMPAD_SLASH": "/",
+        }.get(event.type, "")
+
+    def _insert_distance_text(self, text):
+        cursor = self.distance_input_cursor
+        self.distance_input = (
+            self.distance_input[:cursor] + text + self.distance_input[cursor:]
+        )
+        self.distance_input_cursor = cursor + len(text)
+
+    def _handle_distance_input(self, context, event):
+        if event.value != "PRESS":
+            return {"RUNNING_MODAL"}
+
+        if event.type in {"RET", "NUMPAD_ENTER"}:
+            if not self._apply_typed_distance(context):
+                self.report({"WARNING"}, "Enter a distance greater than zero")
+                return {"RUNNING_MODAL"}
+            return self._place(context)
+
+        if event.type == "LEFTMOUSE":
+            if is_event_over_ui(context, event):
+                return {"PASS_THROUGH"}
+            if not self._apply_typed_distance(context):
+                self.report({"WARNING"}, "Enter a distance greater than zero")
+                return {"RUNNING_MODAL"}
+            return self._place(context)
+
+        if event.type == "RIGHTMOUSE":
+            self.finish(context)
+            return {"CANCELLED"}
+
+        if event.type == "ESC":
+            self.distance_input_active = False
+            self.distance_input = ""
+            self.distance_input_cursor = 0
+            self._update(context, event)
+            return {"RUNNING_MODAL"}
+
+        if event.type == "LEFT_ARROW":
+            self.distance_input_cursor = max(0, self.distance_input_cursor - 1)
+        elif event.type == "RIGHT_ARROW":
+            self.distance_input_cursor = min(
+                len(self.distance_input), self.distance_input_cursor + 1
+            )
+        elif event.type in {"BACKSPACE", "BACK_SPACE"}:
+            cursor = self.distance_input_cursor
+            if cursor > 0:
+                self.distance_input = (
+                    self.distance_input[: cursor - 1] + self.distance_input[cursor:]
+                )
+                self.distance_input_cursor = cursor - 1
+        elif event.type in {"DEL", "DELETE"}:
+            cursor = self.distance_input_cursor
+            if cursor < len(self.distance_input):
+                self.distance_input = (
+                    self.distance_input[:cursor] + self.distance_input[cursor + 1 :]
+                )
+        elif event.type == "SPACE":
+            self._insert_distance_text(" ")
+        elif event.type in {"SLASH", "NUMPAD_SLASH"}:
+            self._insert_distance_text("/")
+        elif event.type in {"QUOTE", "APOSTROPHE"}:
+            self._insert_distance_text('"' if event.shift else "'")
+        else:
+            text = self._event_text(event)
+            if text:
+                self._insert_distance_text(text)
+
+        context.area.tag_redraw()
         return {"RUNNING_MODAL"}
 
     def _place(self, context):
@@ -229,6 +372,17 @@ class VIEW3D_OT_radcad_construction_line(bpy.types.Operator):
                     dy = event.mouse_region_y - self.drag_origin[1]
                     self.drag_moved = self.drag_moved or dx * dx + dy * dy >= 9.0
             return {"RUNNING_MODAL"}
+        if self.stage == 1:
+            if self.distance_input_active:
+                return self._handle_distance_input(context, event)
+            if event.value == "PRESS" and (event.type == "L" or is_number_input(event)):
+                self.distance_input_active = True
+                self.distance_input = ""
+                self.distance_input_cursor = 0
+                if is_number_input(event):
+                    self._insert_distance_text(self._event_text(event))
+                context.area.tag_redraw()
+                return {"RUNNING_MODAL"}
         if event.type == "LEFTMOUSE" and event.value == "PRESS":
             if is_event_over_ui(context, event):
                 return {"PASS_THROUGH"}
@@ -256,6 +410,9 @@ class VIEW3D_OT_radcad_construction_line(bpy.types.Operator):
                 self.source_point = None
                 self.active_face = None
                 self.edge_direction = None
+                self.distance_input_active = False
+                self.distance_input = ""
+                self.distance_input_cursor = 0
                 self.drag_origin = None
                 self.drag_moved = False
                 self._update(context, event)

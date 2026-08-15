@@ -7,6 +7,8 @@ from bpy_extras.view3d_utils import location_3d_to_region_2d
 from gpu_extras.batch import batch_for_shader
 from mathutils import Vector
 
+from ..hud_overlay import draw_ui_box_generic
+from ..modal_state import state
 from .model import iter_construction_lines
 from .projection import guide_vectors, projected_visible_guide_segment
 
@@ -141,6 +143,35 @@ def _draw_prompt(region, text):
     gpu.state.blend_set("NONE")
 
 
+def _draw_live_distance(context, operator):
+    input_active = getattr(operator, "distance_input_active", False)
+    if (not operator.preview_label and not input_active) or operator.current is None:
+        return
+
+    label_point = operator.source_point if input_active else operator.current
+    current_screen = location_3d_to_region_2d(
+        context.region,
+        context.region_data,
+        label_point,
+        default=None,
+    )
+    if current_screen is None:
+        return
+
+    label = operator.preview_label
+    if input_active:
+        typed = getattr(operator, "distance_input", "")
+        cursor = getattr(operator, "distance_input_cursor", len(typed))
+        label = f"{typed[:cursor]}|{typed[cursor:]}"
+
+    draw_ui_box_generic(
+        current_screen.x + state.get("overlay_offset_x", 25),
+        current_screen.y + state.get("overlay_offset_y", 10),
+        label,
+        active=input_active,
+    )
+
+
 def draw_construction_preview(operator):
     if not operator.running:
         return
@@ -210,8 +241,18 @@ def draw_construction_preview(operator):
         if len(connector) == 2:
             _draw_segments(_dashed_line(*connector, dash_length=5.0, gap_length=4.0), color, 1.0)
 
-    offset = f"   •   Offset: {operator.preview_label}" if operator.preview_label else ""
+    _draw_live_distance(context, operator)
+    if getattr(operator, "distance_input_active", False):
+        prompt = (
+            "Construction Line — type an exact distance; Enter or click: place"
+            "   •   Esc: cancel input"
+        )
+    else:
+        prompt = (
+            "Construction Line — drag on a connected face; release or click to place"
+            "   •   Type distance or L   •   Backspace: previous"
+        )
     _draw_prompt(
         context.region,
-        f"Construction Line — drag on a connected face; release or click to place{offset}   •   Backspace: previous",
+        prompt,
     )
