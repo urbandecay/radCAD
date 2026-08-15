@@ -54,6 +54,10 @@ def _dashed_line(start, end, dash_length=9.0, gap_length=6.0):
     length = delta.length
     if length <= 1.0e-8:
         return []
+    dash_length = max(1.0, float(dash_length))
+    gap_length = max(0.0, float(gap_length))
+    if gap_length <= 1.0e-8:
+        return [(Vector(start), Vector(end))]
     direction = delta / length
     segments = []
     cursor = 0.0
@@ -68,14 +72,29 @@ def _screen_line_for_vectors(context, anchor, direction):
     return projected_visible_guide_segment(context, anchor, direction)
 
 
-def _draw_guide_vectors(context, guides, color, width, dashed=True, draw_anchors=True):
+def _draw_guide_vectors(
+    context,
+    guides,
+    color,
+    width,
+    dashed=True,
+    draw_anchors=True,
+    dash_length=9.0,
+    gap_length=6.0,
+):
     segments = []
     anchors = []
     for anchor, direction, _normal in guides:
         clipped = _screen_line_for_vectors(context, anchor, direction)
         if clipped is not None:
             if dashed:
-                segments.extend(_dashed_line(*clipped))
+                segments.extend(
+                    _dashed_line(
+                        *clipped,
+                        dash_length=dash_length,
+                        gap_length=gap_length,
+                    )
+                )
             else:
                 segments.append(clipped)
         if draw_anchors:
@@ -116,6 +135,8 @@ def draw_persistent_construction_lines():
         getattr(scene, "radcad_construction_line_width", 1.0),
         dashed=True,
         draw_anchors=False,
+        dash_length=getattr(scene, "radcad_construction_dash_length", 9.0),
+        gap_length=getattr(scene, "radcad_construction_dash_gap", 6.0),
     )
 
 

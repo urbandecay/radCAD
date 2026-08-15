@@ -519,6 +519,8 @@ class VIEW3D_OT_radcad_construction_parameters(bpy.types.Operator):
         appearance_box.label(text="Appearance", icon="COLOR")
         appearance_box.prop(scene, "radcad_construction_line_color", text="Color")
         appearance_box.prop(scene, "radcad_construction_line_width", text="Width")
+        appearance_box.prop(scene, "radcad_construction_dash_length")
+        appearance_box.prop(scene, "radcad_construction_dash_gap")
 
         guides_box = layout.box()
         guides_box.label(

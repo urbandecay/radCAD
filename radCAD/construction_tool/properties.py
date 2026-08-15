@@ -82,10 +82,28 @@ def register():
         max=6.0,
         update=_display_property_updated,
     )
+    bpy.types.Scene.radcad_construction_dash_length = bpy.props.FloatProperty(
+        name="Dash Length (px)",
+        description="Screen-space length of each construction line dash",
+        default=9.0,
+        min=1.0,
+        max=100.0,
+        update=_display_property_updated,
+    )
+    bpy.types.Scene.radcad_construction_dash_gap = bpy.props.FloatProperty(
+        name="Dash Gap (px)",
+        description="Screen-space space between construction line dashes; zero draws a solid line",
+        default=6.0,
+        min=0.0,
+        max=100.0,
+        update=_display_property_updated,
+    )
 
 
 def unregister():
     for property_name in (
+        "radcad_construction_dash_gap",
+        "radcad_construction_dash_length",
         "radcad_construction_line_width",
         "radcad_construction_line_color",
         "radcad_construction_lines_visible",
