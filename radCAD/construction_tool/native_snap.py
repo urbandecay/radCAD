@@ -41,12 +41,15 @@ def remove_scene_snap_proxy(scene):
 
 
 def _clear_scene_snap_proxy(scene):
-    """Empty derived guide geometry without deleting an ID during Edit Mode."""
+    """Empty derived geometry while keeping its evaluated object alive."""
     for obj in _scene_proxy_objects(scene):
         if obj.type == "MESH":
             obj.data.clear_geometry()
             obj.data.update()
-        obj.hide_viewport = True
+        # An empty visible object draws nothing, but keeping its Base in the
+        # active view layer means the first guide does not introduce a brand
+        # new snap target halfway through Edit Mode.
+        obj.hide_viewport = False
 
 
 def remove_all_snap_proxies():
@@ -73,14 +76,22 @@ def _ensure_proxy_object(scene):
         scene.collection.objects.link(obj)
 
     obj[PROXY_TAG] = True
-    obj.hide_select = True
-    obj.hide_render = True
+    # Keep the base selectable so Blender cannot filter it out of native
+    # snapping. It is deselected and transform-locked below.
+    obj.hide_select = False
+    # The proxy is a loose-edge helper and remains enabled so Blender may use
+    # it as a native snap target. It has no faces to contribute to a render.
+    obj.hide_render = False
     obj.hide_viewport = False
     obj.display_type = "WIRE"
     # Construction guides are screen overlays and remain visible across the
     # model. Put their native snap proxy in Blender's matching in-front depth
     # group so faces cannot occlude only part of an otherwise visible guide.
     obj.show_in_front = True
+    try:
+        obj.hide_set(False)
+    except RuntimeError:
+        pass
     obj.lock_location = (True, True, True)
     obj.lock_rotation = (True, True, True)
     obj.lock_scale = (True, True, True)
@@ -195,6 +206,12 @@ def sync_scene_snap_proxy(scene):
     if scene is None or not hasattr(scene, "radcad_construction_lines"):
         return None
 
+    # Create the empty proxy as soon as radCAD registers, before the user
+    # normally enters Edit Mode. Later guide changes only rebuild mesh data on
+    # this already-evaluated object, which Blender's transform snapper sees
+    # without a magnet/camera visibility toggle.
+    obj = _ensure_proxy_object(scene)
+
     records = []
     for line in iter_construction_lines(scene):
         vectors = guide_vectors(line)
@@ -203,9 +220,8 @@ def sync_scene_snap_proxy(scene):
 
     if not records:
         _clear_scene_snap_proxy(scene)
-        return None
+        return obj
 
-    obj = _ensure_proxy_object(scene)
     enabled = has_visible_construction_lines(scene)
     obj.hide_viewport = not enabled
     if not enabled:
@@ -217,6 +233,7 @@ def sync_scene_snap_proxy(scene):
     mesh.clear_geometry()
     mesh.from_pydata(vertices, edges, [])
     mesh.update(calc_edges=True)
+    obj.update_tag()
     color = tuple(getattr(scene, "radcad_construction_line_color", (1.0, 1.0, 1.0, 1.0)))
     obj.color = color
     obj["radcad_construction_snap_half_span"] = half_span
@@ -258,7 +275,20 @@ def radcad_construction_deferred_sync():
     return None
 
 
+def _unregister_legacy_snap_guard():
+    """Stop the old timer that forced Blender's magnet back on."""
+    # importlib.reload keeps names that disappeared from a module's source.
+    # Looking it up dynamically lets this version remove the already-running
+    # function object without defining or restarting that guard.
+    legacy_guard = globals().get("radcad_construction_snap_guard")
+    if legacy_guard is None:
+        return
+    if bpy.app.timers.is_registered(legacy_guard):
+        bpy.app.timers.unregister(legacy_guard)
+
+
 def register():
+    _unregister_legacy_snap_guard()
     handler_specs = (
         (bpy.app.handlers.load_post, radcad_construction_load_post),
         (bpy.app.handlers.undo_post, radcad_construction_undo_post),
@@ -267,11 +297,18 @@ def register():
     for handlers, handler in handler_specs:
         _remove_named_handler(handlers, handler.__name__)
         handlers.append(handler)
+    # Repair existing proxies immediately during a normal add-on reload. The
+    # timer remains as the fallback for Blender's restricted startup phase.
+    try:
+        sync_all_snap_proxies()
+    except (AttributeError, RuntimeError):
+        pass
     if not bpy.app.timers.is_registered(radcad_construction_deferred_sync):
         bpy.app.timers.register(radcad_construction_deferred_sync, first_interval=0.0)
 
 
 def unregister():
+    _unregister_legacy_snap_guard()
     if bpy.app.timers.is_registered(radcad_construction_deferred_sync):
         bpy.app.timers.unregister(radcad_construction_deferred_sync)
     handler_specs = (
