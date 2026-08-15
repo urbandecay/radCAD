@@ -451,6 +451,7 @@ def create_dimension(context, p1, p2, plane_normal, offset_distance, snap_1=None
     set_dimension_plane(data, plane_normal, _common_anchor_target(data))
     data.offset_distance = offset_distance
     data.text_size = context.scene.radcad_dimension_text_size
+    data.text_thickness = context.scene.radcad_dimension_text_thickness
     data.arrow_size = context.scene.radcad_dimension_arrow_size
     data.extension_gap = context.scene.radcad_dimension_extension_gap
     data.extension_overshoot = context.scene.radcad_dimension_extension_overshoot
@@ -508,6 +509,7 @@ def update_dimension(root):
 
     # Migrate pixel-style values from the abandoned world-geometry prototype.
     text_size = float(data.text_size) if data.text_size >= 4.0 else 14.0
+    text_thickness = max(1.0, float(data.text_thickness))
     arrow_size = float(data.arrow_size) if data.arrow_size >= 2.0 else 10.0
     line_width = float(data.line_width) if data.line_width >= 0.5 else 1.0
     if data.text_size != text_size:
@@ -521,6 +523,7 @@ def update_dimension(root):
         *(round(value, 12) for value in (*layout.p1, *layout.p2, *layout.plane_normal)),
         round(float(data.offset_distance), 12),
         round(text_size, 12),
+        round(text_thickness, 12),
         round(arrow_size, 12),
         round(float(data.extension_gap), 12),
         round(float(data.extension_overshoot), 12),

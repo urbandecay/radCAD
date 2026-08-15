@@ -440,9 +440,7 @@ class RADCAD_PT_ConstructionLine(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        scene = context.scene
-
-        row = layout.row()
+        row = layout.row(align=True)
         row.scale_y = 1.6
         row.operator_context = "INVOKE_REGION_WIN"
         row.operator(
@@ -450,31 +448,11 @@ class RADCAD_PT_ConstructionLine(bpy.types.Panel):
             text="Construction Line",
             icon="TRACKING",
         )
-
-        layout.prop(
-            scene,
-            "radcad_construction_lines_visible",
-            text="Show Construction Lines",
-            toggle=True,
-        )
-        row = layout.row(align=True)
         row.operator(
-            "view3d.radcad_construction_delete_last",
-            text="Delete Last",
-            icon="LOOP_BACK",
+            "view3d.radcad_construction_parameters",
+            text="",
+            icon="PREFERENCES",
         )
-        row.operator(
-            "view3d.radcad_construction_clear",
-            text="Clear All",
-            icon="TRASH",
-        )
-
-        if len(scene.radcad_construction_lines):
-            box = layout.box()
-            box.label(text=f"Guides: {len(scene.radcad_construction_lines)}")
-            box.label(text="Blender snap: enable Vertex or Edge", icon="SNAP_ON")
-            box.prop(scene, "radcad_construction_line_color", text="Color")
-            box.prop(scene, "radcad_construction_line_width", text="Width")
 
 classes = (
     RADCAD_OT_reset_overlays, 

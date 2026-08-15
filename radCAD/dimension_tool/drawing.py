@@ -78,6 +78,7 @@ def _screen_dimension_geometry(
     offset_distance,
     label,
     text_size,
+    text_thickness,
     arrow_size,
     extension_gap,
     extension_overshoot,
@@ -118,10 +119,11 @@ def _screen_dimension_geometry(
     arrow = max(4.0, float(arrow_size))
     blf.size(0, font_size)
     text_width, text_height = blf.dimensions(0, label)
-    text_half = text_width * 0.5 + 6.0
+    thickness_radius = max(0.0, (float(text_thickness) - 1.0) * 0.5)
+    text_half = text_width * 0.5 + 6.0 + thickness_radius
 
     segments = [(ext_1_start, ext_1_end), (ext_2_start, ext_2_end)]
-    if (d2_2d - d1_2d).length > text_width + arrow * 3.0:
+    if (d2_2d - d1_2d).length > text_width + thickness_radius * 2.0 + arrow * 3.0:
         segments.extend(
             (
                 (d1_2d, midpoint - screen_line * text_half),
@@ -161,6 +163,7 @@ def _screen_dimension_geometry(
         "text_width": text_width,
         "text_height": text_height,
         "font_size": font_size,
+        "thickness_radius": thickness_radius,
     }
 
 
@@ -181,6 +184,7 @@ def dimension_hit_distance(
     offset_distance,
     label,
     text_size,
+    text_thickness,
     arrow_size,
     line_width,
     extension_gap,
@@ -195,6 +199,7 @@ def dimension_hit_distance(
         offset_distance,
         label,
         text_size,
+        text_thickness,
         arrow_size,
         extension_gap,
         extension_overshoot,
@@ -234,6 +239,7 @@ def draw_screen_dimension(
     label,
     color,
     text_size,
+    text_thickness,
     arrow_size,
     line_width,
     extension_gap,
@@ -248,6 +254,7 @@ def draw_screen_dimension(
         offset_distance,
         label,
         text_size,
+        text_thickness,
         arrow_size,
         extension_gap,
         extension_overshoot,
@@ -259,14 +266,32 @@ def draw_screen_dimension(
     font_size = geometry["font_size"]
     text_position = geometry["text_position"]
     text_direction = geometry["text_direction"]
+    text_up = geometry["text_up"]
+    radius = geometry["thickness_radius"]
     blf.size(0, font_size)
     blf.color(0, *tuple(color))
-    blf.position(0, text_position.x, text_position.y, 0)
     try:
         blf.enable(0, blf.ROTATION)
         blf.rotation(0, math.atan2(text_direction.y, text_direction.x))
-        blf.draw(0, label)
+        offsets = ((0.0, 0.0),)
+        if radius > 1.0e-6:
+            diagonal = radius * math.sqrt(0.5)
+            offsets += (
+                (radius, 0.0),
+                (-radius, 0.0),
+                (0.0, radius),
+                (0.0, -radius),
+                (diagonal, diagonal),
+                (-diagonal, diagonal),
+                (diagonal, -diagonal),
+                (-diagonal, -diagonal),
+            )
+        for along, upward in offsets:
+            draw_position = text_position + text_direction * along + text_up * upward
+            blf.position(0, draw_position.x, draw_position.y, 0)
+            blf.draw(0, label)
     except (AttributeError, RuntimeError):
+        blf.position(0, text_position.x, text_position.y, 0)
         blf.draw(0, label)
     finally:
         try:
@@ -327,6 +352,7 @@ def draw_preview_2d(operator):
             operator.preview_label,
             scene.radcad_dimension_color,
             scene.radcad_dimension_text_size,
+            scene.radcad_dimension_text_thickness,
             scene.radcad_dimension_arrow_size,
             scene.radcad_dimension_line_width,
             scene.radcad_dimension_extension_gap,
@@ -364,6 +390,7 @@ def draw_persistent_dimensions_2d():
             label,
             color,
             data.text_size if data.text_size >= 4.0 else 14.0,
+            max(1.0, float(data.text_thickness)),
             data.arrow_size if data.arrow_size >= 2.0 else 10.0,
             line_width,
             data.extension_gap,

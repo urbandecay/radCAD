@@ -428,6 +428,7 @@ class VIEW3D_OT_radcad_dimension_parameters(bpy.types.Operator):
         defaults_box = layout.box()
         defaults_box.label(text="New Dimension Defaults", icon="DRIVER_DISTANCE")
         defaults_box.prop(scene, "radcad_dimension_text_size")
+        defaults_box.prop(scene, "radcad_dimension_text_thickness")
         defaults_box.prop(scene, "radcad_dimension_arrow_size")
         defaults_box.prop(scene, "radcad_dimension_extension_gap")
         defaults_box.prop(scene, "radcad_dimension_extension_overshoot")
@@ -446,6 +447,7 @@ class VIEW3D_OT_radcad_dimension_parameters(bpy.types.Operator):
         selected_box.prop(data, "text_override")
         selected_box.prop(data, "offset_distance")
         selected_box.prop(data, "text_size")
+        selected_box.prop(data, "text_thickness")
         selected_box.prop(data, "arrow_size")
         selected_box.prop(data, "extension_gap")
         selected_box.prop(data, "extension_overshoot")
@@ -502,6 +504,7 @@ class VIEW3D_OT_radcad_dimension_pick(bpy.types.Operator):
                 data.offset_distance,
                 label,
                 data.text_size if data.text_size >= 4.0 else 14.0,
+                max(1.0, float(data.text_thickness)),
                 data.arrow_size if data.arrow_size >= 2.0 else 10.0,
                 data.line_width if data.line_width >= 0.5 else 1.0,
                 data.extension_gap,
