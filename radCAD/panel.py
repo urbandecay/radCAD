@@ -9,7 +9,6 @@ import bpy.utils.previews
 import os
 from .modal_state import state 
 from .modal_core import DrawManager
-from .dimension_tool.model import selected_dimension
 
 CURRENT_DIR = os.path.dirname(__file__)
 POSSIBLE_PATHS = [
@@ -383,48 +382,14 @@ class RADCAD_PT_Dimension(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        row = layout.row()
+        row = layout.row(align=True)
         row.scale_y = 1.2
         row.operator("view3d.radcad_dimension_linear", text="Linear Dimension", icon="DRIVER_DISTANCE")
-        layout.prop(context.scene, "radcad_dimensions_visible", toggle=True)
-
-        root = selected_dimension(context)
-        if root is not None:
-            data = root.radcad_dimension
-            layout.separator()
-            layout.label(text="Selected Dimension")
-            layout.prop(root, "name", text="Name")
-            layout.prop(data, "text_override")
-            layout.prop(data, "offset_distance")
-            layout.prop(data, "text_size")
-            layout.prop(data, "arrow_size")
-            layout.prop(data, "extension_gap")
-            layout.prop(data, "extension_overshoot")
-            layout.prop(data, "line_width")
-            layout.prop(data, "color")
-            row = layout.row(align=True)
-            row.operator("view3d.radcad_dimension_reposition", text="Reposition")
-            row.operator("view3d.radcad_dimension_refresh", text="Refresh", icon="FILE_REFRESH")
-            layout.operator("view3d.radcad_dimension_delete", text="Delete Dimension", icon="TRASH")
-        else:
-            box = layout.box()
-            scene = context.scene
-            expanded = scene.radcad_new_dimension_style_expanded
-            header = box.row()
-            header.prop(
-                scene,
-                "radcad_new_dimension_style_expanded",
-                text="New Dimension Style",
-                emboss=False,
-                icon="TRIA_DOWN" if expanded else "TRIA_RIGHT",
-            )
-            if expanded:
-                box.prop(scene, "radcad_dimension_text_size")
-                box.prop(scene, "radcad_dimension_arrow_size")
-                box.prop(scene, "radcad_dimension_extension_gap")
-                box.prop(scene, "radcad_dimension_extension_overshoot")
-                box.prop(scene, "radcad_dimension_line_width")
-                box.prop(scene, "radcad_dimension_color")
+        row.operator(
+            "view3d.radcad_dimension_parameters",
+            text="",
+            icon="PREFERENCES",
+        )
 
 
 class RADCAD_PT_Erase(bpy.types.Panel):

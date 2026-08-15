@@ -394,6 +394,78 @@ class VIEW3D_OT_radcad_dimension_refresh(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class VIEW3D_OT_radcad_dimension_parameters(bpy.types.Operator):
+    bl_idname = "view3d.radcad_dimension_parameters"
+    bl_label = "Linear Dimension Parameters"
+    bl_description = "Open the movable linear dimension parameters dialog"
+    bl_options = {"INTERNAL"}
+
+    @classmethod
+    def poll(cls, context):
+        return context.scene is not None
+
+    def invoke(self, context, _event):
+        return context.window_manager.invoke_props_dialog(
+            self,
+            width=420,
+            title="Linear Dimension Parameters",
+            confirm_text="Close",
+        )
+
+    def execute(self, _context):
+        return {"FINISHED"}
+
+    def draw(self, context):
+        layout = self.layout
+        layout.use_property_split = True
+        layout.use_property_decorate = False
+        scene = context.scene
+
+        general_box = layout.box()
+        general_box.label(text="Display", icon="HIDE_OFF")
+        general_box.prop(scene, "radcad_dimensions_visible", text="Show Dimensions")
+
+        defaults_box = layout.box()
+        defaults_box.label(text="New Dimension Defaults", icon="DRIVER_DISTANCE")
+        defaults_box.prop(scene, "radcad_dimension_text_size")
+        defaults_box.prop(scene, "radcad_dimension_arrow_size")
+        defaults_box.prop(scene, "radcad_dimension_extension_gap")
+        defaults_box.prop(scene, "radcad_dimension_extension_overshoot")
+        defaults_box.prop(scene, "radcad_dimension_line_width")
+        defaults_box.prop(scene, "radcad_dimension_color")
+
+        selected_box = layout.box()
+        selected_box.label(text="Selected Dimension", icon="RESTRICT_SELECT_OFF")
+        root = selected_dimension(context)
+        if root is None:
+            selected_box.label(text="No dimension selected", icon="INFO")
+            return
+
+        data = root.radcad_dimension
+        selected_box.prop(root, "name", text="Name")
+        selected_box.prop(data, "text_override")
+        selected_box.prop(data, "offset_distance")
+        selected_box.prop(data, "text_size")
+        selected_box.prop(data, "arrow_size")
+        selected_box.prop(data, "extension_gap")
+        selected_box.prop(data, "extension_overshoot")
+        selected_box.prop(data, "line_width")
+        selected_box.prop(data, "color")
+
+        row = selected_box.row(align=True)
+        row.operator("view3d.radcad_dimension_reposition", text="Reposition")
+        row.operator(
+            "view3d.radcad_dimension_refresh",
+            text="Refresh",
+            icon="FILE_REFRESH",
+        )
+        selected_box.operator(
+            "view3d.radcad_dimension_delete",
+            text="Delete Dimension",
+            icon="TRASH",
+        )
+
+
 class VIEW3D_OT_radcad_dimension_pick(bpy.types.Operator):
     bl_idname = "view3d.radcad_dimension_pick"
     bl_label = "Select Dimension"
@@ -469,6 +541,7 @@ CLASSES = (
     VIEW3D_OT_radcad_dimension_linear,
     VIEW3D_OT_radcad_dimension_reposition,
     VIEW3D_OT_radcad_dimension_refresh,
+    VIEW3D_OT_radcad_dimension_parameters,
     VIEW3D_OT_radcad_dimension_pick,
     VIEW3D_OT_radcad_dimension_delete,
 )
