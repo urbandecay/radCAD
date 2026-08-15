@@ -40,6 +40,15 @@ def remove_scene_snap_proxy(scene):
         _remove_object(obj)
 
 
+def _clear_scene_snap_proxy(scene):
+    """Empty derived guide geometry without deleting an ID during Edit Mode."""
+    for obj in _scene_proxy_objects(scene):
+        if obj.type == "MESH":
+            obj.data.clear_geometry()
+            obj.data.update()
+        obj.hide_viewport = True
+
+
 def remove_all_snap_proxies():
     for obj in list(bpy.data.objects):
         if is_construction_snap_proxy(obj):
@@ -68,7 +77,17 @@ def _ensure_proxy_object(scene):
     obj.hide_render = True
     obj.hide_viewport = False
     obj.display_type = "WIRE"
-    obj.show_in_front = False
+    # Construction guides are screen overlays and remain visible across the
+    # model. Put their native snap proxy in Blender's matching in-front depth
+    # group so faces cannot occlude only part of an otherwise visible guide.
+    obj.show_in_front = True
+    obj.lock_location = (True, True, True)
+    obj.lock_rotation = (True, True, True)
+    obj.lock_scale = (True, True, True)
+    try:
+        obj.select_set(False)
+    except RuntimeError:
+        pass
     obj.matrix_world.identity()
     # Blender 5 exposes this explicit snapping/depth-picking switch.  It is
     # absent in Blender 4.2, where visible geometry is pickable by default.
@@ -183,7 +202,7 @@ def sync_scene_snap_proxy(scene):
             records.append(vectors)
 
     if not records:
-        remove_scene_snap_proxy(scene)
+        _clear_scene_snap_proxy(scene)
         return None
 
     obj = _ensure_proxy_object(scene)

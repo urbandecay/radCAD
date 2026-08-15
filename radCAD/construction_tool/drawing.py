@@ -66,7 +66,7 @@ def _screen_line_for_vectors(context, anchor, direction):
     return projected_visible_guide_segment(context, anchor, direction)
 
 
-def _draw_guide_vectors(context, guides, color, width, dashed=True):
+def _draw_guide_vectors(context, guides, color, width, dashed=True, draw_anchors=True):
     segments = []
     anchors = []
     for anchor, direction, _normal in guides:
@@ -76,14 +76,15 @@ def _draw_guide_vectors(context, guides, color, width, dashed=True):
                 segments.extend(_dashed_line(*clipped))
             else:
                 segments.append(clipped)
-        anchor_screen = location_3d_to_region_2d(
-            context.region,
-            context.region_data,
-            anchor,
-            default=None,
-        )
-        if anchor_screen is not None:
-            anchors.append(Vector(anchor_screen))
+        if draw_anchors:
+            anchor_screen = location_3d_to_region_2d(
+                context.region,
+                context.region_data,
+                anchor,
+                default=None,
+            )
+            if anchor_screen is not None:
+                anchors.append(Vector(anchor_screen))
     _draw_segments(segments, color, width)
     _draw_points(anchors, color, max(4.0, width * 2.5))
 
@@ -112,6 +113,7 @@ def draw_persistent_construction_lines():
         getattr(scene, "radcad_construction_line_color", (1.0, 1.0, 1.0, 1.0)),
         getattr(scene, "radcad_construction_line_width", 1.0),
         dashed=True,
+        draw_anchors=False,
     )
 
 

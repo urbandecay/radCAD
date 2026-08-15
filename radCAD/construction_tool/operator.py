@@ -44,6 +44,11 @@ class VIEW3D_OT_radcad_construction_line(bpy.types.Operator):
             self.report({"WARNING"}, "Run the Construction Line tool from a 3D View")
             return {"CANCELLED"}
 
+        # A newly placed guide must not disappear merely because persistent
+        # guide visibility was left off from an earlier session.
+        if not context.scene.radcad_construction_lines_visible:
+            context.scene.radcad_construction_lines_visible = True
+
         DrawManager.clear_all()
         invalidate_snap_cache()
         self.context = context
@@ -126,6 +131,47 @@ class VIEW3D_OT_radcad_construction_line(bpy.types.Operator):
                 self.offset_distance = placement.distance
                 self.anchor = placement.point.copy()
                 self.current = placement.point.copy()
+
+                # Use the same screen-space mesh snap path as the other
+                # interactive tools while the guide is being dragged.  Faces
+                # are deliberately excluded: construction lines may only
+                # land on vertices or edges.
+                snap = None
+                if not event.shift:
+                    snap = snap_scene_geometry(
+                        context,
+                        context.edit_object,
+                        event.mouse_region_x,
+                        event.mouse_region_y,
+                        max_px=state.get("snap_strength", 6.0) * 2.0,
+                        snap_verts=True,
+                        snap_edges=True,
+                        snap_edge_center=False,
+                        snap_face_center=False,
+                        snap_faces=False,
+                        include_surface=False,
+                        enable_mesh=True,
+                        snap_guides=False,
+                    )
+                if snap is not None and snap.kind in {"VERT", "EDGE"}:
+                    # Snap coordinates are world-space. Project the snapped
+                    # component onto the active drawing face so the guide
+                    # remains parallel to the source edge on that face.
+                    snapped = snap.location.copy()
+                    snapped -= self.active_face.normal * (
+                        (snapped - self.source_point).dot(self.active_face.normal)
+                    )
+                    offset = snapped - self.source_point
+                    offset -= self.source_edge.direction * offset.dot(
+                        self.source_edge.direction
+                    )
+                    offset -= self.active_face.normal * offset.dot(
+                        self.active_face.normal
+                    )
+                    self.offset_vector = offset
+                    self.offset_distance = offset.length
+                    self.anchor = self.source_point + offset
+                    self.current = self.anchor.copy()
                 scale = context.scene.unit_settings.scale_length or 1.0
                 self.preview_label = format_length(self.offset_distance * scale)
             state["snap_point"] = self.current.copy() if self.current is not None else None
