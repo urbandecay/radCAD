@@ -581,3 +581,580 @@ def resample_selected_curves_at_tangencies(
     bm.verts.ensure_lookup_table()
     bm.edges.ensure_lookup_table()
     return True
+
+
+# -------------------------------------------------------------------------
+# Tangify support for completed tangent-line tools
+# -------------------------------------------------------------------------
+
+_TANGIFY_COARSE_STEPS = 16
+_TANGIFY_REFINE_STEPS = 48
+
+
+def _ordered_closed_chain_from_signature(bm, signature):
+    """Recover one ordered closed loop from the indexes captured by a tool."""
+    indexes = tuple(sorted(set(signature or ())))
+    if len(indexes) < 3:
+        return None
+
+    bm.verts.ensure_lookup_table()
+    if indexes[-1] >= len(bm.verts):
+        return None
+
+    vertices = [bm.verts[index] for index in indexes]
+    if any(not vertex.is_valid for vertex in vertices):
+        return None
+
+    vertex_set = set(vertices)
+    adjacency = {}
+    for vertex in vertices:
+        neighbors = {
+            edge.other_vert(vertex)
+            for edge in vertex.link_edges
+            if edge.other_vert(vertex) in vertex_set
+        }
+        if len(neighbors) != 2:
+            # Tangify deliberately supports closed curves only.
+            return None
+        adjacency[vertex] = sorted(neighbors, key=lambda item: item.index)
+
+    start = min(vertices, key=lambda item: item.index)
+    ordered = []
+    previous = None
+    current = start
+    while len(ordered) < len(vertices):
+        if current in ordered:
+            return None
+        ordered.append(current)
+
+        candidates = adjacency[current]
+        if previous is None:
+            next_vertex = candidates[0]
+        else:
+            next_vertex = next(
+                (candidate for candidate in candidates if candidate is not previous),
+                None,
+            )
+            if next_vertex is None:
+                return None
+        previous, current = current, next_vertex
+
+    if current is not start:
+        return None
+    return ordered
+
+
+def _tangify_tangent_global(spline, parameter, step=1e-4):
+    segment_count = float(len(spline.segments))
+    if segment_count <= 0.0:
+        return None
+
+    if spline.is_closed:
+        before = _eval_spline_global(spline, (parameter - step) % segment_count)
+        after = _eval_spline_global(spline, (parameter + step) % segment_count)
+    else:
+        before = _eval_spline_global(spline, max(0.0, parameter - step))
+        after = _eval_spline_global(
+            spline,
+            min(segment_count, parameter + step),
+        )
+    tangent = after - before
+    if tangent.length_squared <= _LENGTH_EPSILON * _LENGTH_EPSILON:
+        return None
+    return tangent.normalized()
+
+
+def _tangify_parameter_distance(spline, first, second):
+    distance = abs(first - second)
+    if spline.is_closed:
+        period = float(len(spline.segments))
+        distance %= period
+        return min(distance, period - distance)
+    return distance
+
+
+def _tangify_clamp_parameter(spline, value, seed, window):
+    if spline.is_closed:
+        period = float(len(spline.segments))
+        delta = (value - seed + period * 0.5) % period - period * 0.5
+        value = seed + delta
+    value = max(seed - window, min(seed + window, value))
+    if spline.is_closed:
+        return value % len(spline.segments)
+    return max(0.0, min(float(len(spline.segments)), value))
+
+
+def _tangify_alignment_error(spline_a, spline_b, t_a, t_b):
+    point_a = _eval_spline_global(spline_a, t_a)
+    point_b = _eval_spline_global(spline_b, t_b)
+    chord = point_b - point_a
+    if chord.length_squared <= _LENGTH_EPSILON * _LENGTH_EPSILON:
+        return float("inf"), point_a, point_b
+
+    tangent_a = _tangify_tangent_global(spline_a, t_a)
+    tangent_b = _tangify_tangent_global(spline_b, t_b)
+    if tangent_a is None or tangent_b is None:
+        return float("inf"), point_a, point_b
+
+    direction = chord.normalized()
+    dot_a = max(-1.0, min(1.0, tangent_a.dot(direction)))
+    dot_b = max(-1.0, min(1.0, tangent_b.dot(direction)))
+    error = (1.0 - dot_a * dot_a) + (1.0 - dot_b * dot_b)
+    return error, point_a, point_b
+
+
+def _tangify_guided_score(
+    spline_a,
+    spline_b,
+    t_a,
+    t_b,
+    seed_a,
+    seed_b,
+    window_a,
+    window_b,
+    guide_direction,
+):
+    error, point_a, point_b = _tangify_alignment_error(
+        spline_a,
+        spline_b,
+        t_a,
+        t_b,
+    )
+    if not math.isfinite(error):
+        return error
+
+    chord = (point_b - point_a).normalized()
+    direction_dot = max(-1.0, min(1.0, chord.dot(guide_direction)))
+    direction_error = 1.0 - direction_dot
+    drift_a = _tangify_parameter_distance(spline_a, t_a, seed_a) / window_a
+    drift_b = _tangify_parameter_distance(spline_b, t_b, seed_b) / window_b
+    return (
+        error
+        + 0.02 * direction_error
+        + 0.002 * (drift_a * drift_a + drift_b * drift_b)
+    )
+
+
+def _tangify_common_tangent(
+    spline_a,
+    spline_b,
+    seed_a,
+    seed_b,
+    guide_direction,
+):
+    """Validate/refine a two-curve line using rCAD Tangify's guide solve."""
+    count_a = float(len(spline_a.segments))
+    count_b = float(len(spline_b.segments))
+    window_a = min(count_a * 0.25, max(1.5, count_a * 0.10))
+    window_b = min(count_b * 0.25, max(1.5, count_b * 0.10))
+
+    best_t_a = seed_a
+    best_t_b = seed_b
+    best_score = float("inf")
+    for index_a in range(_TANGIFY_COARSE_STEPS + 1):
+        raw_a = (
+            seed_a
+            - window_a
+            + 2.0 * window_a * index_a / _TANGIFY_COARSE_STEPS
+        )
+        t_a = _tangify_clamp_parameter(
+            spline_a,
+            raw_a,
+            seed_a,
+            window_a,
+        )
+        for index_b in range(_TANGIFY_COARSE_STEPS + 1):
+            raw_b = (
+                seed_b
+                - window_b
+                + 2.0 * window_b * index_b / _TANGIFY_COARSE_STEPS
+            )
+            t_b = _tangify_clamp_parameter(
+                spline_b,
+                raw_b,
+                seed_b,
+                window_b,
+            )
+            score = _tangify_guided_score(
+                spline_a,
+                spline_b,
+                t_a,
+                t_b,
+                seed_a,
+                seed_b,
+                window_a,
+                window_b,
+                guide_direction,
+            )
+            if score < best_score:
+                best_score = score
+                best_t_a = t_a
+                best_t_b = t_b
+
+    step_a = 2.0 * window_a / _TANGIFY_COARSE_STEPS
+    step_b = 2.0 * window_b / _TANGIFY_COARSE_STEPS
+    for _iteration in range(_TANGIFY_REFINE_STEPS):
+        candidate_t_a = best_t_a
+        candidate_t_b = best_t_b
+        candidate_score = best_score
+        for offset_a in (-step_a, 0.0, step_a):
+            t_a = _tangify_clamp_parameter(
+                spline_a,
+                best_t_a + offset_a,
+                seed_a,
+                window_a,
+            )
+            for offset_b in (-step_b, 0.0, step_b):
+                t_b = _tangify_clamp_parameter(
+                    spline_b,
+                    best_t_b + offset_b,
+                    seed_b,
+                    window_b,
+                )
+                score = _tangify_guided_score(
+                    spline_a,
+                    spline_b,
+                    t_a,
+                    t_b,
+                    seed_a,
+                    seed_b,
+                    window_a,
+                    window_b,
+                    guide_direction,
+                )
+                if score < candidate_score:
+                    candidate_score = score
+                    candidate_t_a = t_a
+                    candidate_t_b = t_b
+
+        moved = (
+            _tangify_parameter_distance(
+                spline_a,
+                candidate_t_a,
+                best_t_a,
+            )
+            > 1.0e-12
+            or _tangify_parameter_distance(
+                spline_b,
+                candidate_t_b,
+                best_t_b,
+            )
+            > 1.0e-12
+        )
+        best_t_a = candidate_t_a
+        best_t_b = candidate_t_b
+        best_score = candidate_score
+        if not moved:
+            step_a *= 0.5
+            step_b *= 0.5
+            if max(step_a, step_b) <= 1.0e-8:
+                break
+
+    # Tangify removes branch-selection penalties for final convergence.
+    pure_score, _point_a, _point_b = _tangify_alignment_error(
+        spline_a,
+        spline_b,
+        best_t_a,
+        best_t_b,
+    )
+    for _iteration in range(_TANGIFY_REFINE_STEPS):
+        candidate_t_a = best_t_a
+        candidate_t_b = best_t_b
+        candidate_score = pure_score
+        for offset_a in (-step_a, 0.0, step_a):
+            t_a = _tangify_clamp_parameter(
+                spline_a,
+                best_t_a + offset_a,
+                seed_a,
+                window_a,
+            )
+            for offset_b in (-step_b, 0.0, step_b):
+                t_b = _tangify_clamp_parameter(
+                    spline_b,
+                    best_t_b + offset_b,
+                    seed_b,
+                    window_b,
+                )
+                score, _point_a, _point_b = _tangify_alignment_error(
+                    spline_a,
+                    spline_b,
+                    t_a,
+                    t_b,
+                )
+                if score < candidate_score:
+                    candidate_score = score
+                    candidate_t_a = t_a
+                    candidate_t_b = t_b
+
+        moved = (
+            _tangify_parameter_distance(
+                spline_a,
+                candidate_t_a,
+                best_t_a,
+            )
+            > 1.0e-12
+            or _tangify_parameter_distance(
+                spline_b,
+                candidate_t_b,
+                best_t_b,
+            )
+            > 1.0e-12
+        )
+        best_t_a = candidate_t_a
+        best_t_b = candidate_t_b
+        pure_score = candidate_score
+        if not moved:
+            step_a *= 0.5
+            step_b *= 0.5
+            if max(step_a, step_b) <= 1.0e-10:
+                break
+
+    error, _point_a, _point_b = _tangify_alignment_error(
+        spline_a,
+        spline_b,
+        best_t_a,
+        best_t_b,
+    )
+    return math.isfinite(error)
+
+
+def _tangify_single_curve_solution(spline, seed, direction):
+    """Run Tangify's local single-curve tangent/normal branch solve."""
+    seed_tangent = _tangify_tangent_global(spline, seed)
+    if seed_tangent is None:
+        return False
+
+    seed_dot = abs(seed_tangent.dot(direction))
+    tangent_relation = seed_dot >= 0.70710678
+    count = float(len(spline.segments))
+    window = min(count * 0.20, max(1.0, count * 0.08))
+
+    def score(parameter):
+        tangent = _tangify_tangent_global(spline, parameter)
+        if tangent is None:
+            return float("inf")
+        dot = max(-1.0, min(1.0, abs(tangent.dot(direction))))
+        alignment = 1.0 - dot * dot if tangent_relation else dot * dot
+        drift = _tangify_parameter_distance(spline, parameter, seed) / window
+        return alignment + 0.001 * drift * drift
+
+    best_t = seed
+    best_score = float("inf")
+    for index in range(_TANGIFY_COARSE_STEPS + 1):
+        raw = (
+            seed
+            - window
+            + 2.0 * window * index / _TANGIFY_COARSE_STEPS
+        )
+        parameter = _tangify_clamp_parameter(spline, raw, seed, window)
+        candidate_score = score(parameter)
+        if candidate_score < best_score:
+            best_t = parameter
+            best_score = candidate_score
+
+    step = 2.0 * window / _TANGIFY_COARSE_STEPS
+    for _iteration in range(_TANGIFY_REFINE_STEPS):
+        candidate_t = best_t
+        candidate_score = best_score
+        for offset in (-step, 0.0, step):
+            parameter = _tangify_clamp_parameter(
+                spline,
+                best_t + offset,
+                seed,
+                window,
+            )
+            candidate = score(parameter)
+            if candidate < candidate_score:
+                candidate_t = parameter
+                candidate_score = candidate
+        moved = (
+            _tangify_parameter_distance(spline, candidate_t, best_t)
+            > 1.0e-12
+        )
+        best_t = candidate_t
+        best_score = candidate_score
+        if not moved:
+            step *= 0.5
+            if step <= 1.0e-9:
+                break
+    return math.isfinite(best_score)
+
+
+def _tangify_spline_scale(spline):
+    samples = [
+        _eval_spline_global(spline, index)
+        for index in range(len(spline.segments))
+    ]
+    if not samples:
+        return 1.0
+    minimum = samples[0].copy()
+    maximum = samples[0].copy()
+    for point in samples[1:]:
+        minimum.x = min(minimum.x, point.x)
+        minimum.y = min(minimum.y, point.y)
+        minimum.z = min(minimum.z, point.z)
+        maximum.x = max(maximum.x, point.x)
+        maximum.y = max(maximum.y, point.y)
+        maximum.z = max(maximum.z, point.z)
+    return max((maximum - minimum).length, 1.0e-6)
+
+
+def _tangify_project(spline, point):
+    parameter = _project_spline_parameter(spline, point)
+    projected = _eval_spline_global(spline, parameter)
+    return parameter, (projected - point).length
+
+
+def _match_completed_guide(curves, guide_vertices):
+    matches = []
+    for guide_vertex in (guide_vertices[0], guide_vertices[-1]):
+        candidates = []
+        for curve_index, curve in enumerate(curves):
+            parameter, distance = _tangify_project(
+                curve["spline"],
+                guide_vertex.co,
+            )
+            candidates.append((distance, curve_index, parameter))
+        if not candidates:
+            return None
+        matches.append(min(candidates, key=lambda item: item[0]))
+
+    start_match, end_match = matches
+    if start_match[1] == end_match[1]:
+        return None
+
+    for match in matches:
+        curve = curves[match[1]]
+        tolerance = max(
+            1.0e-4,
+            _tangify_spline_scale(curve["spline"]) * 0.12,
+        )
+        if match[0] > tolerance:
+            return None
+
+    return {
+        "index_a": start_match[1],
+        "index_b": end_match[1],
+        "t_a": start_match[2],
+        "t_b": end_match[2],
+    }
+
+
+def _match_completed_single_guide(curve, guide_vertices):
+    best = None
+    for endpoint_index in (0, -1):
+        parameter, distance = _tangify_project(
+            curve["spline"],
+            guide_vertices[endpoint_index].co,
+        )
+        candidate = {
+            "endpoint_index": endpoint_index,
+            "t": parameter,
+            "distance": distance,
+        }
+        if best is None or distance < best["distance"]:
+            best = candidate
+
+    tolerance = max(
+        1.0e-4,
+        _tangify_spline_scale(curve["spline"]) * 0.12,
+    )
+    return best if best is not None and best["distance"] <= tolerance else None
+
+
+def tangify_created_line(obj, bm, source_chain_signatures, guide_vertices):
+    """Tangify source loops using a line that has just been committed.
+
+    This is a self-contained guide-driven Tangify implementation adapted to
+    the drawing tools' recorded source-loop signatures.  It preserves each
+    curve's vertex count, pins a curve vertex to every guide endpoint, and
+    leaves the newly created line fixed.
+    """
+    if len(guide_vertices) < 2 or len(source_chain_signatures) not in {1, 2}:
+        return False
+    if any(not vertex.is_valid for vertex in guide_vertices):
+        return False
+
+    # Delayed import avoids the existing circle-tools/resampler module cycle.
+    from .operators.circle_tools import CatmullRomSpline
+
+    curves = []
+    seen_signatures = set()
+    for signature in source_chain_signatures:
+        normalized = tuple(sorted(set(signature or ())))
+        if normalized in seen_signatures:
+            return False
+        seen_signatures.add(normalized)
+
+        vertices = _ordered_closed_chain_from_signature(bm, normalized)
+        if vertices is None:
+            return False
+        spline = CatmullRomSpline(
+            [vertex.co.copy() for vertex in vertices],
+            is_closed=True,
+        )
+        if not spline.segments:
+            return False
+        curves.append({
+            "vertices": vertices,
+            "spline": spline,
+            "contacts": [],
+        })
+
+    start = guide_vertices[0].co
+    end = guide_vertices[-1].co
+    direction = end - start
+    if direction.length_squared <= _LENGTH_EPSILON * _LENGTH_EPSILON:
+        return False
+    direction.normalize()
+
+    if len(curves) == 2:
+        match = _match_completed_guide(curves, guide_vertices)
+        if match is None:
+            return False
+        curve_a = curves[match["index_a"]]
+        curve_b = curves[match["index_b"]]
+        if not _tangify_common_tangent(
+            curve_a["spline"],
+            curve_b["spline"],
+            match["t_a"],
+            match["t_b"],
+            direction,
+        ):
+            return False
+        curve_a["contacts"].append(start.copy())
+        curve_b["contacts"].append(end.copy())
+    else:
+        curve = curves[0]
+        match = _match_completed_single_guide(curve, guide_vertices)
+        if match is None:
+            return False
+        if not _tangify_single_curve_solution(
+            curve["spline"],
+            match["t"],
+            direction,
+        ):
+            return False
+        contact_vertex = guide_vertices[match["endpoint_index"]]
+        curve["contacts"].append(contact_vertex.co.copy())
+
+    prepared = []
+    for curve in curves:
+        coordinates = _closed_curve_coordinates(
+            curve["spline"],
+            curve["contacts"],
+            len(curve["vertices"]),
+        )
+        if len(coordinates) != len(curve["vertices"]):
+            return False
+        prepared.append((curve["vertices"], coordinates))
+
+    # Match Tangify's transactional behavior: modify only after every source
+    # loop has produced a valid target coordinate set.
+    for vertices, coordinates in prepared:
+        for vertex, coordinate in zip(vertices, coordinates):
+            if not vertex.is_valid:
+                return False
+            vertex.co = coordinate
+            vertex.select = True
+    return True

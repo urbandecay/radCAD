@@ -572,8 +572,6 @@ def commit_arc_to_mesh(ctx):
     tangent_contact_modes = {
         "CIRCLE_TAN_TAN",
         "CIRCLE_TAN_TAN_TAN",
-        "LINE_TANGENT_FROM_CURVE",
-        "LINE_TAN_TAN",
     }
     if (
         state.get("tool_mode") in tangent_contact_modes
@@ -657,6 +655,35 @@ def commit_arc_to_mesh(ctx):
     bm.verts.ensure_lookup_table()
     bm.edges.ensure_lookup_table()
     bmesh.update_edit_mesh(obj.data, loop_triangles=False, destructive=False)
+
+    # Tangify needs the completed line as its guide.  Run it after creating
+    # the line but before auto-weld can join the guide to its source loops.
+    if (
+        state.get("tool_mode") in {
+            "LINE_TANGENT_FROM_CURVE",
+            "LINE_TAN_TAN",
+        }
+        and state.get("make_points_tangent", False)
+    ):
+        from .tangent_resampler import tangify_created_line
+
+        tangified = tangify_created_line(
+            obj,
+            bm,
+            state.get("tan_source_chains") or [],
+            created_verts,
+        )
+        if tangified:
+            bmesh.update_edit_mesh(
+                obj.data,
+                loop_triangles=False,
+                destructive=False,
+            )
+        else:
+            print(
+                "[radCAD] Make Points Tangent could not tangify the "
+                "completed line and its closed source curve(s)."
+            )
     
     auto_weld_enabled = state.get("auto_weld", True)
     if auto_weld_enabled:
