@@ -19,6 +19,12 @@ POSSIBLE_PATHS = [
 
 ICON_FOLDERS = tuple(p for p in POSSIBLE_PATHS if os.path.isdir(p))
 
+# Header-only icons are kept separate from SVG_FILES so they do not become
+# selectable tool buttons in the panels.
+DEFAULT_ICON_FILES = {
+    "polygon_default": "polygon.svg",
+}
+
 HEADER_HEIGHT = 1.5 
 
 IMPLEMENTED_TOOLS = {
@@ -483,11 +489,18 @@ def register():
                 preview_collection.load(key, path, "IMAGE")
                 break
 
+    for key, filename in DEFAULT_ICON_FILES.items():
+        for folder in ICON_FOLDERS:
+            path = os.path.join(folder, filename)
+            if os.path.isfile(path):
+                preview_collection.load(key, path, "IMAGE")
+                break
+
     bpy.types.Scene.radcad_line_icon = bpy.props.StringProperty(default="line")
     bpy.types.Scene.radcad_arc_icon = bpy.props.StringProperty(default="arc_1_point")
     bpy.types.Scene.radcad_circle_icon = bpy.props.StringProperty(default="circle")
     bpy.types.Scene.radcad_ellipse_icon = bpy.props.StringProperty(default="ellipse")
-    bpy.types.Scene.radcad_polygon_icon = bpy.props.StringProperty(default="polygon_cen_cor")
+    bpy.types.Scene.radcad_polygon_icon = bpy.props.StringProperty(default="polygon_default")
     bpy.types.Scene.radcad_curve_icon = bpy.props.StringProperty(default="curve_interpolate_points")
     bpy.types.Scene.radcad_rectangle_icon = bpy.props.StringProperty(default="rectangle_from_center")
     bpy.types.Scene.radcad_point_icon = bpy.props.StringProperty(default="point_by_arcs")

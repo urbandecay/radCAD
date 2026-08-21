@@ -774,6 +774,13 @@ def finish_modal(self, ctx):
         DrawManager.clear_all()
         state["active"] = False
         ctx.scene.active_cad_tool_id = ""
+        if state.get("tool_mode") in {
+            "POLYGON_CENTER_CORNER",
+            "POLYGON_CENTER_TANGENT",
+            "POLYGON_CORNER_CORNER",
+            "POLYGON_EDGE",
+        }:
+            ctx.scene.radcad_polygon_icon = "polygon_default"
         free_snap_context()
     ctx.area.tag_redraw()
 
