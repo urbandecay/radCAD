@@ -797,6 +797,9 @@ def finish_modal(self, ctx):
             "POLYGON_CENTER_TANGENT",
             "POLYGON_CORNER_CORNER",
             "POLYGON_EDGE",
+            "RECTANGLE_CENTER_CORNER",
+            "RECTANGLE_CORNER_CORNER",
+            "RECTANGLE_3_POINTS",
         }:
             tool_mode = state.get("tool_mode", "")
             if tool_mode in {"1POINT", "2POINT", "3POINT"}:
@@ -809,6 +812,8 @@ def finish_modal(self, ctx):
                 ctx.scene.radcad_circle_icon = "circle"
             elif tool_mode.startswith("ELLIPSE_"):
                 ctx.scene.radcad_ellipse_icon = "ellipse"
+            elif tool_mode.startswith("RECTANGLE_"):
+                ctx.scene.radcad_rectangle_icon = "rectangle_default"
             else:
                 ctx.scene.radcad_polygon_icon = "polygon_default"
         free_snap_context()

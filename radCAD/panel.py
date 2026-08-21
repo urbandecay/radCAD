@@ -27,6 +27,7 @@ DEFAULT_ICON_FILES = {
     "line_default": "line_default.svg",
     "point_default": "point.svg",
     "polygon_default": "polygon.svg",
+    "rectangle_default": "rectangle.svg",
 }
 
 HEADER_HEIGHT = 1.5 
@@ -505,7 +506,7 @@ def register():
     bpy.types.Scene.radcad_ellipse_icon = bpy.props.StringProperty(default="ellipse")
     bpy.types.Scene.radcad_polygon_icon = bpy.props.StringProperty(default="polygon_default")
     bpy.types.Scene.radcad_curve_icon = bpy.props.StringProperty(default="curve_interpolate_points")
-    bpy.types.Scene.radcad_rectangle_icon = bpy.props.StringProperty(default="rectangle_from_center")
+    bpy.types.Scene.radcad_rectangle_icon = bpy.props.StringProperty(default="rectangle_default")
     bpy.types.Scene.radcad_point_icon = bpy.props.StringProperty(default="point_default")
     bpy.types.Scene.radcad_dimension_icon = bpy.props.StringProperty(default="dimension_linear")
 
