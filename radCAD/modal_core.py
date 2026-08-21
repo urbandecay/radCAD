@@ -775,12 +775,19 @@ def finish_modal(self, ctx):
         state["active"] = False
         ctx.scene.active_cad_tool_id = ""
         if state.get("tool_mode") in {
+            "ELLIPSE_RADIUS",
+            "ELLIPSE_FOCI",
+            "ELLIPSE_ENDPOINTS",
+            "ELLIPSE_CORNERS",
             "POLYGON_CENTER_CORNER",
             "POLYGON_CENTER_TANGENT",
             "POLYGON_CORNER_CORNER",
             "POLYGON_EDGE",
         }:
-            ctx.scene.radcad_polygon_icon = "polygon_default"
+            if state.get("tool_mode", "").startswith("ELLIPSE_"):
+                ctx.scene.radcad_ellipse_icon = "ellipse"
+            else:
+                ctx.scene.radcad_polygon_icon = "polygon_default"
         free_snap_context()
     ctx.area.tag_redraw()
 
