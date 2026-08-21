@@ -262,7 +262,8 @@ class ModalManager:
             state.get("snap_edges", True) or
             state.get("snap_edge_center", True) or
             state.get("snap_face_center", True) or
-            state.get("snap_faces", False)
+            state.get("snap_faces", False) or
+            state.get("snap_intersections", False)
         )
 
         # Freehand still gets inexpensive construction-guide snapping, while
@@ -290,6 +291,7 @@ class ModalManager:
                 snap_faces=state.get("snap_faces", False),
                 snap_face_center=state.get("snap_face_center", True),
                 include_surface=True,
+                snap_intersections=state.get("snap_intersections", False),
                 enable_mesh=(
                     state.get("tool_mode") != "CURVE_FREEHAND"
                     and mesh_snap_enabled
@@ -942,6 +944,7 @@ def modal_arc_common(self, ctx, ev):
         if ev.type == 'F3': state["snap_edge_center"] = not state.get("snap_edge_center", False); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
         if ev.type == 'F4': state["snap_face_center"] = not state.get("snap_face_center", False); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
         if ev.type == 'F5': state["snap_faces"] = not state.get("snap_faces", False); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
+        if ev.type == 'F6': state["snap_intersections"] = not state.get("snap_intersections", False); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
         if ev.type == 'C': state["use_angle_snap"] = not state.get("use_angle_snap", True); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
         if ev.type == 'W' and state.get("tool_mode") != "ROTATE": state["auto_weld"] = not state.get("auto_weld", True); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
         if (
@@ -1038,6 +1041,7 @@ def modal_arc_common(self, ctx, ev):
                     elif k == "snap_edge_center": state["snap_edge_center"] = not state.get("snap_edge_center", False)
                     elif k == "snap_face_center": state["snap_face_center"] = not state.get("snap_face_center", False)
                     elif k == "snap_faces": state["snap_faces"] = not state.get("snap_faces", False)
+                    elif k == "snap_intersections": state["snap_intersections"] = not state.get("snap_intersections", False)
                     elif k == "toggle_angle": state["use_angle_snap"] = not state.get("use_angle_snap", True)
                     elif k == "weld_btn": state["auto_weld"] = not state.get("auto_weld", True)
                     elif k == "snap_tangent_curve_btn":

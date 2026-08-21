@@ -321,6 +321,7 @@ def draw_bottom_bar():
         ("F3: Edge Center", state.get("snap_edge_center", False), "snap_edge_center"),
         ("F4: Face Center", state.get("snap_face_center", False), "snap_face_center"),
         ("F5: Face", state.get("snap_faces", False), "snap_faces"),
+        ("F6: Intersection", state.get("snap_intersections", False), "snap_intersections"),
         ("C: Compass", state.get("use_angle_snap", True), "toggle_angle"),
         ("W: Weld", state.get("auto_weld", True), "weld_btn"),
     ]
@@ -334,6 +335,11 @@ def draw_bottom_bar():
     # Tangency tools only need contact generation and weld controls.
     if tool_mode in TANGENCY_ONLY_TOOLS:
         buttons = [
+            (
+                "F6: Intersection",
+                state.get("snap_intersections", False),
+                "snap_intersections",
+            ),
             (
                 "T: Make Points Tangent",
                 state.get("make_points_tangent", False),

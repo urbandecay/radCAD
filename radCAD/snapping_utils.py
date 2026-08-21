@@ -1,6 +1,7 @@
 # snapping_utils.py
 
 from dataclasses import dataclass
+import math
 
 import bmesh
 from bpy_extras.view3d_utils import location_3d_to_region_2d
@@ -99,6 +100,7 @@ class _RadCADSnapEngine:
         snap_edge_center,
         snap_face_center,
         snap_faces,
+        snap_intersections=False,
     ):
         context_key = self._key(ctx)
         if self.sctx is None or self.context_key != context_key:
@@ -118,7 +120,12 @@ class _RadCADSnapEngine:
         self.sctx.set_pixel_dist(self.pixel_dist)
 
         # Connected vertices are resolved from selected edges by SnapContext.
-        search_edges = snap_verts or snap_edges or snap_edge_center
+        search_edges = (
+            snap_verts
+            or snap_edges
+            or snap_edge_center
+            or snap_intersections
+        )
         shading = ctx.space_data.shading
         occlude_components = search_edges and not (
             shading.show_xray or shading.type == 'WIREFRAME'
@@ -148,6 +155,70 @@ class _RadCADSnapEngine:
             return None
         return snap_obj, location, element, element_co
 
+    def query_edge_candidates(
+        self,
+        x,
+        y,
+        main_obj,
+        max_px,
+        center_hit=None,
+    ):
+        """Collect distinct visible edges around the cursor.
+
+        The GPU snap buffer returns the best primitive at one cursor location.
+        Intersection snapping needs the two primitives that meet near that
+        location, so sample a small ring around the cursor and deduplicate the
+        edge hits.  This avoids scanning every mesh edge on every mouse move.
+        """
+        radius = max(2.0, min(float(max_px), 18.0))
+        candidates = []
+        seen = set()
+
+        def add_hit(hit):
+            if hit is None:
+                return
+            snap_obj, _location, element, element_co = hit
+            if element_co is None or len(element) != 2 or len(element_co) != 2:
+                return
+
+            target = snap_obj.data[0]
+            key = (id(target), tuple(sorted(int(index) for index in element)))
+            if key in seen:
+                return
+            seen.add(key)
+            candidates.append((snap_obj, _location, element, element_co))
+
+        add_hit(center_hit if center_hit is not None else self.query(x, y, main_obj))
+
+        # The outer ring normally finds both sides of an X with only eight
+        # cached-buffer lookups.  A smaller fallback ring helps with very
+        # shallow crossings without imposing that cost on every mouse move.
+        ring_radius = radius
+        count = 8
+        for index in range(count):
+            angle = (2.0 * math.pi * index) / count
+            add_hit(
+                self.query(
+                    x + ring_radius * math.cos(angle),
+                    y + ring_radius * math.sin(angle),
+                    main_obj,
+                )
+            )
+
+        if len(candidates) < 2:
+            ring_radius = radius * 0.5
+            for index in range(4):
+                angle = (2.0 * math.pi * index) / 4.0
+                add_hit(
+                    self.query(
+                        x + ring_radius * math.cos(angle),
+                        y + ring_radius * math.sin(angle),
+                        main_obj,
+                    )
+                )
+
+        return candidates
+
 
 _snap_engine = _RadCADSnapEngine()
 
@@ -166,6 +237,132 @@ def _point_within_radius(ctx, point, x, y, max_px):
     if point_2d is None:
         return False
     return (point_2d - Vector((x, y))).length_squared <= max_px * max_px
+
+
+def _closest_points_on_segments(p1, q1, p2, q2):
+    """Return closest points and parameters for two 3D line segments."""
+    d1 = q1 - p1
+    d2 = q2 - p2
+    r = p1 - p2
+    a = d1.dot(d1)
+    e = d2.dot(d2)
+    f = d2.dot(r)
+
+    if a <= 1.0e-12 and e <= 1.0e-12:
+        return p1.copy(), p2.copy(), 0.0, 0.0
+    if a <= 1.0e-12:
+        t = max(0.0, min(1.0, f / e))
+        return p1.copy(), p2 + d2 * t, 0.0, t
+
+    c = d1.dot(r)
+    if e <= 1.0e-12:
+        s = max(0.0, min(1.0, -c / a))
+        return p1 + d1 * s, p2.copy(), s, 0.0
+
+    b = d1.dot(d2)
+    denominator = a * e - b * b
+    if denominator <= 1.0e-12 * a * e:
+        # Parallel/collinear segments have no unique intersection point.
+        return None
+
+    s = (b * f - c * e) / denominator
+    s = max(0.0, min(1.0, s))
+
+    t = (b * s + f) / e
+    if t < 0.0:
+        t = 0.0
+        s = max(0.0, min(1.0, -c / a))
+    elif t > 1.0:
+        t = 1.0
+        s = max(0.0, min(1.0, (b - c) / a))
+
+    return p1 + d1 * s, p2 + d2 * t, s, t
+
+
+def _intersection_result(ctx, obj, x, y, max_px, center_hit=None):
+    """Return a true 3D segment intersection near the cursor, if present."""
+    candidates = _snap_engine.query_edge_candidates(
+        x,
+        y,
+        obj,
+        max_px,
+        center_hit=center_hit,
+    )
+    if len(candidates) < 2:
+        return None
+
+    best = None
+    best_distance_sq = max_px * max_px
+    parameter_epsilon = 1.0e-6
+
+    for index, first in enumerate(candidates):
+        first_snap_obj, _location, first_element, first_co = first
+        first_target = first_snap_obj.data[0]
+        first_indices = set(int(value) for value in first_element)
+        p1, q1 = (Vector(first_co[0]), Vector(first_co[1]))
+        first_length = (q1 - p1).length
+
+        for second in candidates[index + 1:]:
+            second_snap_obj, _location, second_element, second_co = second
+            second_target = second_snap_obj.data[0]
+            second_indices = set(int(value) for value in second_element)
+
+            # A shared mesh vertex is already handled by vertex snapping and
+            # is not an unwelded X intersection.
+            if first_target is second_target and first_indices.intersection(second_indices):
+                continue
+
+            p2, q2 = (Vector(second_co[0]), Vector(second_co[1]))
+            second_length = (q2 - p2).length
+            closest = _closest_points_on_segments(
+                p1, q1, p2, q2
+            )
+            if closest is None:
+                continue
+            c1, c2, first_t, second_t = closest
+
+            if (
+                first_t < -parameter_epsilon
+                or first_t > 1.0 + parameter_epsilon
+                or second_t < -parameter_epsilon
+                or second_t > 1.0 + parameter_epsilon
+            ):
+                continue
+
+            # Reject collinear/near-parallel overlap and screen-only crossings
+            # at different depths.  A real intersection has coincident closest
+            # points in world space.
+            distance = (c1 - c2).length
+            tolerance = 1.0e-6 * max(1.0, min(first_length, second_length))
+            if distance > tolerance:
+                continue
+
+            point = (c1 + c2) * 0.5
+            point_2d = location_3d_to_region_2d(
+                ctx.region,
+                ctx.region_data,
+                point,
+                default=None,
+            )
+            if point_2d is None:
+                continue
+            distance_sq = (Vector(point_2d) - Vector((x, y))).length_squared
+            if distance_sq > best_distance_sq:
+                continue
+
+            best_distance_sq = distance_sq
+            best = SnapResult(
+                point,
+                "INTERSECTION",
+                None,
+                first_target,
+                tuple(first_element) + tuple(second_element),
+                (),
+                tuple(Vector(co) for co in first_co + second_co),
+                first_snap_obj.mat.copy(),
+            )
+
+    return best
 
 
 def _face_center(sctx, snap_obj, element):
@@ -305,6 +502,7 @@ def snap_mesh(
     snap_face_center=True,
     snap_faces=False,
     include_surface=False,
+    snap_intersections=False,
 ):
     if ctx.region is None or ctx.region_data is None or ctx.space_data.type != 'VIEW_3D':
         return None
@@ -317,34 +515,54 @@ def snap_mesh(
         snap_edge_center,
         snap_face_center,
         snap_faces,
+        snap_intersections=snap_intersections,
     )
     hit = _snap_engine.query(x, y, obj)
-    if hit is None:
-        return None
 
-    component = _component_result(
-        ctx,
-        hit,
-        x,
-        y,
-        max_px,
-        snap_verts,
-        snap_edges,
-        snap_edge_center,
-    )
-    if component is not None:
-        return component
+    intersection = None
+    if snap_intersections:
+        intersection = _intersection_result(
+            ctx,
+            obj,
+            x,
+            y,
+            max_px,
+            center_hit=hit,
+        )
 
-    return _face_result(
-        ctx,
-        hit,
-        x,
-        y,
-        max_px,
-        snap_face_center,
-        snap_faces,
-        include_surface,
-    )
+    if hit is not None:
+        component = _component_result(
+            ctx,
+            hit,
+            x,
+            y,
+            max_px,
+            snap_verts,
+            snap_edges,
+            snap_edge_center,
+        )
+        if intersection is not None and (
+            component is None or component.kind != "VERT"
+        ):
+            return intersection
+        if component is not None:
+            return component
+
+        face_result = _face_result(
+            ctx,
+            hit,
+            x,
+            y,
+            max_px,
+            snap_face_center,
+            snap_faces,
+            include_surface,
+        )
+        if intersection is not None:
+            return intersection
+        return face_result
+
+    return intersection
 
 
 def _result_screen_distance(ctx, result, x, y):
@@ -375,6 +593,7 @@ def snap_scene_geometry(
     include_surface=False,
     enable_mesh=True,
     snap_guides=True,
+    snap_intersections=False,
 ):
     """Combine mesh and construction-guide candidates into one snap result."""
     mesh_result = None
@@ -391,6 +610,7 @@ def snap_scene_geometry(
             snap_face_center=snap_face_center,
             snap_faces=snap_faces,
             include_surface=include_surface,
+            snap_intersections=snap_intersections,
         )
 
     guide_candidate = None
@@ -436,6 +656,7 @@ def snap_to_mesh_components(
         snap_edge_center=do_edge_center,
         snap_face_center=do_face_center,
         snap_faces=kwargs.get("do_faces", False),
+        snap_intersections=kwargs.get("snap_intersections", False),
     )
     return result.location if result is not None else None
 

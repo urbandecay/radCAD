@@ -26,6 +26,7 @@ state = {
     "snap_edge_center": False,
     "snap_face_center": False,
     "snap_faces": False,
+    "snap_intersections": False,
     "use_angle_snap": True,
     "arc_2pt_use_axis_colors": True,
     "arc_2pt_overlay_col": (0.2, 0.2, 0.2, 1.0),
@@ -246,6 +247,7 @@ def reset_state_from_context(ctx):
     keep_s_ecen  = state.get("snap_edge_center", False)
     keep_s_fcen  = state.get("snap_face_center", False)
     keep_s_faces = state.get("snap_faces", False)
+    keep_s_intersections = state.get("snap_intersections", False)
     keep_compass = state.get("use_angle_snap", True)
     keep_axis_2pt = state.get("arc_2pt_use_axis_colors", True)
     keep_overlay_2pt = state.get("arc_2pt_overlay_col", (0.2, 0.2, 0.2, 1.0))
@@ -274,6 +276,7 @@ def reset_state_from_context(ctx):
         "snap_edge_center": keep_s_ecen,
         "snap_face_center": keep_s_fcen,
         "snap_faces": keep_s_faces,
+        "snap_intersections": keep_s_intersections,
         "use_angle_snap": keep_compass,
         "arc_2pt_use_axis_colors": keep_axis_2pt,
         "arc_2pt_overlay_col": keep_overlay_2pt,
