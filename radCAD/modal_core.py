@@ -778,6 +778,11 @@ def finish_modal(self, ctx):
             "1POINT",
             "2POINT",
             "3POINT",
+            "LINE_POLY",
+            "LINE_PERP_FROM_CURVE",
+            "LINE_TAN_TAN",
+            "LINE_PERP_TO_TWO_CURVES",
+            "LINE_TANGENT_FROM_CURVE",
             "CIRCLE_2POINT",
             "CIRCLE_3POINT",
             "CIRCLE_TAN_TAN",
@@ -794,6 +799,8 @@ def finish_modal(self, ctx):
             tool_mode = state.get("tool_mode", "")
             if tool_mode in {"1POINT", "2POINT", "3POINT"}:
                 ctx.scene.radcad_arc_icon = "arc_default"
+            elif tool_mode.startswith("LINE_"):
+                ctx.scene.radcad_line_icon = "line_default"
             elif tool_mode.startswith("CIRCLE_"):
                 ctx.scene.radcad_circle_icon = "circle"
             elif tool_mode.startswith("ELLIPSE_"):

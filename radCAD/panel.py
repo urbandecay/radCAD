@@ -24,6 +24,7 @@ ICON_FOLDERS = tuple(p for p in POSSIBLE_PATHS if os.path.isdir(p))
 DEFAULT_ICON_FILES = {
     "arc_default": "arc.svg",
     "circle": "circle.svg",
+    "line_default": "line_default.svg",
     "polygon_default": "polygon.svg",
 }
 
@@ -495,7 +496,7 @@ def register():
                 preview_collection.load(key, path, "IMAGE")
                 break
 
-    bpy.types.Scene.radcad_line_icon = bpy.props.StringProperty(default="line")
+    bpy.types.Scene.radcad_line_icon = bpy.props.StringProperty(default="line_default")
     bpy.types.Scene.radcad_arc_icon = bpy.props.StringProperty(default="arc_default")
     bpy.types.Scene.radcad_circle_icon = bpy.props.StringProperty(default="circle")
     bpy.types.Scene.radcad_ellipse_icon = bpy.props.StringProperty(default="ellipse")
