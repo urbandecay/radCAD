@@ -22,6 +22,7 @@ ICON_FOLDERS = tuple(p for p in POSSIBLE_PATHS if os.path.isdir(p))
 # Header-only icons are kept separate from SVG_FILES so they do not become
 # selectable tool buttons in the panels.
 DEFAULT_ICON_FILES = {
+    "circle": "circle.svg",
     "polygon_default": "polygon.svg",
 }
 
@@ -92,14 +93,12 @@ SVG_FILES = {
     "arc_1_point": "1_point_arc.svg",
     "arc_2_point": "2_point_arc.svg",
     "arc_3_point": "3_point_arc.svg",
-    "arc_from_endpoint": "arc_from_endpoint.svg",
     "line": "line.svg",
     "curve_freehand": "line_freehand.svg",
     "line_tangent_from_curve": "line_tangent_from_curve.svg",
     "line_tangent_to_two_curves": "line_tangent_to_two_curves.svg",
     "line_perpendicular_from_curve": "line_perpendicular_from_curve.svg",
     "line_perpendicular_to_two_curves": "line_perpendicular_to_two_curves.svg",
-    "circle": "circle.svg",
     "circle_2_points": "circle_2_points.svg",
     "circle_3_points": "circle_3_points.svg",
     "circle_tangent_to_three_curves": "circle_tangent_to_three_curves.svg",
@@ -130,7 +129,6 @@ TOOL_LABELS = {
     "arc_1_point": "1 Point Arc",
     "arc_2_point": "2 Point Arc",
     "arc_3_point": "3 Point Arc",
-    "arc_from_endpoint": "Arc from Endpoint",
     "circle_2_points": "2 Point Circle",
     "circle_3_points": "3 Point Circle",
     "circle_tangent_to_three_curves": "Circle Tangent to Three Curves",
