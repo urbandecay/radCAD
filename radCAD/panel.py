@@ -22,6 +22,7 @@ ICON_FOLDERS = tuple(p for p in POSSIBLE_PATHS if os.path.isdir(p))
 # Header-only icons are kept separate from SVG_FILES so they do not become
 # selectable tool buttons in the panels.
 DEFAULT_ICON_FILES = {
+    "arc_default": "arc.svg",
     "circle": "circle.svg",
     "polygon_default": "polygon.svg",
 }
@@ -495,7 +496,7 @@ def register():
                 break
 
     bpy.types.Scene.radcad_line_icon = bpy.props.StringProperty(default="line")
-    bpy.types.Scene.radcad_arc_icon = bpy.props.StringProperty(default="arc_1_point")
+    bpy.types.Scene.radcad_arc_icon = bpy.props.StringProperty(default="arc_default")
     bpy.types.Scene.radcad_circle_icon = bpy.props.StringProperty(default="circle")
     bpy.types.Scene.radcad_ellipse_icon = bpy.props.StringProperty(default="ellipse")
     bpy.types.Scene.radcad_polygon_icon = bpy.props.StringProperty(default="polygon_default")
