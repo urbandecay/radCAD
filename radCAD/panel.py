@@ -25,6 +25,7 @@ DEFAULT_ICON_FILES = {
     "arc_default": "arc.svg",
     "circle": "circle.svg",
     "line_default": "line_default.svg",
+    "point_default": "point.svg",
     "polygon_default": "polygon.svg",
 }
 
@@ -101,6 +102,8 @@ SVG_FILES = {
     "line_tangent_to_two_curves": "line_tangent_to_two_curves.svg",
     "line_perpendicular_from_curve": "line_perpendicular_from_curve.svg",
     "line_perpendicular_to_two_curves": "line_perpendicular_to_two_curves.svg",
+    "point_by_arcs": "point_by_arcs.svg",
+    "point_center": "point_center.svg",
     "circle_2_points": "circle_2_points.svg",
     "circle_3_points": "circle_3_points.svg",
     "circle_tangent_to_three_curves": "circle_tangent_to_three_curves.svg",
@@ -503,7 +506,7 @@ def register():
     bpy.types.Scene.radcad_polygon_icon = bpy.props.StringProperty(default="polygon_default")
     bpy.types.Scene.radcad_curve_icon = bpy.props.StringProperty(default="curve_interpolate_points")
     bpy.types.Scene.radcad_rectangle_icon = bpy.props.StringProperty(default="rectangle_from_center")
-    bpy.types.Scene.radcad_point_icon = bpy.props.StringProperty(default="point_by_arcs")
+    bpy.types.Scene.radcad_point_icon = bpy.props.StringProperty(default="point_default")
     bpy.types.Scene.radcad_dimension_icon = bpy.props.StringProperty(default="dimension_linear")
 
     for cls in classes:

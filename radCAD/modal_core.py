@@ -778,6 +778,8 @@ def finish_modal(self, ctx):
             "1POINT",
             "2POINT",
             "3POINT",
+            "POINT_BY_ARCS",
+            "POINT_CENTER",
             "LINE_POLY",
             "LINE_PERP_FROM_CURVE",
             "LINE_TAN_TAN",
@@ -799,6 +801,8 @@ def finish_modal(self, ctx):
             tool_mode = state.get("tool_mode", "")
             if tool_mode in {"1POINT", "2POINT", "3POINT"}:
                 ctx.scene.radcad_arc_icon = "arc_default"
+            elif tool_mode in {"POINT_BY_ARCS", "POINT_CENTER"}:
+                ctx.scene.radcad_point_icon = "point_default"
             elif tool_mode.startswith("LINE_"):
                 ctx.scene.radcad_line_icon = "line_default"
             elif tool_mode.startswith("CIRCLE_"):
