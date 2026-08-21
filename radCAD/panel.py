@@ -24,6 +24,7 @@ ICON_FOLDERS = tuple(p for p in POSSIBLE_PATHS if os.path.isdir(p))
 DEFAULT_ICON_FILES = {
     "arc_default": "arc.svg",
     "circle": "circle.svg",
+    "ellipse": "ellipse.svg",
     "line_default": "line_default.svg",
     "point_default": "point.svg",
     "polygon_default": "polygon.svg",
@@ -110,7 +111,6 @@ SVG_FILES = {
     "circle_tangent_to_three_curves": "circle_tangent_to_three_curves.svg",
     "circle_tangent_to_two_curves": "circle_tangent_to_two_curves.svg",
     "curve_interpolate_points": "curve_interpolate_points.svg",
-    "ellipse": "ellipse.svg",
     "ellipse_foci_point": "ellipse_foci_point.svg",
     "ellipse_from_corners": "ellipse_from_corners.svg",
     "ellipse_from_endpoints": "ellipse_from_endpoints.svg",
