@@ -174,25 +174,47 @@ class PolygonTool_CenterCorner(SurfaceDrawTool):
 
     def refresh_preview(self):
         """Forces preview update using current state (for live typing)."""
-        if self.stage == 1 and self.pivot:
-            # Re-calculate angle based on last current mouse pos vs pivot
-            d_vec = self.current - self.pivot
-            d2 = world_to_plane(d_vec, self.Xp, self.Yp)
-            rot_angle = math.atan2(d2.y, d2.x)
-            
-            # Update 'current' point to reflect the new typed radius
-            dir_vec = d_vec.normalized()
-            self.current = self.pivot + (dir_vec * self.radius)
-            self.state["current"] = self.current
-            
-            self.preview_pts = polygon_points_world(
-                self.pivot,
-                self.radius,
-                rot_angle,
-                self.segments,
-                self.Xp,
-                self.Yp
-            )
+        if (
+            self.stage != 1
+            or self.pivot is None
+            or self.current is None
+            or self.Xp is None
+            or self.Yp is None
+        ):
+            self.preview_pts = []
+            self.state["preview_pts"] = self.preview_pts
+            return
+
+        self.segments = max(3, int(self.state.get("segments", self.segments)))
+        self.state["segments"] = self.segments
+
+        # Re-calculate angle based on last current mouse pos vs pivot.
+        d_vec = self.current - self.pivot
+        if d_vec.length <= 1e-6:
+            self.preview_pts = []
+            self.state["preview_pts"] = self.preview_pts
+            return
+
+        d2 = world_to_plane(d_vec, self.Xp, self.Yp)
+        rot_angle = math.atan2(d2.y, d2.x)
+
+        # Update 'current' point to reflect the new typed radius.
+        self.radius = max(0.0, float(self.radius))
+        self.current = self.pivot + (d_vec.normalized() * self.radius)
+        self.state["current"] = self.current
+        self.state["radius"] = self.radius
+
+        self.preview_pts = polygon_points_world(
+            self.pivot,
+            self.radius,
+            rot_angle,
+            self.segments,
+            self.Xp,
+            self.Yp
+        )
+        # Segment changes arrive through the modal wheel handler without a
+        # mouse move, so publish the new points immediately for the draw code.
+        self.state["preview_pts"] = self.preview_pts
 
     def handle_input(self, context, event):
         if super().handle_plane_lock_input(context, event):

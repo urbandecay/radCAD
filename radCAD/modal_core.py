@@ -959,6 +959,7 @@ def modal_arc_common(self, ctx, ev):
                 self.manager.active_tool.segments = state["segments"]
                 if hasattr(self.manager.active_tool, "refresh_preview"):
                     self.manager.active_tool.refresh_preview()
+                    self.manager.sync_tool_from_state()
         ctx.area.tag_redraw()
         return {'RUNNING_MODAL'}
         
@@ -970,6 +971,7 @@ def modal_arc_common(self, ctx, ev):
                 self.manager.active_tool.segments = state["segments"]
                 if hasattr(self.manager.active_tool, "refresh_preview"):
                     self.manager.active_tool.refresh_preview()
+                    self.manager.sync_tool_from_state()
         ctx.area.tag_redraw()
         return {'RUNNING_MODAL'}
 
