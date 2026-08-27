@@ -6,9 +6,73 @@ bl_info = {
 
 import bpy
 import bpy.utils.previews
+import importlib
 import os
+import sys
+import traceback
 from .modal_state import state 
 from .modal_core import DrawManager
+
+
+_reload_pending = False
+
+
+def _reload_radCAD_timer():
+    """Reload the complete rCAD package after the button operation returns."""
+    global _reload_pending
+    _reload_pending = False
+
+    package_name = __package__.split('.')[0]
+    old_package = sys.modules.get(package_name)
+    if old_package is None:
+        print(f"rCAD reload failed: {package_name!r} is not loaded")
+        return None
+
+    addon_enabled = getattr(old_package, "__addon_enabled__", False)
+    addon_persistent = getattr(old_package, "__addon_persistent__", False)
+
+    try:
+        old_package.unregister()
+        package_modules = [
+            name for name in tuple(sys.modules)
+            if name == package_name or name.startswith(package_name + ".")
+        ]
+        for name in sorted(
+            package_modules,
+            key=lambda item: (item.count('.'), item),
+            reverse=True,
+        ):
+            sys.modules.pop(name, None)
+
+        importlib.invalidate_caches()
+        new_package = importlib.import_module(package_name)
+        new_package.register()
+        new_package.__addon_enabled__ = addon_enabled
+        new_package.__addon_persistent__ = addon_persistent
+        print("rCAD reloaded")
+    except Exception:
+        traceback.print_exc()
+
+    return None
+
+
+class RADCAD_OT_ReloadAddon(bpy.types.Operator):
+    bl_idname = "wm.radcad_reload_addon"
+    bl_label = "Reload rCAD"
+    bl_description = "Reload rCAD without restarting Blender or saving the file"
+    bl_options = {'REGISTER'}
+
+    def execute(self, context):
+        global _reload_pending
+        if _reload_pending:
+            self.report({'WARNING'}, "rCAD reload is already pending.")
+            return {'CANCELLED'}
+
+        _reload_pending = True
+        bpy.app.timers.register(_reload_radCAD_timer, first_interval=0.1)
+        self.report({'INFO'}, "rCAD will reload after this operation finishes.")
+        return {'FINISHED'}
+
 
 CURRENT_DIR = os.path.dirname(__file__)
 POSSIBLE_PATHS = [
@@ -37,6 +101,7 @@ IMPLEMENTED_TOOLS = {
     "arc_1_point",
     "arc_2_point",
     "arc_3_point",
+    "circle_center_radius",
     "circle_2_points",
     "circle_3_points",    "circle_tangent_to_three_curves", 
     "circle_tangent_to_two_curves", 
@@ -76,6 +141,7 @@ TOOL_OPERATORS = {
     "arc_1_point": "view3d.arc_overlay_preview",
     "arc_2_point": "view3d.arc_2pt",
     "arc_3_point": "view3d.arc_3pt",
+    "circle_center_radius": "view3d.circle_1pt",
     "circle_2_points": "view3d.circle_2pt",
     "circle_3_points": "view3d.circle_3pt",
     "circle_tangent_to_three_curves": "view3d.radcad_circle_tan_tan_tan",
@@ -106,6 +172,7 @@ SVG_FILES = {
     "line_perpendicular_to_two_curves": "line_perpendicular_to_two_curves.svg",
     "point_by_arcs": "point_by_arcs.svg",
     "point_center": "point_center.svg",
+    "circle_center_radius": "circle_center_radius.svg",
     "circle_2_points": "circle_2_points.svg",
     "circle_3_points": "circle_3_points.svg",
     "circle_tangent_to_three_curves": "circle_tangent_to_three_curves.svg",
@@ -135,10 +202,15 @@ TOOL_LABELS = {
     "arc_1_point": "1 Point Arc",
     "arc_2_point": "2 Point Arc",
     "arc_3_point": "3 Point Arc",
+    "circle_center_radius": "1 Point Circle",
     "circle_2_points": "2 Point Circle",
     "circle_3_points": "3 Point Circle",
     "circle_tangent_to_three_curves": "Circle Tangent to Three Curves",
     "circle_tangent_to_two_curves": "Circle Tangent to Two Curves",
+    "polygon_cen_cor": "Polygon Center Corner",
+    "polygon_cen_tan": "Polygon Center Tangent",
+    "polygon_cor_cor": "Polygon Corner Corner",
+    "polygon_size_size": "Polygon Side Size",
 }
 
 preview_collection = None
@@ -199,6 +271,8 @@ class RADCAD_OT_generic(bpy.types.Operator):
         elif self.panel == "arc" and self.name == "arc_3_point":
             bpy.ops.view3d.arc_3pt('INVOKE_DEFAULT')
             
+        elif self.panel == "circle" and self.name == "circle_center_radius":
+            bpy.ops.view3d.circle_1pt('INVOKE_DEFAULT')
         elif self.panel == "circle" and self.name == "circle_2_points":
             bpy.ops.view3d.circle_2pt('INVOKE_DEFAULT')
         elif self.panel == "circle" and self.name == "circle_3_points": 
@@ -286,6 +360,20 @@ class RADCAD_PT_Main(bpy.types.Panel):
         preferences_button.module = __package__
         layout.separator()
 
+
+class RADCAD_PT_AddonDevelopment(bpy.types.Panel):
+    bl_label = "Addon Development"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "rCAD"
+    bl_parent_id = "RADCAD_PT_Main"
+    bl_options = {'DEFAULT_CLOSED'}
+
+    def draw(self, context):
+        box = self.layout.box()
+        box.label(text="Reload the complete rCAD addon")
+        box.operator("wm.radcad_reload_addon", text="Reload rCAD", icon='FILE_REFRESH')
+
 class RADCAD_PT_Point(bpy.types.Panel):
     bl_label = "Point"
     bl_space_type = "VIEW_3D"
@@ -332,7 +420,17 @@ class RADCAD_PT_Circle(bpy.types.Panel):
 
     def draw(self, context):
         draw_header(self.layout, context.scene.radcad_circle_icon)
-        for key in sorted(k for k in SVG_FILES if k.startswith("circle")):
+        circle_order = (
+            "circle_center_radius",
+            "circle_2_points",
+            "circle_3_points",
+            "circle_tangent_to_three_curves",
+            "circle_tangent_to_two_curves",
+        )
+        for key in circle_order:
+            if key in SVG_FILES:
+                draw_tool_button(self.layout, key)
+        for key in sorted(k for k in SVG_FILES if k.startswith("circle") and k not in circle_order):
             draw_tool_button(self.layout, key)
 
 class RADCAD_PT_Ellipse(bpy.types.Panel):
@@ -466,8 +564,10 @@ class RADCAD_PT_ConstructionLine(bpy.types.Panel):
 
 classes = (
     RADCAD_OT_reset_overlays, 
+    RADCAD_OT_ReloadAddon,
     RADCAD_OT_generic,
     RADCAD_PT_Main,
+    RADCAD_PT_AddonDevelopment,
     RADCAD_PT_Point,
     RADCAD_PT_Line,
     RADCAD_PT_Arc,

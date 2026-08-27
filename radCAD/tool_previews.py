@@ -123,6 +123,8 @@ def get_render_settings(ctx):
         "COL_OVERLAY_3PT": (0.3, 0.3, 0.3, 0.5),
         "CIRCLE_2PT_USE_AXIS_COLORS": True,
         "COL_OVERLAY_C2PT": (0.3, 0.3, 0.3, 0.5),
+        "CIRCLE_1PT_USE_AXIS_COLORS": True,
+        "COL_OVERLAY_C1PT": (0.1, 0.1, 0.1, 1.0),
         "CIRCLE_3PT_USE_AXIS_COLORS": True,
         "COL_OVERLAY_C3PT": (0.3, 0.3, 0.3, 0.5),
         "ELLIPSE_RADIUS_USE_AXIS_COLORS": True,
@@ -216,6 +218,9 @@ def get_render_settings(ctx):
         prefs["SNAP_LINE_COL_C2PT"] = addon_prefs.snap_line_color_c2pt
         prefs["CIRCLE_2PT_USE_AXIS_COLORS"] = addon_prefs.circle_2pt_use_axis_colors
         prefs["COL_OVERLAY_C2PT"] = addon_prefs.color_circle_2pt_overlay
+
+        prefs["CIRCLE_1PT_USE_AXIS_COLORS"] = getattr(addon_prefs, "circle_1pt_use_axis_colors", True)
+        prefs["COL_OVERLAY_C1PT"] = getattr(addon_prefs, "color_circle_1pt_overlay", (0.1, 0.1, 0.1, 1.0))
 
         prefs["SNAP_MARKER_SIZE_C3PT"] = addon_prefs.snap_marker_size_c3pt
         prefs["SNAP_MARKER_COL_C3PT"] = addon_prefs.snap_marker_color_c3pt
@@ -475,10 +480,25 @@ def draw_preview_1point(ctx, shaders, prefs):
     pt_size = prefs.get("PREVIEW_VERTEX_SIZE", 5)
 
     if state["stage"] == 1 and state["current"] is not None:
-        draw_line(ctx, shaders, pv, state["current"], prefs["COL_START"], prefs)
+        diff = state["current"] - pv
+        if state.get("tool_mode") == "CIRCLE_1POINT":
+            col = get_axis_aligned_color(
+                diff,
+                prefs.get("COL_OVERLAY_C1PT", (0.1, 0.1, 0.1, 1.0)),
+                prefs,
+                "CIRCLE_1PT_USE_AXIS_COLORS",
+            )
+            draw_points(ctx, shaders, [pv], (0, 0, 0, 1), pt_size, prefs)
+            draw_points(ctx, shaders, [state["current"]], (0, 0, 0, 1), pt_size, prefs)
+        else:
+            col = prefs["COL_START"]
+        draw_line(ctx, shaders, pv, state["current"], col, prefs)
         
-        if state.get("tool_mode") == "CIRCLE_1POINT": # Logic kept for regular 1POINT arcs
-            pass
+        if state.get("tool_mode") == "CIRCLE_1POINT":
+            pts = state.get("preview_pts", [])
+            if pts:
+                draw_polyline(ctx, shaders, pts, (0, 0, 0, 1), prefs)
+                draw_points(ctx, shaders, pts, (0, 0, 0, 1), pt_size, prefs)
     
     elif state["stage"] == 2:
         if state["start"]:
@@ -1057,7 +1077,7 @@ def draw_cb_3d():
         elif mode == "CIRCLE_TAN_TAN":
             draw_preview_tan_tan(ctx, shaders, settings)
 
-        elif mode in ["1POINT", "ROTATE"]:
+        elif mode in ["1POINT", "CIRCLE_1POINT", "ROTATE"]:
             draw_preview_1point(ctx, shaders, settings)
             
         elif mode == "2POINT" or mode == "CIRCLE_2POINT":

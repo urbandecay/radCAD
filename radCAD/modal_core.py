@@ -148,6 +148,9 @@ class ModalManager:
             from .operators import arc_tools
             self.active_tool = arc_tools.ArcTool_3Point(self)
             
+        elif t_mode == "CIRCLE_1POINT":
+            from .operators import circle_tools
+            self.active_tool = circle_tools.CircleTool_1Point(self)
         elif t_mode == "CIRCLE_2POINT": 
             from .operators import circle_tools
             self.active_tool = circle_tools.CircleTool_2Point(self)
@@ -607,7 +610,7 @@ def commit_arc_to_mesh(ctx):
     continuous_tools = ["LINE_POLY", "CURVE_INTERPOLATE"]
     
     # Shape tools that should be closed automatically
-    shape_tools = ["CIRCLE_2POINT", "CIRCLE_3POINT", "CIRCLE_TAN_TAN", "CIRCLE_TAN_TAN_TAN", 
+    shape_tools = ["CIRCLE_1POINT", "CIRCLE_2POINT", "CIRCLE_3POINT", "CIRCLE_TAN_TAN", "CIRCLE_TAN_TAN_TAN",
                    "ELLIPSE_RADIUS", "ELLIPSE_ENDPOINTS", "ELLIPSE_CORNERS", 
                    "POLYGON_CENTER_CORNER", "POLYGON_CENTER_TANGENT", "POLYGON_CORNER_CORNER", "POLYGON_EDGE", 
                    "RECTANGLE_CENTER_CORNER", "RECTANGLE_CORNER_CORNER", "RECTANGLE_3_POINTS"]
@@ -724,6 +727,7 @@ def begin_modal(self, ctx, ev):
         "1POINT": ("arc", "arc_1_point"),
         "2POINT": ("arc", "arc_2_point"),
         "3POINT": ("arc", "arc_3_point"),
+        "CIRCLE_1POINT": ("circle", "circle_center_radius"),
         "CIRCLE_2POINT": ("circle", "circle_2_points"),
         "CIRCLE_3POINT": ("circle", "circle_3_points"),
         "CIRCLE_TAN_TAN_TAN": ("circle", "circle_tangent_to_three_curves"),
@@ -785,6 +789,7 @@ def finish_modal(self, ctx):
             "LINE_TAN_TAN",
             "LINE_PERP_TO_TWO_CURVES",
             "LINE_TANGENT_FROM_CURVE",
+            "CIRCLE_1POINT",
             "CIRCLE_2POINT",
             "CIRCLE_3POINT",
             "CIRCLE_TAN_TAN",

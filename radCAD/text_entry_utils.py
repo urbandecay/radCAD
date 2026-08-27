@@ -53,6 +53,20 @@ def apply_input_value(ctx):
                     state["accum_angle"] = 0.0
                     state["stage"] += 1
 
+        # === 1-POINT CIRCLE LOGIC ===
+        elif tool_mode == "CIRCLE_1POINT":
+            state["radius"] = abs(val_meters)
+            pv = state.get("pivot")
+            if pv is not None:
+                direction = state.get("current")
+                if direction is not None:
+                    direction = direction - pv
+                if direction is None or direction.length <= 1e-9:
+                    direction = state.get("Xp") or Vector((1, 0, 0))
+                else:
+                    direction.normalize()
+                state["current"] = pv + direction * state["radius"]
+
         # === 2-POINT LOGIC ===
         elif tool_mode == "2POINT" or tool_mode == "CIRCLE_2POINT":
             target = state.get("input_target", "RADIUS")

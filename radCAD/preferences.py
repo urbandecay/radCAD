@@ -20,6 +20,7 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
     show_points_by_arc_settings: bpy.props.BoolProperty(name="Points by Arc Settings", default=True)
     show_arc_2pt_settings: bpy.props.BoolProperty(name="2 Point Arc Settings", default=True)
     show_arc_3pt_settings: bpy.props.BoolProperty(name="3 Point Arc Settings", default=True)
+    show_circle_1pt_settings: bpy.props.BoolProperty(name="1 Point Circle Settings", default=True)
     show_circle_2pt_settings: bpy.props.BoolProperty(name="2 Point Circle Settings", default=True)
     show_circle_3pt_settings: bpy.props.BoolProperty(name="3 Point Circle Settings", default=True)
     show_line_settings: bpy.props.BoolProperty(name="Line Settings", default=True)
@@ -537,6 +538,21 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
         description="The color for the guide lines when not using axis colors"
     )
 
+    # --- 1 Point Circle ---
+    circle_1pt_use_axis_colors: bpy.props.BoolProperty(
+        name="Use Axis Colors",
+        description="When the radius direction aligns to X, Y, or Z, the guide line will turn the axis color. If off, it stays the default color",
+        default=True
+    )
+    color_circle_1pt_overlay: bpy.props.FloatVectorProperty(
+        name="Overlay Color",
+        subtype='COLOR',
+        size=4,
+        min=0.0, max=1.0,
+        default=(0.1, 0.1, 0.1, 1.0),
+        description="The color for the radius guide line when not using axis colors"
+    )
+
     # --- 2 Point Circle ---
     snap_marker_size_c2pt: bpy.props.IntProperty(name="Marker Size", default=6, min=2, max=20)
     snap_marker_color_c2pt: bpy.props.FloatVectorProperty(
@@ -959,6 +975,18 @@ class RADCAD_Preferences(bpy.types.AddonPreferences):
             self.draw_group_label(col, "Visuals (Preview Lines):", icon='COLOR')
             self.draw_property_row(col, "Start Line Color:", "color_arc_start")
             self.draw_property_row(col, "End Line Color:", "color_arc_end")
+
+        # 9-12. 2/3 Point Arcs and Circles
+        col = self.draw_section_header(layout, "1 Point Circle Settings", "show_circle_1pt_settings", icon='MESH_CIRCLE', tool_key='circle_center_radius')
+        if col:
+            self.draw_group_label(col, "Snapping Visuals:", icon='COLOR')
+            self.draw_property_row(col, "Use Axis Colors:", "circle_1pt_use_axis_colors")
+            self.draw_property_row(
+                col,
+                "Overlay Color:",
+                "color_circle_1pt_overlay",
+                enabled=not self.circle_1pt_use_axis_colors,
+            )
 
         # 9-12. 2/3 Point Arcs and Circles
         arc_circle_tools = [

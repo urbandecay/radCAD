@@ -32,6 +32,8 @@ state = {
     "arc_2pt_overlay_col": (0.2, 0.2, 0.2, 1.0),
     "arc_3pt_use_axis_colors": True,
     "arc_3pt_overlay_col": (0.2, 0.2, 0.2, 1.0),
+    "circle_1pt_use_axis_colors": True,
+    "circle_1pt_overlay_col": (0.2, 0.2, 0.2, 1.0),
     "circle_2pt_use_axis_colors": True,
     "circle_2pt_overlay_col": (0.2, 0.2, 0.2, 1.0),
     "circle_3pt_use_axis_colors": True,
@@ -129,7 +131,8 @@ state = {
     "is_perpendicular": False,
     "ui_hitboxes": {},
     "snap_point": None,
-    "current_axis_vector": None # NEW: Tracks axis alignment for coloring
+    "current_axis_vector": None, # NEW: Tracks axis alignment for coloring
+    "constraint_axis": None
 }
 
 style = {
@@ -170,6 +173,8 @@ def reset_state_from_context(ctx):
     circle_tan3_show_t = True; circle_tan3_col_t = (0.0, 0.8, 1.0, 0.5); circle_tan3_width_t = 2.0
     circle_tan2_show_c = True; circle_tan2_col_c = (0.0, 0.8, 1.0, 0.5); circle_tan2_width_c = 2.0
     circle_tan2_show_t = True; circle_tan2_col_t = (0.0, 0.8, 1.0, 0.5); circle_tan2_width_t = 2.0
+    circle_1pt_axis = True
+    circle_1pt_overlay = (0.2, 0.2, 0.2, 1.0)
 
     if prefs:
         c_size = prefs.compass_size
@@ -184,6 +189,10 @@ def reset_state_from_context(ctx):
         precision = getattr(prefs, "display_precision", 3)
         use_axis_cols = getattr(prefs, "use_axis_colors", True)
         axis_dim = getattr(prefs, "axis_color_dim", 1.0)
+        circle_1pt_axis = getattr(prefs, "circle_1pt_use_axis_colors", True)
+        circle_1pt_overlay = tuple(
+            getattr(prefs, "color_circle_1pt_overlay", (0.2, 0.2, 0.2, 1.0))
+        )
         w_rad = getattr(prefs, "weld_radius", 0.001)
         w_faces = getattr(prefs, "weld_to_faces", True)
         show_keys = getattr(prefs, "show_hotkeys", True)
@@ -284,6 +293,8 @@ def reset_state_from_context(ctx):
         "arc_3pt_overlay_col": keep_overlay_3pt,
         "circle_2pt_use_axis_colors": keep_axis_c2pt,
         "circle_2pt_overlay_col": keep_overlay_c2pt,
+        "circle_1pt_use_axis_colors": circle_1pt_axis,
+        "circle_1pt_overlay_col": circle_1pt_overlay,
         "circle_3pt_use_axis_colors": keep_axis_c3pt,
         "circle_3pt_overlay_col": keep_overlay_c3pt,
         "auto_weld": keep_weld,
@@ -345,5 +356,6 @@ def reset_state_from_context(ctx):
         "last_surface_hit": None, "last_surface_normal": None,
         "input_mode": None, "input_string": "", "input_screen_pos": None, "cursor_index": 0,
         "geometry_snap": False, "is_perpendicular": False, "ui_hitboxes": {}, "snap_point": None,
+        "constraint_axis": None,
         "current_axis_vector": None # Reset axis tracker
     })

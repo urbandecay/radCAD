@@ -209,7 +209,7 @@ def draw_hotkeys_panel():
         show_perp = True
     elif tool_mode in ["1POINT", "ROTATE"]:
         show_perp = True
-    elif tool_mode in ["ELLIPSE_RADIUS", "ELLIPSE_ENDPOINTS", "ELLIPSE_FOCI", "POLYGON_CENTER_CORNER", "POLYGON_CENTER_TANGENT", "POLYGON_CORNER_CORNER", "POLYGON_EDGE", "RECTANGLE_3_POINTS"] and state["stage"] >= 1:
+    elif tool_mode in ["ELLIPSE_RADIUS", "ELLIPSE_ENDPOINTS", "ELLIPSE_FOCI", "CIRCLE_1POINT", "POLYGON_CENTER_CORNER", "POLYGON_CENTER_TANGENT", "POLYGON_CORNER_CORNER", "POLYGON_EDGE", "RECTANGLE_3_POINTS"] and state["stage"] >= 1:
         show_perp = True
     elif tool_mode == "ELLIPSE_CORNERS" and state["stage"] == 1:
         show_perp = True
@@ -248,6 +248,10 @@ def draw_hotkeys_panel():
             lines.append(("D: Set Diameter", None))
             if state["stage"] == 2:
                 lines.append(("R: Set Radius", None))
+        elif state.get("tool_mode") == "CIRCLE_1POINT":
+            lines.append(("R: Set Radius", None))
+            lines.append(("Segments:", None))
+            lines.append(("Alt: Bypass Axis Snap", None))
         
         elif state.get("tool_mode") == "POLYGON_CENTER_CORNER":
             lines.append(("R: Set Radius", None))
@@ -616,6 +620,8 @@ def draw_hud_2d():
                         label = "F:" if state["stage"] == 1 else ""
                     elif tool_mode == "ELLIPSE_RADIUS":
                         label = "D:" if state["stage"] == 1 else "R:"
+                    elif tool_mode == "CIRCLE_1POINT":
+                        label = "R:"
                     elif tool_mode == "POLYGON_CENTER_CORNER":
                         label = "R:"
                     elif tool_mode == "POLYGON_CENTER_TANGENT":
@@ -624,7 +630,7 @@ def draw_hud_2d():
                         label = "L:"
                     
                     if state["input_mode"] == 'SEGMENTS':
-                        label = "Segments:" if tool_mode in ["POLYGON_CENTER_CORNER", "POLYGON_CENTER_TANGENT", "POLYGON_CORNER_CORNER", "POLYGON_EDGE"] else "S:"
+                        label = "Segments:" if tool_mode in ["CIRCLE_1POINT", "POLYGON_CENTER_CORNER", "POLYGON_CENTER_TANGENT", "POLYGON_CORNER_CORNER", "POLYGON_EDGE"] else "S:"
                     
                     r_txt = get_display_str(label, state['input_string'], True)
                     h1 = draw_ui_box_generic(px, current_y, r_txt, active=True)
@@ -673,7 +679,7 @@ def draw_hud_2d():
                         r_txt_r = "R: " + format_length(r_val_y)
                         h2 = draw_ui_box_generic(px, current_y, r_txt_r)
                         current_y -= (h2 + 4)
-                elif tool_mode in ["POLYGON_CENTER_CORNER", "POLYGON_CENTER_TANGENT", "POLYGON_CORNER_CORNER", "POLYGON_EDGE"]:
+                elif tool_mode in ["CIRCLE_1POINT", "POLYGON_CENTER_CORNER", "POLYGON_CENTER_TANGENT", "POLYGON_CORNER_CORNER", "POLYGON_EDGE"]:
                     # Label based on tool
                     label = "R: "
                     if tool_mode == "POLYGON_CENTER_TANGENT": label = "A: "

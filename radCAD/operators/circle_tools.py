@@ -3,7 +3,7 @@ import bpy
 import bmesh
 from mathutils import Vector, geometry
 from bpy_extras import view3d_utils
-from ..geometry_utils import arc_points_world, snap_angle_soft
+from ..geometry_utils import arc_points_world
 from ..plane_utils import world_to_plane, plane_to_world
 from ..inference_utils import get_axis_snapped_location
 from .base_tool import SurfaceDrawTool 
@@ -162,6 +162,254 @@ def get_selected_edge_chains(obj, include_verts=False):
 # =========================================================================
 # --- 4. TOOL CLASSES ---
 # =========================================================================
+
+class CircleTool_1Point(SurfaceDrawTool):
+    """Create a full circle from a center point and one radius point."""
+
+    def __init__(self, core):
+        super().__init__(core)
+        self.mode = "CIRCLE_1POINT"
+        self.segments = self.state["segments"]
+        self.radius = 0.0
+        self.current = None
+        self.preview_pts = []
+        self.ref_normal = Vector((0, 0, 1))
+        self.vertical_override_axis = None
+        self.major_axis = Vector((1, 0, 0))
+        self.constraint_axis = None
+        self.constraint_axis_name = None
+        self._is_vert_last = False
+
+    def handle_input(self, context, event):
+        if super().handle_plane_lock_input(context, event):
+            if self.Zp:
+                self.ref_normal = self.Zp.copy()
+            return True
+
+        if event.type == 'P' and event.value == 'PRESS':
+            if self.stage == 0:
+                return False
+            self.state["is_perpendicular"] = not self.state.get(
+                "is_perpendicular", False
+            )
+            self.vertical_override_axis = None
+            self.state["locked"] = True
+            self.state["locked_normal"] = self.ref_normal
+            return True
+
+        if (
+            event.type in {'X', 'Y'}
+            and event.value == 'PRESS'
+            and self.stage > 0
+            and self._is_vert_last
+        ):
+            # In the vertical snap case X/Y choose which screen-facing plane
+            # axis is used, matching the Polygon Center Corner tool.
+            self.vertical_override_axis = event.type
+            return True
+
+        if event.type in {'X', 'Y', 'Z'} and event.value == 'PRESS' and self.stage > 0:
+            axes = {'X': self.Xp, 'Y': self.Yp, 'Z': self.Zp}
+            new_axis = axes.get(event.type)
+            if new_axis is None:
+                return False
+
+            if self.constraint_axis_name == event.type:
+                self.constraint_axis = None
+                self.constraint_axis_name = None
+                self.state["constraint_axis"] = None
+            else:
+                self.constraint_axis = new_axis
+                self.constraint_axis_name = event.type
+                self.state["constraint_axis"] = new_axis
+            return True
+
+        return False
+
+    def update(self, context, event, snap_point, snap_normal):
+        if self.stage == 0:
+            self.update_initial_plane(context, event, snap_point, snap_normal)
+            if self.Zp:
+                self.ref_normal = self.Zp.copy()
+            return
+
+        if self.stage != 1 or self.pivot is None or snap_point is None:
+            return
+
+        if self.Xp is None or self.Yp is None or self.Zp is None:
+            return
+
+        pv = self.pivot
+        coord = (event.mouse_region_x, event.mouse_region_y)
+        target = snap_point.copy()
+
+        # Apply an explicit local-plane axis constraint first. Alt temporarily
+        # bypasses both this constraint and the automatic axis inference.
+        if self.constraint_axis is not None and not event.alt:
+            if self.state.get("geometry_snap", False):
+                diff = target - pv
+                target = pv + self.constraint_axis * diff.dot(self.constraint_axis)
+            else:
+                region = context.region
+                rv3d = context.region_data
+                ray_origin = view3d_utils.region_2d_to_origin_3d(
+                    region, rv3d, coord
+                )
+                ray_vector = view3d_utils.region_2d_to_vector_3d(
+                    region, rv3d, coord
+                )
+                result = geometry.intersect_line_line(
+                    ray_origin,
+                    ray_origin + ray_vector,
+                    pv,
+                    pv + self.constraint_axis,
+                )
+                if result:
+                    target = result[1]
+
+        elif not self.state.get("geometry_snap", False) and not event.alt:
+            strength_deg = self.state.get("snap_strength", 6.0)
+            strength_deg = max(0.1, min(89.0, strength_deg))
+            axis_thresh = math.cos(math.radians(strength_deg))
+            inferred, _, _ = get_axis_snapped_location(
+                pv,
+                coord,
+                context,
+                snap_threshold=axis_thresh,
+            )
+            if inferred:
+                target = inferred
+
+        # Detect vertical/perpendicular intent before projecting to the plane.
+        # This lets a vertical radius create a screen-facing circle plane.
+        bridge = target - pv
+        if bridge.length_squared > 1e-8:
+            b_vec = bridge.normalized()
+            self.major_axis = b_vec
+            up = self.ref_normal
+            is_perp = self.state.get("is_perpendicular", False)
+            is_vertical = abs(b_vec.dot(up)) > (
+                0.98 if self._is_vert_last else 0.995
+            )
+            self._is_vert_last = is_vertical
+
+            if is_perp or is_vertical:
+                if is_vertical:
+                    ax_x, ax_y, _ = orthonormal_basis_from_normal(up)
+                    rv3d = getattr(context, "region_data", None)
+                    if self.vertical_override_axis is None and rv3d is not None:
+                        view_fwd = rv3d.view_matrix.inverted().to_3x3() @ Vector(
+                            (0, 0, -1)
+                        )
+                        new_z = (
+                            ax_x
+                            if abs(view_fwd.dot(ax_x)) > abs(view_fwd.dot(ax_y))
+                            else ax_y
+                        )
+                    elif self.vertical_override_axis == 'X':
+                        new_z = ax_x
+                    else:
+                        new_z = ax_y
+
+                    if new_z.length > 1e-4:
+                        if rv3d is not None:
+                            view_fwd = rv3d.view_matrix.inverted().to_3x3() @ Vector(
+                                (0, 0, -1)
+                            )
+                            if new_z.dot(view_fwd) > 0:
+                                new_z = -new_z
+                        self.Zp = new_z.normalized()
+                        self.Yp = up.normalized()
+                        self.Xp = self.Yp.cross(self.Zp).normalized()
+                else:
+                    new_z = b_vec.cross(up)
+                    if new_z.length > 1e-4:
+                        new_z.normalize()
+                        rv3d = getattr(context, "region_data", None)
+                        if rv3d is not None:
+                            view_fwd = rv3d.view_matrix.inverted().to_3x3() @ Vector(
+                                (0, 0, -1)
+                            )
+                            if new_z.dot(view_fwd) > 0:
+                                new_z = -new_z
+                        self.Zp = new_z
+                        self.Xp = b_vec
+                        self.Yp = self.Zp.cross(self.Xp).normalized()
+            else:
+                self.Zp = up.copy()
+                self.Xp = b_vec
+                self.Yp = self.Zp.cross(self.Xp).normalized()
+
+        # Project the radius point onto the currently selected drawing plane.
+        target -= self.Zp * (target - pv).dot(self.Zp)
+        self.current = target
+
+        d_vec = target - pv
+        self.radius = d_vec.length
+        self.state["radius"] = self.radius
+        self.segments = max(3, int(self.state.get("segments", 32)))
+        self.state["segments"] = self.segments
+        self.refresh_preview()
+
+    def refresh_preview(self):
+        if self.stage != 1 or self.pivot is None:
+            self.preview_pts = []
+            self.state["preview_pts"] = self.preview_pts
+            return
+
+        self.segments = max(3, int(self.state.get("segments", self.segments)))
+        self.state["segments"] = self.segments
+
+        if self.current is None or self.Xp is None or self.Yp is None:
+            self.preview_pts = []
+            self.state["preview_pts"] = self.preview_pts
+            return
+
+        # Typed radius input changes only the size. Preserve the last cursor
+        # direction and keep the resulting point on the selected plane.
+        d_vec = self.current - self.pivot
+        d2 = world_to_plane(d_vec, self.Xp, self.Yp)
+        if d2.length > 1e-6:
+            direction = plane_to_world(d2.normalized(), self.Xp, self.Yp)
+        else:
+            direction = self.Xp.normalized()
+
+        self.radius = max(0.0, float(self.radius))
+        self.current = self.pivot + direction * self.radius
+        self.state["current"] = self.current
+        self.state["radius"] = self.radius
+        self.preview_pts = (
+            arc_points_world(
+                self.pivot,
+                self.radius,
+                0.0,
+                2 * math.pi,
+                self.segments,
+                self.Xp,
+                self.Yp,
+            )
+            if self.radius > 1e-6
+            else []
+        )
+        self.state["preview_pts"] = self.preview_pts
+
+    def handle_click(self, context, event, snap_point, snap_normal, button_id=None):
+        if self.stage == 0:
+            self.pivot = snap_point
+            self.state["pivot"] = self.pivot
+            self.state["locked"] = True
+            self.state["locked_normal"] = self.Zp
+            self.state["locked_plane_point"] = self.pivot
+            self.stage = 1
+            return 'NEXT_STAGE'
+
+        if self.stage == 1:
+            if self.radius < 1e-6:
+                return None
+            return 'FINISHED'
+
+        return None
+
 
 class CircleTool_2Point(SurfaceDrawTool):
     def __init__(self, core): 
