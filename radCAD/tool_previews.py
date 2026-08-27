@@ -470,7 +470,7 @@ def draw_preview_1point(ctx, shaders, prefs):
     c_size = state.get("compass_size", 125)
     a_inc = state.get("angle_increment", 15.0)
     
-    if center and Xc and Yc:
+    if center and Xc and Yc and state.get("tool_mode") != "CIRCLE_1POINT":
         draw_compass_geometry(ctx, shaders, center, Xc, Yc, state["compass_rot"], c_size, a_inc, compass_col, prefs)
 
     pv = state["pivot"]
