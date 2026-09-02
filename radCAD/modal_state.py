@@ -20,6 +20,7 @@ state = {
     "rectangle_y_locked": False,
     "rectangle_x_sign": 1.0,
     "rectangle_y_sign": 1.0,
+    "rectangle_square_locked": False,
 
     "Xp": None, "Yp": None, "Zp": None,
     "a0": 0.0, "a1": 0.0, "a_prev_raw": 0.0, "accum_angle": 0.0,
@@ -286,6 +287,7 @@ def reset_state_from_context(ctx):
         "rectangle_x": 0.0, "rectangle_y": 0.0,
         "rectangle_x_locked": False, "rectangle_y_locked": False,
         "rectangle_x_sign": 1.0, "rectangle_y_sign": 1.0,
+        "rectangle_square_locked": False,
         "Xp": None, "Yp": None, "Zp": None, "a0": 0.0, "a1": 0.0, "a_prev_raw": 0.0, "accum_angle": 0.0,
         "segments": getattr(scene, "arc_segments", 32),
         

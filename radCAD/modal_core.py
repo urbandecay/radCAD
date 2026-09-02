@@ -1136,6 +1136,12 @@ def modal_arc_common(self, ctx, ev):
                 
             if is_angle_stage:
                 target_mode = 'ANGLE'
+            elif (
+                tool_mode == "RECTANGLE_CENTER_CORNER"
+                and state["stage"] == 1
+                and state.get("rectangle_square_locked", False)
+            ):
+                target_mode = 'RECTANGLE_SQUARE'
             elif tool_mode == "CURVE_FREEHAND":
                 target_mode = 'MIN_DIST'
             elif tool_mode not in ["ELLIPSE_CORNERS", "ROTATE", "RECTANGLE_CENTER_CORNER"]:

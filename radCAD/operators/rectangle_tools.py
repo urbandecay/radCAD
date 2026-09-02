@@ -80,18 +80,39 @@ class RectangleTool_CenterCorner(SurfaceDrawTool):
             # The center-corner construction uses half-extents, so apply half
             # of each locked value while preserving the side selected by the
             # cursor when the dimension was entered.
-            if self.state.get("rectangle_x_locked", False):
-                dx = (
-                    self.state.get("rectangle_x_sign", 1.0)
-                    * abs(self.state.get("rectangle_x", 0.0))
-                    * 0.5
-                )
-            if self.state.get("rectangle_y_locked", False):
-                dy = (
-                    self.state.get("rectangle_y_sign", 1.0)
-                    * abs(self.state.get("rectangle_y", 0.0))
-                    * 0.5
-                )
+            x_locked = self.state.get("rectangle_x_locked", False)
+            y_locked = self.state.get("rectangle_y_locked", False)
+            if self.state.get("rectangle_square_locked", False):
+                # A square follows the larger live dimension.  If a numeric
+                # dimension is locked, use that value as the shared side.
+                locked_sizes = []
+                if x_locked:
+                    locked_sizes.append(abs(self.state.get("rectangle_x", 0.0)) * 0.5)
+                if y_locked:
+                    locked_sizes.append(abs(self.state.get("rectangle_y", 0.0)) * 0.5)
+                side = max(locked_sizes) if locked_sizes else max(abs(dx), abs(dy))
+
+                x_sign = self.state.get("rectangle_x_sign", 1.0)
+                y_sign = self.state.get("rectangle_y_sign", 1.0)
+                if not x_locked and abs(dx) > 1.0e-9:
+                    x_sign = -1.0 if dx < 0.0 else 1.0
+                if not y_locked and abs(dy) > 1.0e-9:
+                    y_sign = -1.0 if dy < 0.0 else 1.0
+                dx = x_sign * side
+                dy = y_sign * side
+            else:
+                if x_locked:
+                    dx = (
+                        self.state.get("rectangle_x_sign", 1.0)
+                        * abs(self.state.get("rectangle_x", 0.0))
+                        * 0.5
+                    )
+                if y_locked:
+                    dy = (
+                        self.state.get("rectangle_y_sign", 1.0)
+                        * abs(self.state.get("rectangle_y", 0.0))
+                        * 0.5
+                    )
             self.rx, self.ry = dx, dy # For refresh/HUD
             
             # 5. Define 4 corners centered on pivot
@@ -111,6 +132,13 @@ class RectangleTool_CenterCorner(SurfaceDrawTool):
             self.state["is_perpendicular"] = not self.state.get("is_perpendicular", False)
             self.vertical_override_axis = None 
             self.state["locked"], self.state["locked_normal"] = True, self.ref_normal
+            return True
+        if event.type in {'LEFT_SHIFT', 'RIGHT_SHIFT', 'SHIFT'} and event.value == 'PRESS':
+            if self.stage == 0:
+                return False
+            self.state["rectangle_square_locked"] = not self.state.get(
+                "rectangle_square_locked", False
+            )
             return True
         return False
 

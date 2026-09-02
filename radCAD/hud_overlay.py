@@ -235,8 +235,12 @@ def draw_hotkeys_panel():
             lines.append(("D: Set Diameter", None))
         elif state.get("tool_mode") == "LINE_POLY":            lines.append(("L: Set Length", None)) # --- NEW: Line Length Hint ---
         elif state.get("tool_mode") == "RECTANGLE_CENTER_CORNER":
+            square_state = "ON" if state.get("rectangle_square_locked", False) else "OFF"
+            lines.append((f"Shift: Square ({square_state})", None))
             lines.append(("X: Set Width", None))
             lines.append(("Y: Set Height", None))
+            if state.get("rectangle_square_locked", False):
+                lines.append(("Type: Set Square", None))
         elif state.get("tool_mode") == "ELLIPSE_FOCI":
             lines.append(("F: Set Foci", None))
             
@@ -658,29 +662,34 @@ def draw_hud_2d():
                     x_val = state.get("rectangle_x", 0.0) if x_locked else abs(state.get("rx", 0.0)) * 2.0
                     y_val = state.get("rectangle_y", 0.0) if y_locked else abs(state.get("ry", 0.0)) * 2.0
 
-                    if state["input_mode"] == 'RECTANGLE_X':
+                    if state["input_mode"] == 'RECTANGLE_SQUARE':
+                        square_txt = get_display_str("Square:", state['input_string'], True)
+                        h_square = draw_ui_box_generic(px, current_y, square_txt, active=True)
+                        current_y -= (h_square + 4)
+                    elif state["input_mode"] == 'RECTANGLE_X':
                         x_txt = get_display_str("X:", state['input_string'], True)
                     else:
                         x_txt = "X: " + format_length(x_val)
-                    h_x = draw_ui_box_generic(
-                        px,
-                        current_y,
-                        x_txt,
-                        active=state["input_mode"] == 'RECTANGLE_X',
-                    )
-                    current_y -= (h_x + 4)
+                    if state["input_mode"] != 'RECTANGLE_SQUARE':
+                        h_x = draw_ui_box_generic(
+                            px,
+                            current_y,
+                            x_txt,
+                            active=state["input_mode"] == 'RECTANGLE_X',
+                        )
+                        current_y -= (h_x + 4)
 
-                    if state["input_mode"] == 'RECTANGLE_Y':
-                        y_txt = get_display_str("Y:", state['input_string'], True)
-                    else:
-                        y_txt = "Y: " + format_length(y_val)
-                    h_y = draw_ui_box_generic(
-                        px,
-                        current_y,
-                        y_txt,
-                        active=state["input_mode"] == 'RECTANGLE_Y',
-                    )
-                    current_y -= (h_y + 4)
+                        if state["input_mode"] == 'RECTANGLE_Y':
+                            y_txt = get_display_str("Y:", state['input_string'], True)
+                        else:
+                            y_txt = "Y: " + format_length(y_val)
+                        h_y = draw_ui_box_generic(
+                            px,
+                            current_y,
+                            y_txt,
+                            active=state["input_mode"] == 'RECTANGLE_Y',
+                        )
+                        current_y -= (h_y + 4)
                 elif tool_mode == "ELLIPSE_FOCI":
                     # For Stage 1 we still need the Foci label
                     if state["stage"] == 1:
