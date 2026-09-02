@@ -1,9 +1,9 @@
-"""Visible helper geometry that exposes construction guides to Blender snapping.
+"""Hidden helper geometry that exposes construction guides to Blender snapping.
 
 Blender's transform tools cannot snap to radCAD's POST_PIXEL overlay.  This
-module mirrors the scene-backed infinite guides into a protected loose-edge
-mesh.  The overlay remains the source of truth; the mesh only exists so
-Blender's native vertex and edge snapping can discover the guides.
+module mirrors the scene-backed infinite guides into a hidden loose-edge mesh.
+The overlay remains the source of truth; the mesh only exists so Blender's
+native vertex and edge snapping can discover the guides.
 """
 
 import bpy
@@ -76,11 +76,13 @@ def _ensure_proxy_object(scene):
         scene.collection.objects.link(obj)
 
     obj[PROXY_TAG] = True
-    # Keep the base selectable so Blender cannot filter it out of native
-    # snapping. It is deselected and transform-locked below.
+    # Keep the proxy object available for native snapping, but hide its
+    # redundant wire display. The persistent construction line is rendered by
+    # the POST_PIXEL overlay and radCAD snapping uses the stored guide data.
     obj.hide_select = False
-    # The proxy is a loose-edge helper and remains enabled so Blender may use
-    # it as a native snap target. It has no faces to contribute to a render.
+    # The proxy is a loose-edge helper and has no faces to contribute to a
+    # render. Leave the datablock viewport-enabled so the Outliner eye toggle
+    # is the only visibility state applied here.
     obj.hide_render = False
     obj.hide_viewport = False
     obj.display_type = "WIRE"
@@ -89,7 +91,7 @@ def _ensure_proxy_object(scene):
     # group so faces cannot occlude only part of an otherwise visible guide.
     obj.show_in_front = True
     try:
-        obj.hide_set(False)
+        obj.hide_set(True)
     except RuntimeError:
         pass
     obj.lock_location = (True, True, True)
