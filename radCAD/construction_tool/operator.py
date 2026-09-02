@@ -354,7 +354,7 @@ class VIEW3D_OT_radcad_construction_line(bpy.types.Operator):
                 max_px=radius,
                 snap_verts=False,
                 snap_edges=True,
-                snap_edge_center=False,
+                snap_edge_center=True,
                 snap_face_center=False,
                 snap_faces=False,
                 include_surface=False,
@@ -405,14 +405,14 @@ class VIEW3D_OT_radcad_construction_line(bpy.types.Operator):
                         max_px=state.get("snap_strength", 6.0) * 2.0,
                         snap_verts=True,
                         snap_edges=True,
-                        snap_edge_center=False,
+                        snap_edge_center=True,
                         snap_face_center=False,
                         snap_faces=False,
                         include_surface=False,
                         enable_mesh=True,
                         snap_guides=False,
                     )
-                if snap is not None and snap.kind in {"VERT", "EDGE"}:
+                if snap is not None and snap.kind in {"VERT", "EDGE", "EDGE_CENTER"}:
                     # Snap coordinates are world-space. Project the snapped
                     # component onto the active drawing face so the guide
                     # remains parallel to the source edge on that face.

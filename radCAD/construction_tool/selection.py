@@ -11,6 +11,8 @@ from mathutils import Vector
 from mathutils.geometry import intersect_line_plane
 
 from ..modal_core import is_event_over_ui, is_number_input
+from ..modal_state import state
+from ..snapping_utils import snap_scene_geometry
 from ..units_utils import parse_length_input
 from .model import has_visible_construction_lines, iter_construction_lines
 from .native_snap import sync_scene_snap_proxy
@@ -128,6 +130,39 @@ class VIEW3D_OT_radcad_construction_pick(bpy.types.Operator):
             return None
         return lines[self.line_index]
 
+    def _snap_to_movement_coordinate(self, context, x, y):
+        """Snap only the one coordinate available perpendicular to the guide."""
+        if self.travel_direction is None:
+            return None
+
+        radius = max(15.0, float(state.get("snap_strength", 6.0)) * 2.0)
+        try:
+            result = snap_scene_geometry(
+                context,
+                getattr(context, "edit_object", None),
+                x,
+                y,
+                max_px=radius,
+                snap_verts=True,
+                snap_edges=False,
+                snap_edge_center=True,
+                snap_face_center=False,
+                snap_faces=False,
+                include_surface=False,
+                enable_mesh=True,
+                snap_guides=False,
+            )
+        except (AttributeError, RuntimeError):
+            return None
+
+        if result is None or result.kind not in {"VERT", "EDGE_CENTER"}:
+            return None
+
+        signed_distance = (
+            Vector(result.location) - self.original_anchor
+        ).dot(self.travel_direction)
+        return self.original_anchor + self.travel_direction * signed_distance
+
     def _move_to_cursor(self, context, x, y):
         if self.press_plane_point is None:
             return False
@@ -151,6 +186,9 @@ class VIEW3D_OT_radcad_construction_pick(bpy.types.Operator):
         if line is None:
             return False
         new_anchor = self.original_anchor + delta
+        snapped_anchor = self._snap_to_movement_coordinate(context, x, y)
+        if snapped_anchor is not None:
+            new_anchor = snapped_anchor
         if (Vector(line.anchor) - new_anchor).length_squared <= 1.0e-16:
             return False
         line.anchor = new_anchor
