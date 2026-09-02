@@ -241,6 +241,9 @@ def draw_hotkeys_panel():
             lines.append(("Y: Set Height", None))
             if state.get("rectangle_square_locked", False):
                 lines.append(("Type: Set Square", None))
+        elif state.get("tool_mode") == "RECTANGLE_3_POINTS":
+            lines.append(("X: Set Width", None))
+            lines.append(("Y: Set Height", None))
         elif state.get("tool_mode") == "ELLIPSE_FOCI":
             lines.append(("F: Set Foci", None))
             
@@ -656,7 +659,7 @@ def draw_hud_2d():
                     r_txt = "R: " + format_length(r_val)
                     h1 = draw_ui_box_generic(px, current_y, r_txt)
                     current_y -= (h1 + 4)
-                elif tool_mode in {"RECTANGLE_CENTER_CORNER", "RECTANGLE_CORNER_CORNER"}:
+                elif tool_mode in {"RECTANGLE_CENTER_CORNER", "RECTANGLE_CORNER_CORNER", "RECTANGLE_3_POINTS"}:
                     x_locked = state.get("rectangle_x_locked", False)
                     y_locked = state.get("rectangle_y_locked", False)
                     scale = 2.0 if tool_mode == "RECTANGLE_CENTER_CORNER" else 1.0
@@ -804,7 +807,7 @@ def draw_hud_2d():
             
             if state["stage"] == 2:
                 # --- HIDE ANGLE IF 2POINT, 3POINT, LINE_POLY, ELLIPSE_FOCI OR ELLIPSE_RADIUS ---
-                if tool_mode not in ["2POINT", "3POINT", "CIRCLE_3POINT", "CIRCLE_TAN_TAN_TAN", "LINE_POLY", "ELLIPSE_FOCI", "ELLIPSE_RADIUS", "ELLIPSE_ENDPOINTS", "CURVE_FREEHAND"]:
+                if tool_mode not in ["2POINT", "3POINT", "CIRCLE_3POINT", "CIRCLE_TAN_TAN_TAN", "LINE_POLY", "ELLIPSE_FOCI", "ELLIPSE_RADIUS", "ELLIPSE_ENDPOINTS", "CURVE_FREEHAND", "RECTANGLE_3_POINTS"]:
                     is_input_a = (state["input_mode"] == 'ANGLE')
                     if is_input_a: a_txt = get_display_str("\u2220", state['input_string'], True)
                     else:
@@ -815,7 +818,7 @@ def draw_hud_2d():
                     current_y -= (h2 + 4)
                 
                 # --- HIDE SEGMENTS FOR LINE_POLY AND CURVE_FREEHAND ---
-                if tool_mode not in ["LINE_POLY", "CURVE_FREEHAND", "ROTATE"]:
+                if tool_mode not in ["LINE_POLY", "CURVE_FREEHAND", "ROTATE", "RECTANGLE_3_POINTS"]:
                     is_input_s = (state["input_mode"] == 'SEGMENTS')
                     if is_input_s: s_txt = get_display_str("Segments:", state['input_string'], True)
                     else: s_txt = f"Segments: {state['segments']}"

@@ -307,6 +307,8 @@ class RectangleTool_3Point(SurfaceDrawTool):
         self.preview_pts = []
         self.p2 = None
         self.ref_normal = Vector((0,0,1))
+        self.rx = 0.0
+        self.ry = 0.0
 
     def update(self, context, event, snap_point, snap_normal):
         # Stage 0: Set P1 (Start of Edge)
@@ -342,7 +344,16 @@ class RectangleTool_3Point(SurfaceDrawTool):
                 if inf_vec and abs(inf_vec.dot(self.ref_normal)) < 0.9:
                     target = inf_loc
 
+            if self.state.get("rectangle_x_locked", False):
+                edge = target - p1
+                if edge.length > 1.0e-9:
+                    target = p1 + edge.normalized() * abs(
+                        self.state.get("rectangle_x", 0.0)
+                    )
+
             self.current = target
+            self.rx = (target - p1).length
+            self.ry = 0.0
             # Just draw the edge being defined
             self.preview_pts = [p1, target]
 
@@ -364,6 +375,10 @@ class RectangleTool_3Point(SurfaceDrawTool):
                 self.Zp = self.ref_normal.normalized()
                 self.Xp = edge_vec.normalized()
                 self.Yp = self.Zp.cross(self.Xp).normalized()
+
+            if self.state.get("rectangle_x_locked", False):
+                p2 = p1 + self.Xp * abs(self.state.get("rectangle_x", 0.0))
+                self.p2 = p2
 
             # 2. STABLE TETHERING
             from bpy_extras import view3d_utils
@@ -390,6 +405,11 @@ class RectangleTool_3Point(SurfaceDrawTool):
                         snapped_on_plane = inf_loc - self.Zp * offset
                         height = (snapped_on_plane - p2).dot(self.Yp)
 
+            if self.state.get("rectangle_y_locked", False):
+                height = self.state.get("rectangle_y_sign", 1.0) * abs(
+                    self.state.get("rectangle_y", 0.0)
+                )
+
             height_vec = self.Yp * height
             
             # 4. Calculate corners
@@ -398,6 +418,8 @@ class RectangleTool_3Point(SurfaceDrawTool):
             c4 = p1 + height_vec
             
             self.current = c3 # Tether indicator line to the corner
+            self.rx = (c2 - c1).length
+            self.ry = height
             self.preview_pts = [c1, c2, c3, c4, c1]
 
     def handle_input(self, context, event):

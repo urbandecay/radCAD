@@ -931,12 +931,13 @@ def modal_arc_common(self, ctx, ev):
              if state["input_mode"] is None:
                  if self.manager.active_tool:
                      # Most numeric tools use a one-frame bypass after Enter
-                     # to avoid reprocessing the input event. Both rectangle
+                     # to avoid reprocessing the input event. All rectangle
                      # tools must update immediately so locked dimensions are
                      # visible without another mouse move.
                      state["skip_mouse_update"] = state.get("tool_mode") not in {
                          "RECTANGLE_CENTER_CORNER",
                          "RECTANGLE_CORNER_CORNER",
+                         "RECTANGLE_3_POINTS",
                      }
                      # Force immediate update with fresh coordinates
                      self.manager.on_move(ctx, ev)
@@ -1029,7 +1030,7 @@ def modal_arc_common(self, ctx, ev):
             return {'RUNNING_MODAL'} 
 
     if ev.type == 'WHEELUPMOUSE':
-        if state.get("tool_mode") not in ["POINT_BY_ARCS", "LINE_POLY", "ROTATE"]:
+        if state.get("tool_mode") not in ["POINT_BY_ARCS", "LINE_POLY", "ROTATE", "RECTANGLE_3_POINTS"]:
             step = 2 if state.get("tool_mode") == "POLYGON_EDGE" else 1
             state["segments"] = min(256, state["segments"] + step)
             if self.manager.active_tool: 
@@ -1041,7 +1042,7 @@ def modal_arc_common(self, ctx, ev):
         return {'RUNNING_MODAL'}
         
     if ev.type == 'WHEELDOWNMOUSE':
-        if state.get("tool_mode") not in ["POINT_BY_ARCS", "LINE_POLY", "ROTATE"]:
+        if state.get("tool_mode") not in ["POINT_BY_ARCS", "LINE_POLY", "ROTATE", "RECTANGLE_3_POINTS"]:
             step = 2 if state.get("tool_mode") == "POLYGON_EDGE" else 1
             state["segments"] = max(1 if "CURVE" in state.get("tool_mode", "") else 3, state["segments"] - step)
             if self.manager.active_tool: 
@@ -1114,12 +1115,20 @@ def modal_arc_common(self, ctx, ev):
         target_mode = None
         tool_mode = state.get("tool_mode", "1POINT")
         
-        if ev.type == 'S' and tool_mode != "ROTATE": target_mode = 'SEGMENTS'
+        if ev.type == 'S' and tool_mode not in {"ROTATE", "RECTANGLE_3_POINTS"}: target_mode = 'SEGMENTS'
         elif ev.type == 'M' and tool_mode == "CURVE_FREEHAND": target_mode = 'MIN_DIST'
         elif (
             ev.type in {'X', 'Y'}
-            and tool_mode in {"RECTANGLE_CENTER_CORNER", "RECTANGLE_CORNER_CORNER"}
-            and state["stage"] == 1
+            and (
+                (
+                    tool_mode in {"RECTANGLE_CENTER_CORNER", "RECTANGLE_CORNER_CORNER"}
+                    and state["stage"] == 1
+                )
+                or (
+                    tool_mode == "RECTANGLE_3_POINTS"
+                    and state["stage"] in {1, 2}
+                )
+            )
         ):
             target_mode = f"RECTANGLE_{ev.type}"
         elif ev.type == 'R' and tool_mode not in [
@@ -1134,7 +1143,7 @@ def modal_arc_common(self, ctx, ev):
         elif ev.type == 'H' and tool_mode == "2POINT" and state["stage"] == 2: target_mode = 'RADIUS'; state["input_target"] = 'SAGITTA'
         elif ev.type == 'A' and tool_mode == "POLYGON_CENTER_TANGENT": target_mode = 'RADIUS'; state["input_target"] = 'RADIUS'
         elif ev.type == 'L' and tool_mode in ["POLYGON_CORNER_CORNER", "POLYGON_EDGE", "LINE_POLY"]: target_mode = 'RADIUS'; state["input_target"] = 'RADIUS'
-        elif ev.type == 'A' and state["stage"] == 2 and tool_mode not in ["2POINT", "CIRCLE_TAN_TAN_TAN", "LINE_POLY", "ELLIPSE_CORNERS", "ELLIPSE_ENDPOINTS", "ELLIPSE_FOCI"]:
+        elif ev.type == 'A' and state["stage"] == 2 and tool_mode not in ["2POINT", "CIRCLE_TAN_TAN_TAN", "LINE_POLY", "ELLIPSE_CORNERS", "ELLIPSE_ENDPOINTS", "ELLIPSE_FOCI", "RECTANGLE_3_POINTS"]:
             target_mode = 'ANGLE'        
         if is_number_input(ev): 
             # --- FIX: Context-aware number typing ---
@@ -1159,6 +1168,7 @@ def modal_arc_common(self, ctx, ev):
                 "ROTATE",
                 "RECTANGLE_CENTER_CORNER",
                 "RECTANGLE_CORNER_CORNER",
+                "RECTANGLE_3_POINTS",
             ]:
                 if tool_mode != "ELLIPSE_FOCI" or state["stage"] == 1:
                     target_mode = 'RADIUS' # Covers 2POINT Sagitta automatically as it's in Stage 2 but not an angle stage
