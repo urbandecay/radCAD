@@ -26,7 +26,7 @@ def apply_input_value(ctx):
     # --- RECTANGLE CENTER-CORNER DIMENSION INPUT ---
     if (
         state["input_mode"] in {'RECTANGLE_X', 'RECTANGLE_Y', 'RECTANGLE_SQUARE'}
-        and tool_mode == "RECTANGLE_CENTER_CORNER"
+        and tool_mode in {"RECTANGLE_CENTER_CORNER", "RECTANGLE_CORNER_CORNER"}
     ):
         input_mode = state["input_mode"]
         axes = ('x', 'y') if input_mode == 'RECTANGLE_SQUARE' else (input_mode[-1].lower(),)
@@ -223,8 +223,11 @@ def apply_input_value(ctx):
             pass
 
     # Update Preview Points immediately. Rectangle dimensions are consumed by
-    # the next normal mouse update so its center-corner preview is rebuilt.
-    state["skip_mouse_update"] = tool_mode != "RECTANGLE_CENTER_CORNER"
+    # the next normal mouse update so the preview is rebuilt.
+    state["skip_mouse_update"] = tool_mode not in {
+        "RECTANGLE_CENTER_CORNER",
+        "RECTANGLE_CORNER_CORNER",
+    }
     state["input_mode"] = None
     state["input_screen_pos"] = None
 

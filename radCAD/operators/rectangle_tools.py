@@ -162,6 +162,8 @@ class RectangleTool_CornerCorner(SurfaceDrawTool):
         self.preview_pts = []
         self.ref_normal = Vector((0,0,1))
         self.vertical_override_axis = None
+        self.rx = 0.0
+        self.ry = 0.0
 
     def update(self, context, event, snap_point, snap_normal):
         # Stage 0: Set First Corner / Plane
@@ -225,6 +227,37 @@ class RectangleTool_CornerCorner(SurfaceDrawTool):
             # 4. Calculate dimensions on our basis
             dx = d_vec.dot(self.Xp)
             dy = d_vec.dot(self.Yp)
+            x_locked = self.state.get("rectangle_x_locked", False)
+            y_locked = self.state.get("rectangle_y_locked", False)
+            if self.state.get("rectangle_square_locked", False):
+                # Corner-to-corner dimensions are full side lengths. A square
+                # follows the larger live dimension or a locked numeric side.
+                locked_sizes = []
+                if x_locked:
+                    locked_sizes.append(abs(self.state.get("rectangle_x", 0.0)))
+                if y_locked:
+                    locked_sizes.append(abs(self.state.get("rectangle_y", 0.0)))
+                side = max(locked_sizes) if locked_sizes else max(abs(dx), abs(dy))
+
+                x_sign = self.state.get("rectangle_x_sign", 1.0)
+                y_sign = self.state.get("rectangle_y_sign", 1.0)
+                if not x_locked and abs(dx) > 1.0e-9:
+                    x_sign = -1.0 if dx < 0.0 else 1.0
+                if not y_locked and abs(dy) > 1.0e-9:
+                    y_sign = -1.0 if dy < 0.0 else 1.0
+                dx = x_sign * side
+                dy = y_sign * side
+            else:
+                if x_locked:
+                    dx = (
+                        self.state.get("rectangle_x_sign", 1.0)
+                        * abs(self.state.get("rectangle_x", 0.0))
+                    )
+                if y_locked:
+                    dy = (
+                        self.state.get("rectangle_y_sign", 1.0)
+                        * abs(self.state.get("rectangle_y", 0.0))
+                    )
             self.rx, self.ry = dx, dy
             
             # 5. Define 4 corners starting from anchor c1
@@ -245,8 +278,12 @@ class RectangleTool_CornerCorner(SurfaceDrawTool):
             self.vertical_override_axis = None 
             self.state["locked"], self.state["locked_normal"] = True, self.ref_normal
             return True
-        if event.type in {'X', 'Y'} and event.value == 'PRESS' and self.stage > 0:
-            self.vertical_override_axis = event.type
+        if event.type in {'LEFT_SHIFT', 'RIGHT_SHIFT', 'SHIFT'} and event.value == 'PRESS':
+            if self.stage == 0:
+                return False
+            self.state["rectangle_square_locked"] = not self.state.get(
+                "rectangle_square_locked", False
+            )
             return True
         return False
 

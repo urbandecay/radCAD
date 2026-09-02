@@ -234,7 +234,7 @@ def draw_hotkeys_panel():
         elif state.get("tool_mode") == "ELLIPSE_ENDPOINTS" and state["stage"] == 1:
             lines.append(("D: Set Diameter", None))
         elif state.get("tool_mode") == "LINE_POLY":            lines.append(("L: Set Length", None)) # --- NEW: Line Length Hint ---
-        elif state.get("tool_mode") == "RECTANGLE_CENTER_CORNER":
+        elif state.get("tool_mode") in {"RECTANGLE_CENTER_CORNER", "RECTANGLE_CORNER_CORNER"}:
             square_state = "ON" if state.get("rectangle_square_locked", False) else "OFF"
             lines.append((f"Shift: Square ({square_state})", None))
             lines.append(("X: Set Width", None))
@@ -656,11 +656,12 @@ def draw_hud_2d():
                     r_txt = "R: " + format_length(r_val)
                     h1 = draw_ui_box_generic(px, current_y, r_txt)
                     current_y -= (h1 + 4)
-                elif tool_mode == "RECTANGLE_CENTER_CORNER":
+                elif tool_mode in {"RECTANGLE_CENTER_CORNER", "RECTANGLE_CORNER_CORNER"}:
                     x_locked = state.get("rectangle_x_locked", False)
                     y_locked = state.get("rectangle_y_locked", False)
-                    x_val = state.get("rectangle_x", 0.0) if x_locked else abs(state.get("rx", 0.0)) * 2.0
-                    y_val = state.get("rectangle_y", 0.0) if y_locked else abs(state.get("ry", 0.0)) * 2.0
+                    scale = 2.0 if tool_mode == "RECTANGLE_CENTER_CORNER" else 1.0
+                    x_val = state.get("rectangle_x", 0.0) if x_locked else abs(state.get("rx", 0.0)) * scale
+                    y_val = state.get("rectangle_y", 0.0) if y_locked else abs(state.get("ry", 0.0)) * scale
 
                     if state["input_mode"] == 'RECTANGLE_SQUARE':
                         square_txt = get_display_str("Square:", state['input_string'], True)
