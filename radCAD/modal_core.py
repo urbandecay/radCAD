@@ -249,6 +249,10 @@ class ModalManager:
             from .operators import point_tools
             self.active_tool = point_tools.PointTool_Center(self)
 
+        elif t_mode == "POINT_EDGE_CENTER":
+            from .operators import point_tools
+            self.active_tool = point_tools.PointTool_EdgeCenter(self)
+
         elif t_mode == "ROTATE":
             from .operators import rotate_tools
             self.active_tool = rotate_tools.RotateTool(self, ctx)
@@ -270,7 +274,42 @@ class ModalManager:
             return event.mouse_x - self.region.x, event.mouse_y - self.region.y
         return event.mouse_region_x, event.mouse_region_y
 
+    def get_edge_center_snap_data(self, ctx, x, y):
+        """Snap only to mesh edge centers for the Edge Center point tool."""
+        from .snapping_utils import snap_mesh
+
+        state["snap_point"] = None
+        state["geometry_snap"] = False
+        state["last_surface_hit"] = None
+        state["last_surface_normal"] = None
+
+        result = snap_mesh(
+            ctx,
+            ctx.edit_object,
+            x,
+            y,
+            max_px=self.state.get("snap_strength", 6.0) * 2.0,
+            snap_verts=False,
+            snap_edges=False,
+            snap_edge_center=True,
+            snap_face_center=False,
+            snap_faces=False,
+            include_surface=False,
+            snap_intersections=False,
+        )
+        if result is None or result.kind != "EDGE_CENTER":
+            return None, None
+
+        point = result.location.copy()
+        state["snap_point"] = point
+        state["geometry_snap"] = True
+        state["last_surface_hit"] = point
+        return point, None
+
     def get_snap_data(self, ctx, x, y):
+        if state.get("tool_mode") == "POINT_EDGE_CENTER":
+            return self.get_edge_center_snap_data(ctx, x, y)
+
         snapped_pos = None
         snapped_normal = None
         surface_result = None
@@ -591,7 +630,7 @@ def commit_arc_to_mesh(ctx):
     bm = bmesh.from_edit_mesh(obj.data)
     imw = obj.matrix_world.inverted()
     
-    if state["tool_mode"] in ("POINT_BY_ARCS", "POINT_CENTER"):
+    if state["tool_mode"] in ("POINT_BY_ARCS", "POINT_CENTER", "POINT_EDGE_CENTER"):
         int_pts = state.get("intersection_pts", [])
         if not int_pts: return
         bpy.ops.mesh.select_all(action='DESELECT')
@@ -749,6 +788,7 @@ def begin_modal(self, ctx, ev):
     tool_icons = {
         "POINT_BY_ARCS": ("point", "point_by_arcs"),
         "POINT_CENTER": ("point", "point_center"),
+        "POINT_EDGE_CENTER": ("point", "point_edge_center"),
         "LINE_POLY": ("line", "line"),
         "LINE_PERP_FROM_CURVE": ("line", "line_perpendicular_from_curve"),
         "LINE_TAN_TAN": ("line", "line_tangent_to_two_curves"),
@@ -816,6 +856,7 @@ def finish_modal(self, ctx):
             "3POINT",
             "POINT_BY_ARCS",
             "POINT_CENTER",
+            "POINT_EDGE_CENTER",
             "LINE_POLY",
             "LINE_PERP_FROM_CURVE",
             "LINE_TAN_TAN",
@@ -841,7 +882,7 @@ def finish_modal(self, ctx):
             tool_mode = state.get("tool_mode", "")
             if tool_mode in {"1POINT", "2POINT", "3POINT"}:
                 ctx.scene.radcad_arc_icon = "arc_default"
-            elif tool_mode in {"POINT_BY_ARCS", "POINT_CENTER"}:
+            elif tool_mode in {"POINT_BY_ARCS", "POINT_CENTER", "POINT_EDGE_CENTER"}:
                 ctx.scene.radcad_point_icon = "point_default"
             elif tool_mode.startswith("LINE_"):
                 ctx.scene.radcad_line_icon = "line_default"

@@ -333,6 +333,12 @@ def draw_bottom_bar():
     tool_mode = state.get("tool_mode")
     bar_label = "Snap"
 
+    # Edge Center deliberately has one snap target.  Do not expose the
+    # general-purpose snap toggles while this tool is active.
+    if tool_mode == "POINT_EDGE_CENTER":
+        buttons = []
+        bar_label = "Edge Center Only"
+
     if tool_mode == "ROTATE":
         buttons = buttons[:-1]
 

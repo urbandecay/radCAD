@@ -51,6 +51,7 @@ op_curve_interpolate = _import("operators.op_curve_interpolate")
 op_curve_freehand = _import("operators.op_curve_freehand")
 op_point_by_arcs = _import("operators.op_point_by_arcs")
 op_point_center = _import("operators.op_point_center")
+op_point_edge_center = _import("operators.op_point_edge_center")
 op_rotate = _import("operators.op_rotate")
 
 def register():
@@ -98,6 +99,7 @@ def register():
     bpy.utils.register_class(op_curve_freehand.VIEW3D_OT_curve_freehand)
     bpy.utils.register_class(op_point_by_arcs.VIEW3D_OT_point_by_arcs)
     bpy.utils.register_class(op_point_center.VIEW3D_OT_point_center)
+    bpy.utils.register_class(op_point_edge_center.VIEW3D_OT_point_edge_center)
     bpy.utils.register_class(op_rotate.VIEW3D_OT_radcad_rotate)
 
     if hasattr(panel, "register"):
@@ -116,6 +118,7 @@ def unregister():
     dimension_tool.unregister()
 
     bpy.utils.unregister_class(op_rotate.VIEW3D_OT_radcad_rotate)
+    bpy.utils.unregister_class(op_point_edge_center.VIEW3D_OT_point_edge_center)
     bpy.utils.unregister_class(op_point_center.VIEW3D_OT_point_center)
     bpy.utils.unregister_class(op_point_by_arcs.VIEW3D_OT_point_by_arcs)
     bpy.utils.unregister_class(op_curve_freehand.VIEW3D_OT_curve_freehand)

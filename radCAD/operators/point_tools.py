@@ -622,3 +622,35 @@ class PointTool_Center(CAD_BaseTool):
 
     def handle_click(self, context, event, snap_point, snap_normal, button_id=None):
         return 'FINISHED'
+
+
+class PointTool_EdgeCenter(CAD_BaseTool):
+    """Places one vertex at the mesh edge center currently under the cursor."""
+
+    def __init__(self, core):
+        super().__init__(core)
+        self.mode = "POINT_EDGE_CENTER"
+        self.stage = 0
+        self.pivot = None
+        self.current = None
+        self.Xp = None
+        self.Yp = None
+        self.Zp = None
+        self.intersection_pts = []
+
+    def update(self, context, event, snap_point, snap_normal):
+        self.current = snap_point.copy() if snap_point is not None else None
+        self.intersection_pts = [self.current] if self.current is not None else []
+        self.state["intersection_pts"] = self.intersection_pts
+
+    def handle_input(self, context, event):
+        return False
+
+    def handle_click(self, context, event, snap_point, snap_normal, button_id=None):
+        if snap_point is None:
+            return None
+
+        self.current = snap_point.copy()
+        self.intersection_pts = [self.current]
+        self.state["intersection_pts"] = self.intersection_pts
+        return 'FINISHED'

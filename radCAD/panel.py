@@ -122,6 +122,7 @@ IMPLEMENTED_TOOLS = {
     "curve_freehand",
     "point_by_arcs",
     "point_center",
+    "point_edge_center",
     "rectangle_from_center",
     "rectangle_from_corners",
     "rectangle_3_points", 
@@ -131,6 +132,7 @@ IMPLEMENTED_TOOLS = {
 TOOL_OPERATORS = {
     "point_by_arcs": "view3d.point_by_arcs",
     "point_center": "view3d.point_center",
+    "point_edge_center": "view3d.point_edge_center",
     "line": "view3d.line_polyline",
     "line_perpendicular_from_curve": "view3d.line_perp_from_curve",
     "line_tangent_to_two_curves": "view3d.line_tan_tan",
@@ -172,6 +174,7 @@ SVG_FILES = {
     "line_perpendicular_to_two_curves": "line_perpendicular_to_two_curves.svg",
     "point_by_arcs": "point_by_arcs.svg",
     "point_center": "point_center.svg",
+    "point_edge_center": "point_edge_center.svg",
     "circle_center_radius": "circle_center_radius.svg",
     "circle_2_points": "circle_2_points.svg",
     "circle_3_points": "circle_3_points.svg",
@@ -195,6 +198,7 @@ SVG_FILES = {
 TOOL_LABELS = {
     "point_by_arcs": "Point by Arcs",
     "point_center": "Point Center",
+    "point_edge_center": "Edge Center",
     "line_perpendicular_from_curve": "Line Perpendicular from Curve",
     "line_perpendicular_to_two_curves": "Line Perpendicular to Two Curves",
     "line_tangent_from_curve": "Line Tangent from Curve",
@@ -305,6 +309,8 @@ class RADCAD_OT_generic(bpy.types.Operator):
                 bpy.ops.view3d.point_by_arcs('INVOKE_DEFAULT')
             elif self.name == "point_center":
                 bpy.ops.view3d.point_center('INVOKE_DEFAULT')
+            elif self.name == "point_edge_center":
+                bpy.ops.view3d.point_edge_center('INVOKE_DEFAULT')
 
         elif self.panel == "rectangle":
             if self.name == "rectangle_from_center":
@@ -385,6 +391,7 @@ class RADCAD_PT_Point(bpy.types.Panel):
         draw_header(self.layout, context.scene.radcad_point_icon)
         draw_tool_button(self.layout, "point_by_arcs")
         draw_tool_button(self.layout, "point_center")
+        draw_tool_button(self.layout, "point_edge_center")
 
 class RADCAD_PT_Line(bpy.types.Panel):
     bl_label = "Line"
