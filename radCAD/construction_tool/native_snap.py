@@ -208,12 +208,6 @@ def sync_scene_snap_proxy(scene):
     if scene is None or not hasattr(scene, "radcad_construction_lines"):
         return None
 
-    # Create the empty proxy as soon as radCAD registers, before the user
-    # normally enters Edit Mode. Later guide changes only rebuild mesh data on
-    # this already-evaluated object, which Blender's transform snapper sees
-    # without a magnet/camera visibility toggle.
-    obj = _ensure_proxy_object(scene)
-
     records = []
     for line in iter_construction_lines(scene):
         vectors = guide_vectors(line)
@@ -221,8 +215,17 @@ def sync_scene_snap_proxy(scene):
             records.append(vectors)
 
     if not records:
-        _clear_scene_snap_proxy(scene)
-        return obj
+        # Do not leave an empty helper object in the Outliner after the last
+        # construction line is removed. It will be recreated automatically
+        # when the next guide is added.
+        remove_scene_snap_proxy(scene)
+        return None
+
+    # Keep one shared proxy for all guides while at least one valid guide
+    # exists. Later guide changes rebuild this already-evaluated object, which
+    # Blender's transform snapper sees without a magnet/camera visibility
+    # toggle.
+    obj = _ensure_proxy_object(scene)
 
     enabled = has_visible_construction_lines(scene)
     obj.hide_viewport = not enabled
