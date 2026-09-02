@@ -23,8 +23,24 @@ def apply_input_value(ctx):
 
     tool_mode = state.get("tool_mode", "1POINT")
 
+    # --- RECTANGLE CENTER-CORNER DIMENSION INPUT ---
+    if state["input_mode"] in {'RECTANGLE_X', 'RECTANGLE_Y'} and tool_mode == "RECTANGLE_CENTER_CORNER":
+        axis = state["input_mode"][-1].lower()
+        current = state.get("current")
+        pivot = state.get("pivot")
+        basis = state.get("Xp") if axis == 'x' else state.get("Yp")
+        sign = 1.0
+        if current is not None and pivot is not None and basis is not None:
+            component = (current - pivot).dot(basis)
+            if abs(component) > 1.0e-9:
+                sign = -1.0 if component < 0.0 else 1.0
+
+        state[f"rectangle_{axis}"] = abs(val_meters)
+        state[f"rectangle_{axis}_locked"] = True
+        state[f"rectangle_{axis}_sign"] = sign
+
     # --- RADIUS / DISTANCE INPUT ---
-    if state["input_mode"] == 'RADIUS':
+    elif state["input_mode"] == 'RADIUS':
         # === 1-POINT LOGIC ===
         if tool_mode == "1POINT":
             state["radius"] = abs(val_meters)
@@ -197,8 +213,9 @@ def apply_input_value(ctx):
         except ValueError:
             pass
 
-    # Update Preview Points immediately
-    state["skip_mouse_update"] = True 
+    # Update Preview Points immediately. Rectangle dimensions are consumed by
+    # the next normal mouse update so its center-corner preview is rebuilt.
+    state["skip_mouse_update"] = tool_mode != "RECTANGLE_CENTER_CORNER"
     state["input_mode"] = None
     state["input_screen_pos"] = None
 

@@ -234,6 +234,9 @@ def draw_hotkeys_panel():
         elif state.get("tool_mode") == "ELLIPSE_ENDPOINTS" and state["stage"] == 1:
             lines.append(("D: Set Diameter", None))
         elif state.get("tool_mode") == "LINE_POLY":            lines.append(("L: Set Length", None)) # --- NEW: Line Length Hint ---
+        elif state.get("tool_mode") == "RECTANGLE_CENTER_CORNER":
+            lines.append(("X: Set Width", None))
+            lines.append(("Y: Set Height", None))
         elif state.get("tool_mode") == "ELLIPSE_FOCI":
             lines.append(("F: Set Foci", None))
             
@@ -649,6 +652,35 @@ def draw_hud_2d():
                     r_txt = "R: " + format_length(r_val)
                     h1 = draw_ui_box_generic(px, current_y, r_txt)
                     current_y -= (h1 + 4)
+                elif tool_mode == "RECTANGLE_CENTER_CORNER":
+                    x_locked = state.get("rectangle_x_locked", False)
+                    y_locked = state.get("rectangle_y_locked", False)
+                    x_val = state.get("rectangle_x", 0.0) if x_locked else abs(state.get("rx", 0.0)) * 2.0
+                    y_val = state.get("rectangle_y", 0.0) if y_locked else abs(state.get("ry", 0.0)) * 2.0
+
+                    if state["input_mode"] == 'RECTANGLE_X':
+                        x_txt = get_display_str("X:", state['input_string'], True)
+                    else:
+                        x_txt = "X: " + format_length(x_val)
+                    h_x = draw_ui_box_generic(
+                        px,
+                        current_y,
+                        x_txt,
+                        active=state["input_mode"] == 'RECTANGLE_X',
+                    )
+                    current_y -= (h_x + 4)
+
+                    if state["input_mode"] == 'RECTANGLE_Y':
+                        y_txt = get_display_str("Y:", state['input_string'], True)
+                    else:
+                        y_txt = "Y: " + format_length(y_val)
+                    h_y = draw_ui_box_generic(
+                        px,
+                        current_y,
+                        y_txt,
+                        active=state["input_mode"] == 'RECTANGLE_Y',
+                    )
+                    current_y -= (h_y + 4)
                 elif tool_mode == "ELLIPSE_FOCI":
                     # For Stage 1 we still need the Foci label
                     if state["stage"] == 1:

@@ -10,6 +10,8 @@ class RectangleTool_CenterCorner(SurfaceDrawTool):
         self.preview_pts = []
         self.ref_normal = Vector((0,0,1))
         self.vertical_override_axis = None
+        self.rx = 0.0
+        self.ry = 0.0
 
     def update(self, context, event, snap_point, snap_normal):
         # Stage 0: Set Center / Plane
@@ -73,6 +75,23 @@ class RectangleTool_CenterCorner(SurfaceDrawTool):
             # 4. Calculate dimensions on our basis
             dx = d_vec.dot(self.Xp)
             dy = d_vec.dot(self.Yp)
+
+            # Numeric rectangle dimensions are full width/height values.
+            # The center-corner construction uses half-extents, so apply half
+            # of each locked value while preserving the side selected by the
+            # cursor when the dimension was entered.
+            if self.state.get("rectangle_x_locked", False):
+                dx = (
+                    self.state.get("rectangle_x_sign", 1.0)
+                    * abs(self.state.get("rectangle_x", 0.0))
+                    * 0.5
+                )
+            if self.state.get("rectangle_y_locked", False):
+                dy = (
+                    self.state.get("rectangle_y_sign", 1.0)
+                    * abs(self.state.get("rectangle_y", 0.0))
+                    * 0.5
+                )
             self.rx, self.ry = dx, dy # For refresh/HUD
             
             # 5. Define 4 corners centered on pivot
@@ -92,9 +111,6 @@ class RectangleTool_CenterCorner(SurfaceDrawTool):
             self.state["is_perpendicular"] = not self.state.get("is_perpendicular", False)
             self.vertical_override_axis = None 
             self.state["locked"], self.state["locked_normal"] = True, self.ref_normal
-            return True
-        if event.type in {'X', 'Y'} and event.value == 'PRESS' and self.stage > 0:
-            self.vertical_override_axis = event.type
             return True
         return False
 
