@@ -608,6 +608,8 @@ class VIEW3D_OT_radcad_construction_line(bpy.types.Operator):
         if line is None:
             self.report({"WARNING"}, "Could not create a guide on that face")
             return {"RUNNING_MODAL"}
+        if hasattr(context.scene, "radcad_active_construction_line"):
+            context.scene.radcad_active_construction_line = -1
         self.finish(context)
         tag_redraw_all_view3d()
         return {"FINISHED"}

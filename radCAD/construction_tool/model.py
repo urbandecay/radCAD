@@ -92,6 +92,4 @@ def add_construction_line(scene, anchor, direction, plane_normal):
     from .native_snap import sync_scene_snap_proxy
 
     sync_scene_snap_proxy(scene)
-    if hasattr(scene, "radcad_active_construction_line"):
-        scene.radcad_active_construction_line = len(lines) - 1
     return line
