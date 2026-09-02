@@ -14,6 +14,7 @@ from .native_snap import sync_scene_snap_proxy
 from .properties import tag_redraw_all_view3d
 from .snapping import CONSTRUCTION_LINE_HIT_RADIUS, pick_construction_line
 from .projection import guide_vectors
+from .drawing import clear_construction_move_preview, set_construction_move_preview
 
 
 _DRAG_THRESHOLD_PX = 3.0
@@ -98,6 +99,7 @@ class VIEW3D_OT_radcad_construction_pick(bpy.types.Operator):
         )
         self.dragging = False
         self.changed = False
+        set_construction_move_preview(self.original_anchor, self.original_anchor)
         self._set_active(context.scene, index)
         context.window_manager.modal_handler_add(self)
         context.area.tag_redraw()
@@ -134,6 +136,7 @@ class VIEW3D_OT_radcad_construction_pick(bpy.types.Operator):
             return False
         line.anchor = new_anchor
         sync_scene_snap_proxy(context.scene)
+        set_construction_move_preview(self.original_anchor, new_anchor)
         self.changed = True
         context.area.tag_redraw()
         return True
@@ -144,9 +147,11 @@ class VIEW3D_OT_radcad_construction_pick(bpy.types.Operator):
             return
         line.anchor = self.original_anchor
         sync_scene_snap_proxy(context.scene)
+        clear_construction_move_preview()
         context.area.tag_redraw()
 
     def _finish(self, context):
+        clear_construction_move_preview()
         context.area.tag_redraw()
 
     def modal(self, context, event):

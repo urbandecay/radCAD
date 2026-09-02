@@ -13,6 +13,21 @@ from .model import iter_construction_lines
 from .projection import guide_vectors, projected_visible_guide_segment
 
 
+_MOVE_PREVIEW = None
+
+
+def set_construction_move_preview(start, end):
+    """Set the runtime travel indicator used while moving a guide."""
+    global _MOVE_PREVIEW
+    _MOVE_PREVIEW = (Vector(start), Vector(end))
+
+
+def clear_construction_move_preview():
+    """Remove the runtime travel indicator after a guide move ends."""
+    global _MOVE_PREVIEW
+    _MOVE_PREVIEW = None
+
+
 def _shader():
     try:
         return gpu.shader.from_builtin("UNIFORM_COLOR")
@@ -110,6 +125,38 @@ def _draw_guide_vectors(
     _draw_points(anchors, color, max(4.0, width * 2.5))
 
 
+def _draw_move_preview(context):
+    if _MOVE_PREVIEW is None:
+        return
+
+    start, end = _MOVE_PREVIEW
+    if (end - start).length_squared <= 1.0e-12:
+        return
+
+    projected = []
+    for point in (start, end):
+        screen = location_3d_to_region_2d(
+            context.region,
+            context.region_data,
+            point,
+            default=None,
+        )
+        if screen is not None:
+            projected.append(Vector(screen))
+    if len(projected) != 2:
+        return
+
+    # Match the creation preview: the connector shows the direction and
+    # distance traveled from the original guide position to the live one.
+    color = (0.05, 0.8, 1.0, 1.0)
+    _draw_segments(
+        _dashed_line(projected[0], projected[1], dash_length=5.0, gap_length=4.0),
+        color,
+        1.0,
+    )
+    _draw_points(projected, color, 5.0)
+
+
 def draw_persistent_construction_lines():
     context = bpy.context
     scene = getattr(context, "scene", None)
@@ -157,6 +204,7 @@ def draw_persistent_construction_lines():
         dash_length=dash_length,
         gap_length=gap_length,
     )
+    _draw_move_preview(context)
 
 
 def _draw_prompt(region, text):
