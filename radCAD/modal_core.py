@@ -54,6 +54,18 @@ def is_event_over_ui(context, event):
             return True
     return False
 
+
+class _ViewportMouseEvent:
+    """Proxy an event with coordinates relative to the modal viewport region."""
+
+    def __init__(self, event, mouse_region_x, mouse_region_y):
+        self._event = event
+        self.mouse_region_x = mouse_region_x
+        self.mouse_region_y = mouse_region_y
+
+    def __getattr__(self, name):
+        return getattr(self._event, name)
+
 def is_number_input(ev):
     valid_keys = {
         'ZERO', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE',
@@ -251,6 +263,12 @@ class ModalManager:
             self.operator.report(type_set, message)
         else:
             print(f"radCAD Report {type_set}: {message}")
+
+    def viewport_mouse_coords(self, event):
+        """Return window mouse coordinates in the modal viewport's space."""
+        if self.region and hasattr(event, "mouse_x") and hasattr(event, "mouse_y"):
+            return event.mouse_x - self.region.x, event.mouse_y - self.region.y
+        return event.mouse_region_x, event.mouse_region_y
 
     def get_snap_data(self, ctx, x, y):
         snapped_pos = None
@@ -465,8 +483,22 @@ class ModalManager:
                 context.area.tag_redraw()
                 return
 
-            snap_pt, snap_n = self.get_snap_data(context, event.mouse_region_x, event.mouse_region_y)
-            self.active_tool.update(context, event, snap_pt, snap_n)
+            mouse_x, mouse_y = self.viewport_mouse_coords(event)
+            move_event = _ViewportMouseEvent(event, mouse_x, mouse_y)
+
+            def update_tool(update_context):
+                snap_pt, snap_n = self.get_snap_data(update_context, mouse_x, mouse_y)
+                self.active_tool.update(update_context, move_event, snap_pt, snap_n)
+
+            if (
+                self.region
+                and hasattr(context, "temp_override")
+                and context.region != self.region
+            ):
+                with context.temp_override(region=self.region):
+                    update_tool(context)
+            else:
+                update_tool(context)
             self.sync_tool_from_state()
             context.area.tag_redraw()
 
@@ -838,19 +870,17 @@ def modal_arc_common(self, ctx, ev):
         reg = self.manager.region
         is_outside_viewport = False
         if reg:
-            mx, my = ev.mouse_region_x, ev.mouse_region_y
+            mx, my = self.manager.viewport_mouse_coords(ev)
             rw, rh = reg.width, reg.height
             if not (0 <= mx <= rw and 0 <= my <= rh): is_outside_viewport = True
         is_over_ui = is_event_over_ui(ctx, ev)
         
-        # --- CURSOR FIX: Consume Moves over UI ---
-        # Consuming MOUSEMOVE events prevents Blender from seeing the cursor on the 
-        # UI border and swapping it to the 'resize' double-arrow icon.
-        if is_outside_viewport or is_over_ui: 
+        # Keep updating the preview while the cursor crosses the sidebar.  Only
+        # pass actual button/wheel events through to the UI.
+        if is_outside_viewport or is_over_ui:
             if ev.type == 'MOUSEMOVE':
-                return {'RUNNING_MODAL'}
-            else:
-                return {'PASS_THROUGH'}
+                self.manager.on_move(ctx, ev)
+            return {'PASS_THROUGH'}
 
     # --- PRIORITY: Handle Text Input First ---
     if state["input_mode"] is not None:
