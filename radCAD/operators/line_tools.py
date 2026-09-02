@@ -555,23 +555,25 @@ class LineTool_Poly(SurfaceDrawTool):
         # --- SHIFT LOCK LOGIC ---
         if event.shift:
             if self.shift_lock_vec is None:
-                # 1. First frame of press: Check if we are already snapped/inferred
-                strength = max(0.1, min(89.0, self.state.get("snap_strength", 6.0)))
-                # We peek at what the inference WOULD do
-                inf_loc, inf_axis, _ = get_axis_snapped_location(
-                    ref, (event.mouse_region_x, event.mouse_region_y), 
-                    context, 
-                    snap_threshold=math.cos(math.radians(strength))
-                )
-                
-                if inf_axis:
-                    # If we were inferring an axis, lock to THAT axis
-                    self.shift_lock_vec = inf_axis
+                # 1. First frame of press: keep an explicit axis constraint
+                # stable.  Otherwise lock to the axis the cursor is already
+                # visually approaching, falling back to its current direction.
+                if self.constraint_axis is not None:
+                    self.shift_lock_vec = self.constraint_axis.copy()
                 else:
-                    # Otherwise lock to raw mouse direction
-                    diff = target - ref
-                    if diff.length_squared > 1e-6:
-                        self.shift_lock_vec = diff.normalized()
+                    strength = max(0.1, min(89.0, self.state.get("snap_strength", 6.0)))
+                    inf_loc, inf_axis, _ = get_axis_snapped_location(
+                        ref, (event.mouse_region_x, event.mouse_region_y),
+                        context,
+                        snap_threshold=math.cos(math.radians(strength))
+                    )
+
+                    if inf_axis:
+                        self.shift_lock_vec = inf_axis
+                    else:
+                        diff = target - ref
+                        if diff.length_squared > 1e-6:
+                            self.shift_lock_vec = diff.normalized()
             
             if self.shift_lock_vec:
                 # Use 3D ray intersection to handle vertical lines correctly
@@ -609,8 +611,17 @@ class LineTool_Poly(SurfaceDrawTool):
             res = geometry.intersect_line_line(ray_o, ray_o + ray_v, ref, ref + self.constraint_axis)
             if res: target = res[1]
 
+            # If the geometry snap is already on the constrained axis, keep
+            # the exact snapped vertex instead of replacing it with the
+            # cursor/ray intersection.
+            if self.state.get("geometry_snap") and snap_point is not None:
+                delta = snap_point - ref
+                on_axis = delta - self.constraint_axis * delta.dot(self.constraint_axis)
+                if on_axis.length <= max(1.0e-5, delta.length * 1.0e-4):
+                    target = snap_point.copy()
+
         # 2. Axis Inference (Override target if active and applicable)
-        elif not self.shift_lock_vec and not self.state.get("geometry_snap", False):
+        elif not self.shift_lock_vec:
             strength = max(0.1, min(89.0, self.state.get("snap_strength", 6.0)))
             inf_loc, inf_axis, _ = get_axis_snapped_location(ref, (event.mouse_region_x, event.mouse_region_y), context, snap_threshold=math.cos(math.radians(strength)))
             if inf_loc: 
@@ -699,6 +710,7 @@ class LineTool_Poly(SurfaceDrawTool):
             and snap_point is not None
             and self.constraint_axis is None
             and self.shift_lock_vec is None
+            and self.state.get("current_axis_vector") is None
             and not self.state.get("input_string")
         ):
             self.current = snap_point.copy()
