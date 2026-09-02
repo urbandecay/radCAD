@@ -11,7 +11,7 @@ from ..modal_core import DrawManager, is_event_over_ui
 from ..modal_state import state
 from ..orientation_utils import orthonormal_basis_from_normal
 from ..snapping_utils import free_snap_context, invalidate_snap_cache
-from .constants import DRAW_HANDLER_2D, DRAW_HANDLER_3D
+from .constants import DRAW_HANDLER_2D, DRAW_HANDLER_3D, DRAW_HANDLER_SNAP_HUD
 from .drawing import (
     angle_dimension_hit_distance,
     dimension_hit_distance,
@@ -208,6 +208,14 @@ class VIEW3D_OT_radcad_dimension_angle(bpy.types.Operator):
 
         DrawManager.clear_all()
         invalidate_snap_cache()
+        # The angle tool uses the same shared snap state as Rotate/Arc so the
+        # existing marker and F-key snap bar can be reused without duplicating
+        # the snap overlay implementation.
+        state["active"] = True
+        state["tool_mode"] = "DIMENSION_ANGLE"
+        state["snap_point"] = None
+        state["geometry_snap"] = False
+        state["ui_hitboxes"] = {}
         self.context = context
         self.stage = 0
         self.vertex = None
@@ -235,6 +243,15 @@ class VIEW3D_OT_radcad_dimension_angle(bpy.types.Operator):
         context.window.cursor_modal_set("DEFAULT")
         DrawManager.add_handler(DRAW_HANDLER_3D, draw_preview_3d, (self,), "WINDOW", "POST_VIEW")
         DrawManager.add_handler(DRAW_HANDLER_2D, draw_preview_2d, (self,), "WINDOW", "POST_PIXEL")
+        from ..hud_overlay import draw_hud_2d
+
+        DrawManager.add_handler(
+            DRAW_HANDLER_SNAP_HUD,
+            draw_hud_2d,
+            (),
+            "WINDOW",
+            "POST_PIXEL",
+        )
         context.window_manager.modal_handler_add(self)
         self._update(context, event)
         return {"RUNNING_MODAL"}
@@ -319,6 +336,8 @@ class VIEW3D_OT_radcad_dimension_angle(bpy.types.Operator):
                 )
                 if (projected - self.current).length_squared > 1.0e-12:
                     pick.snap_result = None
+                    state["snap_point"] = None
+                    state["geometry_snap"] = False
                 self.current = projected
             else:
                 self._set_compass_plane(
@@ -330,6 +349,8 @@ class VIEW3D_OT_radcad_dimension_angle(bpy.types.Operator):
             projected = _project_point_to_plane(pick.point, self.vertex, self.plane_normal)
             if (projected - pick.point).length_squared > 1.0e-12:
                 pick.snap_result = None
+                state["snap_point"] = None
+                state["geometry_snap"] = False
             self.current = projected
             self.current_pick = pick
             self.compass_center = self.vertex.copy()
@@ -339,6 +360,8 @@ class VIEW3D_OT_radcad_dimension_angle(bpy.types.Operator):
             projected = _project_point_to_plane(pick.point, self.vertex, self.plane_normal)
             if (projected - pick.point).length_squared > 1.0e-12:
                 pick.snap_result = None
+                state["snap_point"] = None
+                state["geometry_snap"] = False
             self.current = projected
             self.current_pick = pick
             self.compass_center = self.vertex.copy()
@@ -348,7 +371,32 @@ class VIEW3D_OT_radcad_dimension_angle(bpy.types.Operator):
                 if layout is not None
                 else ""
             )
+        state["stage"] = self.stage
+        state["current"] = self.current.copy() if self.current is not None else None
+        state["pivot"] = self.vertex.copy() if self.vertex is not None else None
         context.area.tag_redraw()
+
+    def _handle_snap_hud_click(self, context, event):
+        """Toggle a snap button from the shared Rotate/Arc snap bar."""
+        mouse_x = event.mouse_region_x
+        mouse_y = event.mouse_region_y
+        snap_keys = {
+            "snap_verts",
+            "snap_edges",
+            "snap_edge_center",
+            "snap_face_center",
+            "snap_faces",
+        }
+        for hit_id, bounds in state.get("ui_hitboxes", {}).items():
+            if hit_id not in snap_keys:
+                continue
+            xmin, xmax, ymin, ymax = bounds
+            if xmin <= mouse_x <= xmax and ymin <= mouse_y <= ymax:
+                state[hit_id] = not state.get(hit_id, False)
+                invalidate_snap_cache()
+                self._update(context, event)
+                return True
+        return False
 
     def _click(self, context, event):
         if self.stage == 0:
@@ -414,6 +462,8 @@ class VIEW3D_OT_radcad_dimension_angle(bpy.types.Operator):
         if event.type == "LEFTMOUSE" and event.value == "PRESS":
             if is_event_over_ui(context, event):
                 return {"PASS_THROUGH"}
+            if self._handle_snap_hud_click(context, event):
+                return {"RUNNING_MODAL"}
             return self._click(context, event)
         if event.type in {"BACK_SPACE", "BACKSPACE"} and event.value == "PRESS":
             if self.stage == 2:
@@ -451,8 +501,13 @@ class VIEW3D_OT_radcad_dimension_angle(bpy.types.Operator):
             return
         self.running = False
         state["current_axis_vector"] = None
+        state["active"] = False
+        state["snap_point"] = None
+        state["geometry_snap"] = False
+        state["ui_hitboxes"] = {}
         DrawManager.remove_handler(DRAW_HANDLER_3D)
         DrawManager.remove_handler(DRAW_HANDLER_2D)
+        DrawManager.remove_handler(DRAW_HANDLER_SNAP_HUD)
         free_snap_context()
         if context.scene.active_cad_tool_id == self.tool_instance_id:
             context.scene.active_cad_tool_id = ""

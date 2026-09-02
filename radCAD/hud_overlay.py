@@ -349,6 +349,11 @@ def draw_bottom_bar():
         buttons = []
         bar_label = "Edge Center Only"
 
+    # Angle Dimension uses the shared geometry-snap controls, but not the
+    # drawing-only compass/weld controls from the mesh drawing tools.
+    if tool_mode == "DIMENSION_ANGLE":
+        buttons = buttons[:5]
+
     if tool_mode == "ROTATE":
         buttons = buttons[:-1]
 
@@ -563,6 +568,10 @@ def draw_hud_2d():
             gpu.state.blend_set("NONE")
         
         # 2. Draw Menus
+        if state.get("tool_mode") == "DIMENSION_ANGLE":
+            draw_bottom_bar()
+            return
+
         draw_hotkeys_panel()
         if state.get("tool_mode") != "CURVE_FREEHAND":
             draw_bottom_bar()
