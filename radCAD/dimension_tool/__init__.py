@@ -15,10 +15,12 @@ def _draw_dimension_delete_entry(menu, context):
 
     if selected_dimension(context) is None:
         return
+    root = selected_dimension(context)
+    dimension_type = getattr(root.radcad_dimension, "dimension_type", "LINEAR")
     menu.layout.separator()
     menu.layout.operator(
         "view3d.radcad_dimension_delete",
-        text="Linear Dimension",
+        text="Angle Dimension" if dimension_type == "ANGLE" else "Linear Dimension",
         icon="TRASH",
     )
 

@@ -8,7 +8,7 @@ from mathutils import Vector
 
 from .constants import COLLECTION_NAME, ROOT_PREFIX
 from .formatting import dimension_label
-from .geometry import build_layout, dimension_basis
+from .geometry import build_angle_layout, build_layout, dimension_basis
 
 
 _UPDATE_SIGNATURES = {}
@@ -331,15 +331,13 @@ def resolve_dimension_plane(data):
 
 
 def _common_anchor_target(data):
-    anchor_1 = data.anchor_1
-    anchor_2 = data.anchor_2
-    if (
-        anchor_1.kind != "FREE"
-        and anchor_2.kind != "FREE"
-        and anchor_1.target is not None
-        and anchor_1.target == anchor_2.target
-    ):
-        return anchor_1.target
+    anchors = [data.anchor_1, data.anchor_2]
+    if getattr(data, "dimension_type", "LINEAR") == "ANGLE":
+        anchors.append(data.anchor_3)
+    if all(anchor.kind != "FREE" and anchor.target is not None for anchor in anchors):
+        target = anchors[0].target
+        if all(anchor.target == target for anchor in anchors[1:]):
+            return target
     return None
 
 
@@ -402,7 +400,10 @@ def dimension_anchors_valid(root):
     data = getattr(root, "radcad_dimension", None)
     if data is None or not data.is_dimension:
         return False
-    for anchor in (data.anchor_1, data.anchor_2):
+    anchors = (data.anchor_1, data.anchor_2)
+    if getattr(data, "dimension_type", "LINEAR") == "ANGLE":
+        anchors += (data.anchor_3,)
+    for anchor in anchors:
         if anchor.kind != "FREE" and _resolve_associated_anchor(anchor) is None:
             return False
     return True
@@ -439,17 +440,8 @@ def _remove_geometry_children(root):
             bpy.data.materials.remove(material)
 
 
-def create_dimension(context, p1, p2, plane_normal, offset_distance, snap_1=None, snap_2=None):
-    collection = _get_collection(context.scene)
-    root = bpy.data.objects.new(ROOT_PREFIX, None)
-    collection.objects.link(root)
-
-    data = root.radcad_dimension
-    data.is_dimension = True
-    set_anchor(data.anchor_1, p1, snap_1)
-    set_anchor(data.anchor_2, p2, snap_2)
-    set_dimension_plane(data, plane_normal, _common_anchor_target(data))
-    data.offset_distance = offset_distance
+def _apply_dimension_style(context, data):
+    """Copy the scene's current annotation defaults to a new dimension."""
     data.text_size = context.scene.radcad_dimension_text_size
     data.text_thickness = context.scene.radcad_dimension_text_thickness
     data.arrow_size = context.scene.radcad_dimension_arrow_size
@@ -457,6 +449,52 @@ def create_dimension(context, p1, p2, plane_normal, offset_distance, snap_1=None
     data.extension_overshoot = context.scene.radcad_dimension_extension_overshoot
     data.line_width = context.scene.radcad_dimension_line_width
     data.color = context.scene.radcad_dimension_color
+
+
+def create_dimension(context, p1, p2, plane_normal, offset_distance, snap_1=None, snap_2=None):
+    collection = _get_collection(context.scene)
+    root = bpy.data.objects.new(ROOT_PREFIX, None)
+    collection.objects.link(root)
+
+    data = root.radcad_dimension
+    data.is_dimension = True
+    data.dimension_type = "LINEAR"
+    set_anchor(data.anchor_1, p1, snap_1)
+    set_anchor(data.anchor_2, p2, snap_2)
+    set_dimension_plane(data, plane_normal, _common_anchor_target(data))
+    data.offset_distance = offset_distance
+    _apply_dimension_style(context, data)
+
+    update_dimension(root)
+    context.scene.radcad_active_dimension = root
+    return root
+
+
+def create_angle_dimension(
+    context,
+    vertex,
+    ray_1,
+    ray_2,
+    plane_normal,
+    radius,
+    snap_vertex=None,
+    snap_ray_1=None,
+    snap_ray_2=None,
+):
+    """Create a persistent angle annotation from a vertex and two ray points."""
+    collection = _get_collection(context.scene)
+    root = bpy.data.objects.new(ROOT_PREFIX, None)
+    collection.objects.link(root)
+
+    data = root.radcad_dimension
+    data.is_dimension = True
+    data.dimension_type = "ANGLE"
+    set_anchor(data.anchor_1, vertex, snap_vertex)
+    set_anchor(data.anchor_2, ray_1, snap_ray_1)
+    set_anchor(data.anchor_3, ray_2, snap_ray_2)
+    set_dimension_plane(data, plane_normal, _common_anchor_target(data))
+    data.offset_distance = abs(float(radius))
+    _apply_dimension_style(context, data)
 
     update_dimension(root)
     context.scene.radcad_active_dimension = root
@@ -467,6 +505,27 @@ def dimension_layout(root):
     data = getattr(root, "radcad_dimension", None)
     if data is None or not data.is_dimension or not dimension_anchors_valid(root):
         return None, ""
+
+    owning_scene = next((scene for scene in bpy.data.scenes if root.name in scene.objects), bpy.context.scene)
+    if getattr(data, "dimension_type", "LINEAR") == "ANGLE":
+        vertex = resolve_anchor(data.anchor_1)
+        ray_1 = resolve_anchor(data.anchor_2)
+        ray_2 = resolve_anchor(data.anchor_3)
+        layout = build_angle_layout(
+            vertex,
+            ray_1,
+            ray_2,
+            resolve_dimension_plane(data),
+            data.offset_distance,
+            0.001,
+            0.001,
+            data.extension_gap,
+            data.extension_overshoot,
+        )
+        if layout is None:
+            return None, ""
+        return layout, dimension_label(data, layout.measured_angle, owning_scene)
+
     p1 = resolve_anchor(data.anchor_1)
     p2 = resolve_anchor(data.anchor_2)
     _migrate_dimension_orientation(data, p1, p2)
@@ -482,7 +541,6 @@ def dimension_layout(root):
     )
     if layout is None:
         return None, ""
-    owning_scene = next((scene for scene in bpy.data.scenes if root.name in scene.objects), bpy.context.scene)
     return layout, dimension_label(data, layout.measured_length, owning_scene)
 
 
@@ -519,8 +577,17 @@ def update_dimension(root):
     if data.line_width != line_width:
         data["line_width"] = line_width
 
+    dimension_type = getattr(data, "dimension_type", "LINEAR")
+    if dimension_type == "ANGLE":
+        layout_values = (*layout.vertex, *layout.ray_1, *layout.ray_2, *layout.plane_normal)
+        measured_value = layout.measured_angle
+    else:
+        layout_values = (*layout.p1, *layout.p2, *layout.plane_normal)
+        measured_value = layout.measured_length
+
     signature = (
-        *(round(value, 12) for value in (*layout.p1, *layout.p2, *layout.plane_normal)),
+        dimension_type,
+        *(round(value, 12) for value in layout_values),
         round(float(data.offset_distance), 12),
         round(text_size, 12),
         round(text_thickness, 12),
@@ -536,8 +603,11 @@ def update_dimension(root):
         return True
     _UPDATE_SIGNATURES[root_pointer] = signature
 
-    if abs(data.measured_length - layout.measured_length) > 1.0e-12:
-        data.measured_length = layout.measured_length
+    if dimension_type == "ANGLE":
+        if abs(data.measured_angle - measured_value) > 1.0e-12:
+            data.measured_angle = measured_value
+    elif abs(data.measured_length - measured_value) > 1.0e-12:
+        data.measured_length = measured_value
     if (Vector(data.plane_normal) - layout.plane_normal).length_squared > 1.0e-18:
         data.plane_normal = layout.plane_normal
     return True

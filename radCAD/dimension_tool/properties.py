@@ -26,8 +26,12 @@ class RADCAD_PG_dimension_anchor(bpy.types.PropertyGroup):
 
 class RADCAD_PG_dimension_data(bpy.types.PropertyGroup):
     is_dimension: bpy.props.BoolProperty(default=False)
+    # LINEAR is the default so dimensions saved before angle dimensions were
+    # added continue to load unchanged.
+    dimension_type: bpy.props.StringProperty(default="LINEAR", options={"HIDDEN"})
     anchor_1: bpy.props.PointerProperty(type=RADCAD_PG_dimension_anchor)
     anchor_2: bpy.props.PointerProperty(type=RADCAD_PG_dimension_anchor)
+    anchor_3: bpy.props.PointerProperty(type=RADCAD_PG_dimension_anchor)
     plane_normal: bpy.props.FloatVectorProperty(size=3, subtype="XYZ", default=(0.0, 0.0, 1.0))
     orientation_initialized: bpy.props.BoolProperty(default=False, options={"HIDDEN"})
     orientation_target: bpy.props.PointerProperty(type=bpy.types.Object, options={"HIDDEN"})
@@ -67,6 +71,7 @@ class RADCAD_PG_dimension_data(bpy.types.PropertyGroup):
         update=_update_dimension,
     )
     measured_length: bpy.props.FloatProperty(options={"HIDDEN"})
+    measured_angle: bpy.props.FloatProperty(options={"HIDDEN"})
 
 
 CLASSES = (RADCAD_PG_dimension_anchor, RADCAD_PG_dimension_data)

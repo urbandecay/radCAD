@@ -1,4 +1,4 @@
-"""Interactive creation and editing operators for linear dimensions."""
+"""Interactive creation and editing operators for dimensions."""
 
 import math
 import time
@@ -9,12 +9,19 @@ from mathutils import Vector
 from ..inference_utils import get_axis_snapped_location, get_direction_snapped_location
 from ..modal_core import DrawManager, is_event_over_ui
 from ..modal_state import state
+from ..orientation_utils import orthonormal_basis_from_normal
 from ..snapping_utils import free_snap_context, invalidate_snap_cache
 from .constants import DRAW_HANDLER_2D, DRAW_HANDLER_3D
-from .drawing import dimension_hit_distance, draw_preview_2d, draw_preview_3d
-from .formatting import format_dimension_length
-from .geometry import dimension_basis
+from .drawing import (
+    angle_dimension_hit_distance,
+    dimension_hit_distance,
+    draw_preview_2d,
+    draw_preview_3d,
+)
+from .formatting import format_dimension_angle, format_dimension_length
+from .geometry import build_angle_layout, dimension_basis
 from .model import (
+    create_angle_dimension,
     create_dimension,
     delete_dimension,
     dimension_layout,
@@ -115,6 +122,345 @@ def _cursor_driven_offset(context, event, p1, p2, fallback_normal, fallback_dist
     plane_normal.normalize()
     current = midpoint + offset_direction * distance
     return current, plane_normal, distance, inferred_axis
+
+
+def _project_point_to_plane(point, plane_point, plane_normal):
+    point = Vector(point)
+    plane_point = Vector(plane_point)
+    normal = Vector(plane_normal)
+    if normal.length_squared <= 1.0e-12:
+        return point
+    normal.normalize()
+    delta = point - plane_point
+    return point - normal * delta.dot(normal)
+
+
+def _cursor_driven_angle_radius(context, event, vertex, plane_normal, fallback_radius):
+    """Resolve an angle annotation radius from the cursor on its dimension plane."""
+    placement = project_to_plane(
+        context,
+        event.mouse_region_x,
+        event.mouse_region_y,
+        vertex,
+        plane_normal,
+    )
+    if placement is None:
+        return None
+    placement = _project_point_to_plane(placement, vertex, plane_normal)
+    radius = (placement - Vector(vertex)).length
+    if radius <= 1.0e-8:
+        return Vector(vertex), abs(float(fallback_radius))
+    return placement, radius
+
+
+def _angle_preview_layout(operator):
+    ray_2 = getattr(operator, "ray_2", None)
+    if ray_2 is None:
+        ray_2 = getattr(operator, "current", None)
+    if (
+        getattr(operator, "vertex", None) is None
+        or getattr(operator, "ray_1", None) is None
+        or ray_2 is None
+    ):
+        return None
+    return build_angle_layout(
+        operator.vertex,
+        operator.ray_1,
+        ray_2,
+        operator.plane_normal,
+        operator.offset_distance,
+        0.001,
+        0.001,
+        0.0,
+        0.0,
+    )
+
+
+def _axis_for_key(key):
+    return {
+        "X": Vector((1.0, 0.0, 0.0)),
+        "Y": Vector((0.0, 1.0, 0.0)),
+        "Z": Vector((0.0, 0.0, 1.0)),
+    }[key]
+
+
+class VIEW3D_OT_radcad_dimension_angle(bpy.types.Operator):
+    bl_idname = "view3d.radcad_dimension_angle"
+    bl_label = "Angle Dimension"
+    bl_description = "Create an angle dimension from a vertex and two rays"
+    bl_options = {"REGISTER", "UNDO", "BLOCKING"}
+
+    running = False
+    dimension_type = "ANGLE"
+
+    @classmethod
+    def poll(cls, context):
+        return (
+            context.area is not None
+            and context.area.type == "VIEW_3D"
+            and context.mode in {"OBJECT", "EDIT_MESH"}
+        )
+
+    def invoke(self, context, event):
+        if context.region is None or context.region.type != "WINDOW":
+            self.report({"WARNING"}, "Run the Angle Dimension tool from a 3D View")
+            return {"CANCELLED"}
+
+        DrawManager.clear_all()
+        invalidate_snap_cache()
+        self.context = context
+        self.stage = 0
+        self.vertex = None
+        self.ray_1 = None
+        self.ray_2 = None
+        self.current = None
+        self.current_pick = None
+        self.pick_vertex = None
+        self.pick_ray_1 = None
+        self.pick_ray_2 = None
+        self.plane_normal = None
+        self.compass_center = None
+        self.compass_plane_normal = None
+        self.compass_x = None
+        self.compass_y = None
+        self.compass_rotation = 0.0
+        self.plane_locked = False
+        self.locked_plane_point = None
+        self.offset_distance = 0.0
+        self.preview_label = ""
+        self.running = True
+        self.tool_instance_id = f"DIMENSION_ANGLE_{time.time()}"
+        context.scene.active_cad_tool_id = self.tool_instance_id
+        context.scene.radcad_dimension_icon = "dimension_linear"
+        context.window.cursor_modal_set("DEFAULT")
+        DrawManager.add_handler(DRAW_HANDLER_3D, draw_preview_3d, (self,), "WINDOW", "POST_VIEW")
+        DrawManager.add_handler(DRAW_HANDLER_2D, draw_preview_2d, (self,), "WINDOW", "POST_PIXEL")
+        context.window_manager.modal_handler_add(self)
+        self._update(context, event)
+        return {"RUNNING_MODAL"}
+
+    def _set_compass_plane(self, normal):
+        normal = Vector(normal)
+        if normal.length_squared <= 1.0e-12:
+            return False
+        normal.normalize()
+        self.compass_plane_normal = normal
+        self.compass_x, self.compass_y, _normal = orthonormal_basis_from_normal(normal)
+        return self.compass_x is not None and self.compass_y is not None
+
+    def _update_compass_rotation(self, point):
+        if self.vertex is None or self.compass_x is None or self.compass_y is None:
+            return
+        direction = Vector(point) - self.vertex
+        direction -= self.compass_plane_normal * direction.dot(self.compass_plane_normal)
+        if direction.length_squared <= 1.0e-12:
+            return
+        self.compass_rotation = math.atan2(direction.dot(self.compass_y), direction.dot(self.compass_x))
+
+    def _handle_plane_input(self, context, event):
+        if self.stage != 0 or event.value != "PRESS":
+            return False
+
+        if event.type == "L":
+            if self.plane_locked:
+                self.plane_locked = False
+                self.locked_plane_point = None
+                self.report({"INFO"}, "Angle plane unlocked")
+            elif self.compass_plane_normal is not None:
+                self.plane_locked = True
+                self.locked_plane_point = (
+                    self.compass_center.copy()
+                    if self.compass_center is not None
+                    else Vector((0.0, 0.0, 0.0))
+                )
+                self.report({"INFO"}, "Angle plane locked")
+            self._update(context, event)
+            return True
+
+        if event.type not in {"X", "Y", "Z"}:
+            return False
+
+        axis = _axis_for_key(event.type)
+        if self.plane_locked and self.compass_plane_normal is not None and abs(self.compass_plane_normal.dot(axis)) > 0.99:
+            self.plane_locked = False
+            self.locked_plane_point = None
+            self.report({"INFO"}, f"Unlocked {event.type}-Plane")
+        else:
+            self._set_compass_plane(axis)
+            self.plane_locked = True
+            self.locked_plane_point = (
+                self.compass_center.copy()
+                if self.compass_center is not None
+                else Vector((0.0, 0.0, 0.0))
+            )
+            self.report({"INFO"}, f"Locked to {event.type}-Plane")
+        self._update(context, event)
+        return True
+
+    def _update(self, context, event):
+        state["current_axis_vector"] = None
+        if self.stage == 0:
+            if self.plane_locked and self.locked_plane_point is not None:
+                pick = pick_point(
+                    context,
+                    event,
+                    self.locked_plane_point,
+                    self.compass_plane_normal,
+                )
+            else:
+                pick = pick_point(context, event)
+            self.current = pick.point
+            self.current_pick = pick
+            if self.plane_locked:
+                projected = _project_point_to_plane(
+                    self.current,
+                    self.locked_plane_point,
+                    self.compass_plane_normal,
+                )
+                if (projected - self.current).length_squared > 1.0e-12:
+                    pick.snap_result = None
+                self.current = projected
+            else:
+                self._set_compass_plane(
+                    pick.normal if pick.normal is not None else Vector((0.0, 0.0, 1.0))
+                )
+            self.compass_center = self.current.copy()
+        elif self.stage == 1:
+            pick = pick_point(context, event, self.vertex, self.plane_normal)
+            projected = _project_point_to_plane(pick.point, self.vertex, self.plane_normal)
+            if (projected - pick.point).length_squared > 1.0e-12:
+                pick.snap_result = None
+            self.current = projected
+            self.current_pick = pick
+            self.compass_center = self.vertex.copy()
+            self._update_compass_rotation(self.current)
+        else:
+            pick = pick_point(context, event, self.vertex, self.plane_normal)
+            projected = _project_point_to_plane(pick.point, self.vertex, self.plane_normal)
+            if (projected - pick.point).length_squared > 1.0e-12:
+                pick.snap_result = None
+            self.current = projected
+            self.current_pick = pick
+            self.compass_center = self.vertex.copy()
+            layout = _angle_preview_layout(self)
+            self.preview_label = (
+                format_dimension_angle(layout.measured_angle, context.scene)
+                if layout is not None
+                else ""
+            )
+        context.area.tag_redraw()
+
+    def _click(self, context, event):
+        if self.stage == 0:
+            self.vertex = self.current.copy()
+            self.pick_vertex = self.current_pick.snap_result
+            self.plane_normal = self.compass_plane_normal.copy() if self.compass_plane_normal is not None else self.current_pick.normal.copy()
+            if self.plane_normal.length_squared <= 1.0e-12:
+                self.plane_normal = Vector((0.0, 0.0, 1.0))
+            self.plane_normal.normalize()
+            self._set_compass_plane(self.plane_normal)
+            self.compass_center = self.vertex.copy()
+            self.stage = 1
+            return {"RUNNING_MODAL"}
+
+        if self.stage == 1:
+            if (self.current - self.vertex).length <= 1.0e-8:
+                self.report({"WARNING"}, "The first ray point must be different from the vertex")
+                return {"RUNNING_MODAL"}
+            self.ray_1 = self.current.copy()
+            self.pick_ray_1 = self.current_pick.snap_result
+            self.offset_distance = (self.ray_1 - self.vertex).length
+            self._update_compass_rotation(self.ray_1)
+            self.stage = 2
+            self._update(context, event)
+            return {"RUNNING_MODAL"}
+
+        if self.current is None or (self.current - self.vertex).length <= 1.0e-8:
+            self.report({"WARNING"}, "The second ray point must be different from the vertex")
+            return {"RUNNING_MODAL"}
+        self.ray_2 = self.current.copy()
+        self.pick_ray_2 = self.current_pick.snap_result
+        layout = _angle_preview_layout(self)
+        if layout is None:
+            self.report({"WARNING"}, "The three points must define a non-zero angle")
+            return {"RUNNING_MODAL"}
+
+        create_angle_dimension(
+            context,
+            self.vertex,
+            self.ray_1,
+            self.ray_2,
+            layout.plane_normal,
+            self.offset_distance,
+            self.pick_vertex,
+            self.pick_ray_1,
+            self.pick_ray_2,
+        )
+        self.finish(context)
+        return {"FINISHED"}
+
+    def modal(self, context, event):
+        if context.scene.active_cad_tool_id != self.tool_instance_id:
+            self.finish(context)
+            return {"CANCELLED"}
+
+        if event.type in {"MIDDLEMOUSE", "WHEELUPMOUSE", "WHEELDOWNMOUSE"}:
+            return {"PASS_THROUGH"}
+        if event.type == "MOUSEMOVE":
+            if is_event_over_ui(context, event):
+                return {"RUNNING_MODAL"}
+            self._update(context, event)
+            return {"RUNNING_MODAL"}
+        if event.type == "LEFTMOUSE" and event.value == "PRESS":
+            if is_event_over_ui(context, event):
+                return {"PASS_THROUGH"}
+            return self._click(context, event)
+        if event.type in {"BACK_SPACE", "BACKSPACE"} and event.value == "PRESS":
+            if self.stage == 2:
+                self.stage = 1
+                self.ray_2 = None
+            elif self.stage == 1:
+                self.stage = 0
+                self.vertex = None
+                self.ray_1 = None
+                self.offset_distance = 0.0
+            self._update(context, event)
+            return {"RUNNING_MODAL"}
+        if event.type == "ESC" and event.value == "PRESS":
+            self.finish(context)
+            return {"CANCELLED"}
+        if event.value == "PRESS" and event.type in {"L", "X", "Y", "Z"}:
+            if self._handle_plane_input(context, event):
+                return {"RUNNING_MODAL"}
+        if event.value == "PRESS" and event.type in {"F1", "F2", "F3", "F4", "F5"}:
+            key = {
+                "F1": "snap_verts",
+                "F2": "snap_edges",
+                "F3": "snap_edge_center",
+                "F4": "snap_face_center",
+                "F5": "snap_faces",
+            }[event.type]
+            state[key] = not state.get(key, False)
+            invalidate_snap_cache()
+            self._update(context, event)
+            return {"RUNNING_MODAL"}
+        return {"RUNNING_MODAL"}
+
+    def finish(self, context):
+        if not self.running:
+            return
+        self.running = False
+        state["current_axis_vector"] = None
+        DrawManager.remove_handler(DRAW_HANDLER_3D)
+        DrawManager.remove_handler(DRAW_HANDLER_2D)
+        free_snap_context()
+        if context.scene.active_cad_tool_id == self.tool_instance_id:
+            context.scene.active_cad_tool_id = ""
+        try:
+            context.window.cursor_modal_restore()
+        except RuntimeError:
+            pass
+        context.area.tag_redraw()
 
 
 class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
@@ -307,15 +653,30 @@ class VIEW3D_OT_radcad_dimension_reposition(bpy.types.Operator):
         data = self.root.radcad_dimension
         self.original_offset = data.offset_distance
         self.original_plane_normal = resolve_dimension_plane(data)
-        self.p1 = resolve_anchor(data.anchor_1)
-        self.p2 = resolve_anchor(data.anchor_2)
         self.plane_normal = self.original_plane_normal.copy()
         self.context = context
         self.stage = 2
-        basis = dimension_basis(self.p1, self.p2, self.plane_normal)
-        self.current = (self.p1 + self.p2) * 0.5 + basis[1] * data.offset_distance
+        self.dimension_type = getattr(data, "dimension_type", "LINEAR")
         self.offset_distance = data.offset_distance
-        self.preview_label = format_dimension_length((self.p2 - self.p1).length, context.scene)
+        if self.dimension_type == "ANGLE":
+            self.vertex = resolve_anchor(data.anchor_1)
+            self.ray_1 = resolve_anchor(data.anchor_2)
+            self.ray_2 = resolve_anchor(data.anchor_3)
+            self.p1 = self.vertex
+            self.p2 = self.ray_1
+            angle_layout = _angle_preview_layout(self)
+            self.preview_label = (
+                format_dimension_angle(angle_layout.measured_angle, context.scene)
+                if angle_layout is not None
+                else ""
+            )
+            self.current = self.vertex.copy()
+        else:
+            self.p1 = resolve_anchor(data.anchor_1)
+            self.p2 = resolve_anchor(data.anchor_2)
+            basis = dimension_basis(self.p1, self.p2, self.plane_normal)
+            self.current = (self.p1 + self.p2) * 0.5 + basis[1] * data.offset_distance
+            self.preview_label = format_dimension_length((self.p2 - self.p1).length, context.scene)
         self.running = True
         DrawManager.clear_all()
         self.tool_instance_id = f"DIMENSION_REPOSITION_{time.time()}"
@@ -329,6 +690,18 @@ class VIEW3D_OT_radcad_dimension_reposition(bpy.types.Operator):
 
     def _update(self, context, event):
         state["current_axis_vector"] = None
+        if self.dimension_type == "ANGLE":
+            resolved = _cursor_driven_angle_radius(
+                context,
+                event,
+                self.vertex,
+                self.plane_normal,
+                self.offset_distance,
+            )
+            if resolved is not None:
+                self.current, self.offset_distance = resolved
+            context.area.tag_redraw()
+            return
         resolved = _cursor_driven_offset(
             context,
             event,
@@ -396,8 +769,8 @@ class VIEW3D_OT_radcad_dimension_refresh(bpy.types.Operator):
 
 class VIEW3D_OT_radcad_dimension_parameters(bpy.types.Operator):
     bl_idname = "view3d.radcad_dimension_parameters"
-    bl_label = "Linear Dimension Parameters"
-    bl_description = "Open the movable linear dimension parameters dialog"
+    bl_label = "Dimension Parameters"
+    bl_description = "Open the dimension display and editing parameters dialog"
     bl_options = {"INTERNAL"}
 
     @classmethod
@@ -408,7 +781,7 @@ class VIEW3D_OT_radcad_dimension_parameters(bpy.types.Operator):
         return context.window_manager.invoke_props_dialog(
             self,
             width=420,
-            title="Linear Dimension Parameters",
+            title="Dimension Parameters",
             confirm_text="Close",
         )
 
@@ -495,21 +868,39 @@ class VIEW3D_OT_radcad_dimension_pick(bpy.types.Operator):
             if layout is None:
                 continue
             data = root.radcad_dimension
-            distance = dimension_hit_distance(
-                context,
-                mouse,
-                layout.p1,
-                layout.p2,
-                layout.plane_normal,
-                data.offset_distance,
-                label,
-                data.text_size if data.text_size >= 4.0 else 14.0,
-                max(1.0, float(data.text_thickness)),
-                data.arrow_size if data.arrow_size >= 2.0 else 10.0,
-                data.line_width if data.line_width >= 0.5 else 1.0,
-                data.extension_gap,
-                data.extension_overshoot,
-            )
+            if getattr(data, "dimension_type", "LINEAR") == "ANGLE":
+                distance = angle_dimension_hit_distance(
+                    context,
+                    mouse,
+                    layout.vertex,
+                    layout.ray_1,
+                    layout.ray_2,
+                    layout.plane_normal,
+                    data.offset_distance,
+                    label,
+                    data.text_size if data.text_size >= 4.0 else 14.0,
+                    max(1.0, float(data.text_thickness)),
+                    data.arrow_size if data.arrow_size >= 2.0 else 10.0,
+                    data.line_width if data.line_width >= 0.5 else 1.0,
+                    data.extension_gap,
+                    data.extension_overshoot,
+                )
+            else:
+                distance = dimension_hit_distance(
+                    context,
+                    mouse,
+                    layout.p1,
+                    layout.p2,
+                    layout.plane_normal,
+                    data.offset_distance,
+                    label,
+                    data.text_size if data.text_size >= 4.0 else 14.0,
+                    max(1.0, float(data.text_thickness)),
+                    data.arrow_size if data.arrow_size >= 2.0 else 10.0,
+                    data.line_width if data.line_width >= 0.5 else 1.0,
+                    data.extension_gap,
+                    data.extension_overshoot,
+                )
             if distance is not None and distance < best_distance:
                 picked = root
                 best_distance = distance
@@ -541,6 +932,7 @@ class VIEW3D_OT_radcad_dimension_delete(bpy.types.Operator):
 
 
 CLASSES = (
+    VIEW3D_OT_radcad_dimension_angle,
     VIEW3D_OT_radcad_dimension_linear,
     VIEW3D_OT_radcad_dimension_reposition,
     VIEW3D_OT_radcad_dimension_refresh,

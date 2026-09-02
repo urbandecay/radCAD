@@ -505,6 +505,13 @@ class RADCAD_PT_Dimension(bpy.types.Panel):
             text="",
             icon="PREFERENCES",
         )
+        angle_row = layout.row(align=True)
+        angle_row.scale_y = 1.2
+        angle_row.operator(
+            "view3d.radcad_dimension_angle",
+            text="Angle Dimension",
+            icon="DRIVER_ROTATIONAL_DIFFERENCE",
+        )
 
 
 class RADCAD_PT_Erase(bpy.types.Panel):
