@@ -35,6 +35,7 @@ state = {
     "snap_faces": False,
     "snap_intersections": False,
     "use_angle_snap": True,
+    "angle_axis_snap": False,
     "arc_2pt_use_axis_colors": True,
     "arc_2pt_overlay_col": (0.2, 0.2, 0.2, 1.0),
     "arc_3pt_use_axis_colors": True,

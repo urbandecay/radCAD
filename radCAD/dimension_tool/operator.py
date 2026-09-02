@@ -184,6 +184,44 @@ def _axis_for_key(key):
     }[key]
 
 
+def _compass_axis_snap(vertex, point, plane_normal, alignment_degrees):
+    """Snap a compass ray to an aligned global axis in its active plane."""
+    vertex = Vector(vertex)
+    point = Vector(point)
+    normal = Vector(plane_normal)
+    if normal.length_squared <= 1.0e-12:
+        return None, None, None
+    normal.normalize()
+
+    ray = point - vertex
+    ray -= normal * ray.dot(normal)
+    ray_length = ray.length
+    if ray_length <= 1.0e-8:
+        return None, None, None
+    ray.normalize()
+
+    alignment_limit = math.cos(
+        math.radians(max(0.1, min(89.0, alignment_degrees)))
+    )
+    best = None
+    best_alignment = alignment_limit
+    for axis_name, axis in _GLOBAL_AXES.items():
+        # A true global axis can only remain on the selected compass plane
+        # when the plane normal is perpendicular to it.  Do not move a ray
+        # out of the measurement plane just to force an axis snap.
+        if abs(normal.dot(axis)) > 1.0e-4:
+            continue
+        alignment = abs(ray.dot(axis))
+        if alignment < best_alignment:
+            continue
+        signed_axis = axis.copy()
+        if ray.dot(signed_axis) < 0.0:
+            signed_axis.negate()
+        best = (vertex + signed_axis * ray_length, signed_axis, axis_name)
+        best_alignment = alignment
+    return best if best is not None else (None, None, None)
+
+
 class VIEW3D_OT_radcad_dimension_angle(bpy.types.Operator):
     bl_idname = "view3d.radcad_dimension_angle"
     bl_label = "Angle Dimension"
@@ -232,6 +270,8 @@ class VIEW3D_OT_radcad_dimension_angle(bpy.types.Operator):
         self.compass_x = None
         self.compass_y = None
         self.compass_rotation = 0.0
+        self.axis_snap_name = None
+        self.axis_snap_vector = None
         self.plane_locked = False
         self.locked_plane_point = None
         self.offset_distance = 0.0
@@ -316,6 +356,8 @@ class VIEW3D_OT_radcad_dimension_angle(bpy.types.Operator):
 
     def _update(self, context, event):
         state["current_axis_vector"] = None
+        self.axis_snap_name = None
+        self.axis_snap_vector = None
         if self.stage == 0:
             if self.plane_locked and self.locked_plane_point is not None:
                 pick = pick_point(
@@ -355,6 +397,19 @@ class VIEW3D_OT_radcad_dimension_angle(bpy.types.Operator):
             self.current_pick = pick
             self.compass_center = self.vertex.copy()
             self._update_compass_rotation(self.current)
+            if state.get("angle_axis_snap", False) and not state.get("geometry_snap", False):
+                snapped, axis_vector, axis_name = _compass_axis_snap(
+                    self.vertex,
+                    self.current,
+                    self.plane_normal,
+                    state.get("snap_strength", 6.0),
+                )
+                if snapped is not None:
+                    self.current = snapped
+                    self.axis_snap_name = axis_name
+                    self.axis_snap_vector = axis_vector
+                    state["current_axis_vector"] = axis_vector.copy()
+                    self._update_compass_rotation(self.current)
         else:
             pick = pick_point(context, event, self.vertex, self.plane_normal)
             projected = _project_point_to_plane(pick.point, self.vertex, self.plane_normal)
@@ -365,6 +420,18 @@ class VIEW3D_OT_radcad_dimension_angle(bpy.types.Operator):
             self.current = projected
             self.current_pick = pick
             self.compass_center = self.vertex.copy()
+            if state.get("angle_axis_snap", False) and not state.get("geometry_snap", False):
+                snapped, axis_vector, axis_name = _compass_axis_snap(
+                    self.vertex,
+                    self.current,
+                    self.plane_normal,
+                    state.get("snap_strength", 6.0),
+                )
+                if snapped is not None:
+                    self.current = snapped
+                    self.axis_snap_name = axis_name
+                    self.axis_snap_vector = axis_vector
+                    state["current_axis_vector"] = axis_vector.copy()
             layout = _angle_preview_layout(self)
             self.preview_label = (
                 format_dimension_angle(layout.measured_angle, context.scene)
@@ -388,7 +455,7 @@ class VIEW3D_OT_radcad_dimension_angle(bpy.types.Operator):
             "snap_faces",
         }
         for hit_id, bounds in state.get("ui_hitboxes", {}).items():
-            if hit_id not in snap_keys:
+            if hit_id not in snap_keys and hit_id != "angle_axis_snap":
                 continue
             xmin, xmax, ymin, ymax = bounds
             if xmin <= mouse_x <= xmax and ymin <= mouse_y <= ymax:
@@ -482,6 +549,11 @@ class VIEW3D_OT_radcad_dimension_angle(bpy.types.Operator):
         if event.value == "PRESS" and event.type in {"L", "X", "Y", "Z"}:
             if self._handle_plane_input(context, event):
                 return {"RUNNING_MODAL"}
+        if event.value == "PRESS" and event.type == "A":
+            state["angle_axis_snap"] = not state.get("angle_axis_snap", False)
+            invalidate_snap_cache()
+            self._update(context, event)
+            return {"RUNNING_MODAL"}
         if event.value == "PRESS" and event.type in {"F1", "F2", "F3", "F4", "F5"}:
             key = {
                 "F1": "snap_verts",

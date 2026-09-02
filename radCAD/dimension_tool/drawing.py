@@ -562,6 +562,14 @@ def _draw_angle_compass(operator):
         return
 
 
+def _axis_snap_color(axis_name):
+    return {
+        "X": (1.0, 0.1, 0.1, 1.0),
+        "Y": (0.1, 0.8, 0.1, 1.0),
+        "Z": (0.2, 0.5, 1.0, 1.0),
+    }.get(axis_name, (1.0, 0.75, 0.0, 1.0))
+
+
 def _draw_angle_preview_3d(operator):
     _draw_angle_compass(operator)
     vertex = getattr(operator, "vertex", None)
@@ -576,6 +584,12 @@ def _draw_angle_preview_3d(operator):
     ray_2 = getattr(operator, "ray_2", None)
     if operator.stage == 1 and current is not None:
         _draw_segments([(vertex, current)], (0.02, 0.02, 0.02, 1.0), 2.0)
+        if getattr(operator, "axis_snap_name", None):
+            _draw_segments(
+                [(vertex, current)],
+                _axis_snap_color(operator.axis_snap_name),
+                3.0,
+            )
         _draw_points([vertex, current], (1.0, 0.75, 0.0, 1.0))
         return
     if ray_1 is None:
@@ -598,6 +612,12 @@ def _draw_angle_preview_3d(operator):
         _draw_segments(((vertex, ray_1), (vertex, ray_2)), (0.02, 0.02, 0.02, 1.0), 2.0)
     else:
         _draw_segments(layout.segments, (0.02, 0.02, 0.02, 1.0), 2.0)
+    if getattr(operator, "axis_snap_name", None):
+        _draw_segments(
+            [(vertex, ray_2)],
+            _axis_snap_color(operator.axis_snap_name),
+            3.0,
+        )
     _draw_points([vertex, ray_1, ray_2], (1.0, 0.75, 0.0, 1.0))
 
 
@@ -644,7 +664,7 @@ def draw_preview_2d(operator):
         )
         prompt = prompts[min(operator.stage, 2)]
         _draw_box(20, operator.context.region.height - 48, prompt)
-        _draw_box(20, 20, "F1–F5 snapping   •   Backspace previous   •   Esc cancel")
+        _draw_box(20, 20, "F1–F5 snapping   •   A: Axis Snap   •   Backspace previous   •   Esc cancel")
         ray_1 = getattr(operator, "ray_1", None)
         ray_2 = getattr(operator, "ray_2", None)
         if operator.stage >= 2 and operator.vertex is not None and ray_1 is not None:

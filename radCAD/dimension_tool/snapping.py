@@ -57,8 +57,9 @@ def pick_point(context, event, plane_point=None, plane_normal=None):
             _location, normal, _obj = raycast_under_mouse(context, event.mouse_region_x, event.mouse_region_y)
         if normal is None:
             normal = plane_normal or _view_plane_normal(context)
-        state["snap_point"] = result.location.copy()
-        state["geometry_snap"] = result.kind != "SURFACE"
+        is_geometry_snap = result.kind != "SURFACE"
+        state["snap_point"] = result.location.copy() if is_geometry_snap else None
+        state["geometry_snap"] = is_geometry_snap
         return PickResult(result.location.copy(), Vector(normal), result)
 
     state["snap_point"] = None

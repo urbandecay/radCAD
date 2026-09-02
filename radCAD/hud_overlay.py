@@ -352,7 +352,13 @@ def draw_bottom_bar():
     # Angle Dimension uses the shared geometry-snap controls, but not the
     # drawing-only compass/weld controls from the mesh drawing tools.
     if tool_mode == "DIMENSION_ANGLE":
-        buttons = buttons[:5]
+        buttons = buttons[:5] + [
+            (
+                "A: Axis Snap",
+                state.get("angle_axis_snap", False),
+                "angle_axis_snap",
+            ),
+        ]
 
     if tool_mode == "ROTATE":
         buttons = buttons[:-1]
