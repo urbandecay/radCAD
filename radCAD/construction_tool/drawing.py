@@ -9,6 +9,7 @@ from mathutils import Vector
 
 from ..hud_overlay import draw_ui_box_generic
 from ..modal_state import state
+from ..units_utils import format_length
 from .model import iter_construction_lines
 from .projection import guide_vectors, projected_visible_guide_segment
 
@@ -155,6 +156,15 @@ def _draw_move_preview(context):
         1.0,
     )
     _draw_points(projected, color, 5.0)
+
+    scale = getattr(context.scene.unit_settings, "scale_length", 1.0) or 1.0
+    label = format_length((end - start).length * scale)
+    draw_ui_box_generic(
+        projected[1].x + state.get("overlay_offset_x", 25),
+        projected[1].y + state.get("overlay_offset_y", 10),
+        label,
+        active=False,
+    )
 
 
 def draw_persistent_construction_lines():
