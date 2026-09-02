@@ -1,5 +1,7 @@
 """Viewport selection and repositioning for persistent construction guides."""
 
+import math
+
 import bpy
 from bpy_extras.view3d_utils import (
     region_2d_to_origin_3d,
@@ -8,13 +10,19 @@ from bpy_extras.view3d_utils import (
 from mathutils import Vector
 from mathutils.geometry import intersect_line_plane
 
-from ..modal_core import is_event_over_ui
+from ..modal_core import is_event_over_ui, is_number_input
+from ..units_utils import parse_length_input
 from .model import has_visible_construction_lines, iter_construction_lines
 from .native_snap import sync_scene_snap_proxy
 from .properties import tag_redraw_all_view3d
 from .snapping import CONSTRUCTION_LINE_HIT_RADIUS, pick_construction_line
 from .projection import guide_vectors
-from .drawing import clear_construction_move_preview, set_construction_move_preview
+from .drawing import (
+    clear_construction_move_distance_input,
+    clear_construction_move_preview,
+    set_construction_move_distance_input,
+    set_construction_move_preview,
+)
 
 
 _DRAG_THRESHOLD_PX = 3.0
@@ -99,9 +107,18 @@ class VIEW3D_OT_radcad_construction_pick(bpy.types.Operator):
         )
         self.dragging = False
         self.changed = False
+        self.awaiting_confirmation = False
+        self.travel_direction = None
+        self.distance_input_active = False
+        self.distance_input = ""
+        self.distance_input_cursor = 0
+        clear_construction_move_distance_input()
         set_construction_move_preview(self.original_anchor, self.original_anchor)
         self._set_active(context.scene, index)
         context.window_manager.modal_handler_add(self)
+        context.workspace.status_text_set(
+            "Construction line: drag, type distance or L, Enter/Click confirm, Esc cancel"
+        )
         context.area.tag_redraw()
         return {"RUNNING_MODAL"}
 
@@ -128,6 +145,8 @@ class VIEW3D_OT_radcad_construction_pick(bpy.types.Operator):
         # A construction guide moves perpendicular to itself. Removing the
         # along-line component keeps the guide parallel while dragging.
         delta -= self.direction * delta.dot(self.direction)
+        if delta.length_squared > 1.0e-12:
+            self.travel_direction = delta.normalized()
         line = self._line(context)
         if line is None:
             return False
@@ -147,12 +166,175 @@ class VIEW3D_OT_radcad_construction_pick(bpy.types.Operator):
             return
         line.anchor = self.original_anchor
         sync_scene_snap_proxy(context.scene)
+        clear_construction_move_distance_input()
         clear_construction_move_preview()
         context.area.tag_redraw()
 
     def _finish(self, context):
+        clear_construction_move_distance_input()
         clear_construction_move_preview()
+        context.workspace.status_text_set(None)
         context.area.tag_redraw()
+
+    @staticmethod
+    def _event_text(event):
+        if event.unicode:
+            return event.unicode
+        return {
+            "ZERO": "0",
+            "ONE": "1",
+            "TWO": "2",
+            "THREE": "3",
+            "FOUR": "4",
+            "FIVE": "5",
+            "SIX": "6",
+            "SEVEN": "7",
+            "EIGHT": "8",
+            "NINE": "9",
+            "PERIOD": ".",
+            "MINUS": "-",
+            "NUMPAD_0": "0",
+            "NUMPAD_1": "1",
+            "NUMPAD_2": "2",
+            "NUMPAD_3": "3",
+            "NUMPAD_4": "4",
+            "NUMPAD_5": "5",
+            "NUMPAD_6": "6",
+            "NUMPAD_7": "7",
+            "NUMPAD_8": "8",
+            "NUMPAD_9": "9",
+            "NUMPAD_PERIOD": ".",
+            "NUMPAD_MINUS": "-",
+            "NUMPAD_SLASH": "/",
+        }.get(event.type, "")
+
+    def _insert_distance_text(self, text):
+        cursor = self.distance_input_cursor
+        self.distance_input = (
+            self.distance_input[:cursor] + text + self.distance_input[cursor:]
+        )
+        self.distance_input_cursor = cursor + len(text)
+        set_construction_move_distance_input(
+            self.distance_input,
+            self.distance_input_cursor,
+        )
+
+    def _typed_distance(self, context):
+        if not self.distance_input_active or not self.distance_input.strip():
+            return None
+
+        meters = abs(parse_length_input(self.distance_input))
+        if not math.isfinite(meters) or meters <= 1.0e-8:
+            return None
+
+        scale = context.scene.unit_settings.scale_length or 1.0
+        return meters / scale
+
+    def _movement_direction(self):
+        if self.travel_direction is not None:
+            return Vector(self.travel_direction)
+
+        # If the distance is entered before dragging, use a stable direction
+        # in the guide's plane and perpendicular to the guide.
+        direction = self.plane_normal.cross(self.direction)
+        if direction.length_squared <= 1.0e-12:
+            return None
+        direction.normalize()
+        return direction
+
+    def _apply_typed_distance(self, context):
+        distance = self._typed_distance(context)
+        direction = self._movement_direction()
+        line = self._line(context)
+        if distance is None or direction is None or line is None:
+            return False
+
+        new_anchor = self.original_anchor + direction * distance
+        line.anchor = new_anchor
+        sync_scene_snap_proxy(context.scene)
+        self.travel_direction = direction
+        self.changed = True
+        set_construction_move_preview(self.original_anchor, new_anchor)
+        return True
+
+    def _begin_distance_input(self, event):
+        self.distance_input_active = True
+        self.distance_input = ""
+        self.distance_input_cursor = 0
+        set_construction_move_distance_input("", 0)
+        if is_number_input(event):
+            self._insert_distance_text(self._event_text(event))
+
+    def _handle_distance_input(self, context, event):
+        if event.value != "PRESS":
+            return {"RUNNING_MODAL"}
+
+        if event.type in {"RET", "NUMPAD_ENTER"}:
+            if not self._apply_typed_distance(context):
+                self.report({"WARNING"}, "Enter a distance greater than zero")
+                return {"RUNNING_MODAL"}
+            self._finish(context)
+            return {"FINISHED"}
+
+        if event.type == "LEFTMOUSE":
+            if is_event_over_ui(context, event):
+                return {"PASS_THROUGH"}
+            if not self._apply_typed_distance(context):
+                self.report({"WARNING"}, "Enter a distance greater than zero")
+                return {"RUNNING_MODAL"}
+            self._finish(context)
+            return {"FINISHED"}
+
+        if event.type == "RIGHTMOUSE":
+            if self.changed:
+                self._restore(context)
+            self._finish(context)
+            return {"CANCELLED"}
+
+        if event.type == "ESC":
+            self.distance_input_active = False
+            self.distance_input = ""
+            self.distance_input_cursor = 0
+            clear_construction_move_distance_input()
+            context.area.tag_redraw()
+            return {"RUNNING_MODAL"}
+
+        if event.type == "LEFT_ARROW":
+            self.distance_input_cursor = max(0, self.distance_input_cursor - 1)
+        elif event.type == "RIGHT_ARROW":
+            self.distance_input_cursor = min(
+                len(self.distance_input), self.distance_input_cursor + 1
+            )
+        elif event.type in {"BACKSPACE", "BACK_SPACE"}:
+            cursor = self.distance_input_cursor
+            if cursor > 0:
+                self.distance_input = (
+                    self.distance_input[: cursor - 1] + self.distance_input[cursor:]
+                )
+                self.distance_input_cursor = cursor - 1
+        elif event.type in {"DEL", "DELETE"}:
+            cursor = self.distance_input_cursor
+            if cursor < len(self.distance_input):
+                self.distance_input = (
+                    self.distance_input[:cursor] + self.distance_input[cursor + 1:]
+                )
+        elif event.type == "SPACE":
+            self._insert_distance_text(" ")
+        elif event.type in {"SLASH", "NUMPAD_SLASH"}:
+            self._insert_distance_text("/")
+        elif event.type in {"QUOTE", "APOSTROPHE"}:
+            self._insert_distance_text('"' if event.shift else "'")
+        else:
+            text = self._event_text(event)
+            if text:
+                self._insert_distance_text(text)
+
+        set_construction_move_distance_input(
+            self.distance_input,
+            self.distance_input_cursor,
+        )
+        context.area.tag_redraw()
+        return {"RUNNING_MODAL"}
 
     def modal(self, context, event):
         if context.region is None or context.region.type != "WINDOW":
@@ -165,6 +347,8 @@ class VIEW3D_OT_radcad_construction_pick(bpy.types.Operator):
         if event.type == "MOUSEMOVE":
             if is_event_over_ui(context, event):
                 return {"RUNNING_MODAL"}
+            if self.awaiting_confirmation:
+                return {"RUNNING_MODAL"}
             mouse = Vector((event.mouse_region_x, event.mouse_region_y))
             if not self.dragging and (mouse - self.press_mouse).length >= _DRAG_THRESHOLD_PX:
                 self.dragging = True
@@ -173,8 +357,35 @@ class VIEW3D_OT_radcad_construction_pick(bpy.types.Operator):
             return {"RUNNING_MODAL"}
 
         if event.type == "LEFTMOUSE" and event.value == "RELEASE":
-            if self.dragging and not is_event_over_ui(context, event):
+            was_dragging = self.dragging
+            if was_dragging and not is_event_over_ui(context, event):
                 self._move_to_cursor(context, event.mouse_region_x, event.mouse_region_y)
+            self.dragging = False
+            if was_dragging or self.distance_input_active or self.changed:
+                # Keep the same modal move alive after the mouse is released.
+                # This is the point where the creation tool lets the user type
+                # an exact distance before confirming.
+                self.awaiting_confirmation = True
+            else:
+                self._finish(context)
+                return {"FINISHED"}
+            return {"RUNNING_MODAL"}
+
+        if self.distance_input_active:
+            return self._handle_distance_input(context, event)
+
+        if event.value == "PRESS" and (event.type == "L" or is_number_input(event)):
+            self._begin_distance_input(event)
+            context.area.tag_redraw()
+            return {"RUNNING_MODAL"}
+
+        if self.awaiting_confirmation and event.type in {"RET", "NUMPAD_ENTER"}:
+            self._finish(context)
+            return {"FINISHED"}
+
+        if self.awaiting_confirmation and event.type == "LEFTMOUSE" and event.value == "PRESS":
+            if is_event_over_ui(context, event):
+                return {"PASS_THROUGH"}
             self._finish(context)
             return {"FINISHED"}
 

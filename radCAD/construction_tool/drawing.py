@@ -15,6 +15,7 @@ from .projection import guide_vectors, projected_visible_guide_segment
 
 
 _MOVE_PREVIEW = None
+_MOVE_DISTANCE_INPUT = None
 
 
 def set_construction_move_preview(start, end):
@@ -27,6 +28,18 @@ def clear_construction_move_preview():
     """Remove the runtime travel indicator after a guide move ends."""
     global _MOVE_PREVIEW
     _MOVE_PREVIEW = None
+
+
+def set_construction_move_distance_input(text, cursor):
+    """Set the temporary typed-distance text shown during a guide move."""
+    global _MOVE_DISTANCE_INPUT
+    _MOVE_DISTANCE_INPUT = (str(text), int(cursor))
+
+
+def clear_construction_move_distance_input():
+    """Remove the temporary typed-distance text after a guide move ends."""
+    global _MOVE_DISTANCE_INPUT
+    _MOVE_DISTANCE_INPUT = None
 
 
 def _shader():
@@ -131,7 +144,8 @@ def _draw_move_preview(context):
         return
 
     start, end = _MOVE_PREVIEW
-    if (end - start).length_squared <= 1.0e-12:
+    distance = (end - start).length
+    if distance <= 1.0e-8 and _MOVE_DISTANCE_INPUT is None:
         return
 
     projected = []
@@ -144,26 +158,33 @@ def _draw_move_preview(context):
         )
         if screen is not None:
             projected.append(Vector(screen))
-    if len(projected) != 2:
+    if not projected:
         return
 
-    # Match the creation preview: the connector shows the direction and
-    # distance traveled from the original guide position to the live one.
     color = (0.05, 0.8, 1.0, 1.0)
-    _draw_segments(
-        _dashed_line(projected[0], projected[1], dash_length=5.0, gap_length=4.0),
-        color,
-        1.0,
-    )
-    _draw_points(projected, color, 5.0)
+    if len(projected) == 2 and distance > 1.0e-8:
+        # Match the creation preview: the connector shows the direction and
+        # distance traveled from the original guide position to the live one.
+        _draw_segments(
+            _dashed_line(projected[0], projected[1], dash_length=5.0, gap_length=4.0),
+            color,
+            1.0,
+        )
+        _draw_points(projected, color, 5.0)
 
     scale = getattr(context.scene.unit_settings, "scale_length", 1.0) or 1.0
-    label = format_length((end - start).length * scale)
+    if _MOVE_DISTANCE_INPUT is None:
+        label = format_length(distance * scale)
+        input_active = False
+    else:
+        typed, cursor = _MOVE_DISTANCE_INPUT
+        label = f"{typed[:cursor]}|{typed[cursor:]}"
+        input_active = True
     draw_ui_box_generic(
-        projected[1].x + state.get("overlay_offset_x", 25),
-        projected[1].y + state.get("overlay_offset_y", 10),
+        projected[-1].x + state.get("overlay_offset_x", 25),
+        projected[-1].y + state.get("overlay_offset_y", 10),
         label,
-        active=False,
+        active=input_active,
     )
 
 
