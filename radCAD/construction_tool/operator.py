@@ -238,6 +238,7 @@ def register_translate_keymap():
         VIEW3D_OT_radcad_construction_translate.bl_idname,
         VIEW3D_OT_radcad_construction_duplicate_translate.bl_idname,
         VIEW3D_OT_radcad_construction_pick.bl_idname,
+        VIEW3D_OT_radcad_construction_delete.bl_idname,
     }
     for existing in list(keymap.keymap_items):
         if existing.idname in operator_ids:
@@ -259,7 +260,10 @@ def register_translate_keymap():
     _TRANSLATE_KEYMAP_ITEMS.append((keymap, duplicate_keymap_item))
     view_keymap = key_config.keymaps.new(name="3D View", space_type="VIEW_3D")
     for existing in list(view_keymap.keymap_items):
-        if existing.idname == VIEW3D_OT_radcad_construction_pick.bl_idname:
+        if existing.idname in {
+            VIEW3D_OT_radcad_construction_pick.bl_idname,
+            VIEW3D_OT_radcad_construction_delete.bl_idname,
+        }:
             view_keymap.keymap_items.remove(existing)
     pick_item = view_keymap.keymap_items.new(
         VIEW3D_OT_radcad_construction_pick.bl_idname,
@@ -268,6 +272,13 @@ def register_translate_keymap():
         head=True,
     )
     _TRANSLATE_KEYMAP_ITEMS.append((view_keymap, pick_item))
+    delete_item = view_keymap.keymap_items.new(
+        VIEW3D_OT_radcad_construction_delete.bl_idname,
+        "DEL",
+        "PRESS",
+        head=True,
+    )
+    _TRANSLATE_KEYMAP_ITEMS.append((view_keymap, delete_item))
 
 
 def unregister_translate_keymap():
@@ -724,6 +735,33 @@ class VIEW3D_OT_radcad_construction_delete_last(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class VIEW3D_OT_radcad_construction_delete(bpy.types.Operator):
+    bl_idname = "view3d.radcad_construction_delete"
+    bl_label = "Delete Construction Line"
+    bl_description = "Delete the selected construction line"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        scene = getattr(context, "scene", None)
+        lines = getattr(scene, "radcad_construction_lines", ())
+        index = getattr(scene, "radcad_active_construction_line", -1)
+        return 0 <= index < len(lines)
+
+    def execute(self, context):
+        scene = context.scene
+        lines = scene.radcad_construction_lines
+        index = scene.radcad_active_construction_line
+        if not 0 <= index < len(lines):
+            return {"CANCELLED"}
+
+        lines.remove(index)
+        scene.radcad_active_construction_line = -1
+        sync_scene_snap_proxy(scene)
+        tag_redraw_all_view3d()
+        return {"FINISHED"}
+
+
 class VIEW3D_OT_radcad_construction_clear(bpy.types.Operator):
     bl_idname = "view3d.radcad_construction_clear"
     bl_label = "Clear Construction Lines"
@@ -811,6 +849,7 @@ CLASSES = (
     VIEW3D_OT_radcad_construction_pick,
     VIEW3D_OT_radcad_construction_line,
     VIEW3D_OT_radcad_construction_delete_last,
+    VIEW3D_OT_radcad_construction_delete,
     VIEW3D_OT_radcad_construction_clear,
     VIEW3D_OT_radcad_construction_parameters,
 )
