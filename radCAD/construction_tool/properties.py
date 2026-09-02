@@ -64,6 +64,12 @@ def register():
         default=True,
         update=_visibility_property_updated,
     )
+    bpy.types.Scene.radcad_active_construction_line = bpy.props.IntProperty(
+        name="Active Construction Line",
+        description="Index of the construction line selected in the viewport",
+        default=-1,
+        options={"HIDDEN"},
+    )
     bpy.types.Scene.radcad_construction_line_color = bpy.props.FloatVectorProperty(
         name="Construction Line Color",
         description="Viewport color used for persistent construction lines",
@@ -107,6 +113,7 @@ def unregister():
         "radcad_construction_line_width",
         "radcad_construction_line_color",
         "radcad_construction_lines_visible",
+        "radcad_active_construction_line",
         "radcad_construction_lines",
     ):
         if hasattr(bpy.types.Scene, property_name):

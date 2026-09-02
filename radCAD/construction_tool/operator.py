@@ -21,6 +21,7 @@ from .geometry import edge_reference_from_snap, offset_placement_from_cursor
 from .model import add_construction_line, has_visible_construction_lines
 from .native_snap import sync_scene_snap_proxy
 from .properties import tag_redraw_all_view3d
+from .selection import VIEW3D_OT_radcad_construction_pick
 
 
 _PREVIEW_HANDLER = "CONSTRUCTION_LINE_PREVIEW_2D"
@@ -236,6 +237,7 @@ def register_translate_keymap():
     operator_ids = {
         VIEW3D_OT_radcad_construction_translate.bl_idname,
         VIEW3D_OT_radcad_construction_duplicate_translate.bl_idname,
+        VIEW3D_OT_radcad_construction_pick.bl_idname,
     }
     for existing in list(keymap.keymap_items):
         if existing.idname in operator_ids:
@@ -255,6 +257,17 @@ def register_translate_keymap():
         head=True,
     )
     _TRANSLATE_KEYMAP_ITEMS.append((keymap, duplicate_keymap_item))
+    view_keymap = key_config.keymaps.new(name="3D View", space_type="VIEW_3D")
+    for existing in list(view_keymap.keymap_items):
+        if existing.idname == VIEW3D_OT_radcad_construction_pick.bl_idname:
+            view_keymap.keymap_items.remove(existing)
+    pick_item = view_keymap.keymap_items.new(
+        VIEW3D_OT_radcad_construction_pick.bl_idname,
+        "LEFTMOUSE",
+        "PRESS",
+        head=True,
+    )
+    _TRANSLATE_KEYMAP_ITEMS.append((view_keymap, pick_item))
 
 
 def unregister_translate_keymap():
@@ -699,6 +712,11 @@ class VIEW3D_OT_radcad_construction_delete_last(bpy.types.Operator):
     def execute(self, context):
         lines = context.scene.radcad_construction_lines
         lines.remove(len(lines) - 1)
+        if hasattr(context.scene, "radcad_active_construction_line"):
+            active = context.scene.radcad_active_construction_line
+            context.scene.radcad_active_construction_line = (
+                min(active, len(lines) - 1) if active >= 0 and lines else -1
+            )
         sync_scene_snap_proxy(context.scene)
         tag_redraw_all_view3d()
         return {"FINISHED"}
@@ -717,6 +735,8 @@ class VIEW3D_OT_radcad_construction_clear(bpy.types.Operator):
 
     def execute(self, context):
         context.scene.radcad_construction_lines.clear()
+        if hasattr(context.scene, "radcad_active_construction_line"):
+            context.scene.radcad_active_construction_line = -1
         sync_scene_snap_proxy(context.scene)
         tag_redraw_all_view3d()
         return {"FINISHED"}
@@ -786,6 +806,7 @@ class VIEW3D_OT_radcad_construction_parameters(bpy.types.Operator):
 CLASSES = (
     VIEW3D_OT_radcad_construction_translate,
     VIEW3D_OT_radcad_construction_duplicate_translate,
+    VIEW3D_OT_radcad_construction_pick,
     VIEW3D_OT_radcad_construction_line,
     VIEW3D_OT_radcad_construction_delete_last,
     VIEW3D_OT_radcad_construction_clear,

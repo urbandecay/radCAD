@@ -124,19 +124,38 @@ def draw_persistent_construction_lines():
         return
 
     guides = []
-    for line in iter_construction_lines(scene):
+    selected_guides = []
+    selected_index = getattr(scene, "radcad_active_construction_line", -1)
+    for index, line in enumerate(iter_construction_lines(scene)):
         vectors = guide_vectors(line)
         if vectors is not None:
-            guides.append(vectors)
+            if index == selected_index:
+                selected_guides.append(vectors)
+            else:
+                guides.append(vectors)
+    color = getattr(scene, "radcad_construction_line_color", (1.0, 1.0, 1.0, 1.0))
+    width = getattr(scene, "radcad_construction_line_width", 1.0)
+    dash_length = getattr(scene, "radcad_construction_dash_length", 9.0)
+    gap_length = getattr(scene, "radcad_construction_dash_gap", 6.0)
     _draw_guide_vectors(
         context,
         guides,
-        getattr(scene, "radcad_construction_line_color", (1.0, 1.0, 1.0, 1.0)),
-        getattr(scene, "radcad_construction_line_width", 1.0),
+        color,
+        width,
         dashed=True,
         draw_anchors=False,
-        dash_length=getattr(scene, "radcad_construction_dash_length", 9.0),
-        gap_length=getattr(scene, "radcad_construction_dash_gap", 6.0),
+        dash_length=dash_length,
+        gap_length=gap_length,
+    )
+    _draw_guide_vectors(
+        context,
+        selected_guides,
+        (1.0, 0.48, 0.0, 1.0),
+        max(1.0, float(width) + 1.0),
+        dashed=True,
+        draw_anchors=False,
+        dash_length=dash_length,
+        gap_length=gap_length,
     )
 
 
