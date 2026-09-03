@@ -937,14 +937,21 @@ class LineTool_PerpFromEdge(SurfaceDrawTool):
         ray_origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, coord)
         ray_vector = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
 
-        # Use an enabled component snap as the exact target.  Otherwise,
-        # intersect the mouse ray with the current drawing plane.
+        # With Shift held, the source edge and free endpoint are both kept
+        # under direct mouse control.  Releasing Shift restores component
+        # snapping so the cursor can find and jump to another edge.
         geometry_target = None
         if (
-            self.state.get("geometry_snap", False)
+            not event.shift
+            and self.state.get("geometry_snap", False)
             and snap_point is not None
         ):
             geometry_target = snap_point.copy()
+        elif event.shift:
+            # Do not leave a snap marker visible when Shift is explicitly
+            # disabling endpoint snapping for this tool.
+            self.state["snap_point"] = None
+            self.state["geometry_snap"] = False
 
         ref_point = (
             self.pivot
@@ -965,20 +972,40 @@ class LineTool_PerpFromEdge(SurfaceDrawTool):
 
         mouse_2d = world_to_plane(raw_world_pos, self.Xp, self.Yp)
 
-        best_distance = float('inf')
-        best_idx = -1
-        best_point = None
-        for idx, (start, end) in enumerate(self.edge_segments_2d):
-            candidate = self._closest_point_on_segment(
+        # Shift freezes the current source edge.  With Shift released, keep
+        # searching so the source can move to the next nearest selected edge.
+        # This gives the user an intentional sequence: release Shift to find
+        # another edge, then hold Shift to draw as far as desired from it.
+        if event.shift and self.edge_idx != -1:
+            best_idx = self.edge_idx
+            if best_idx >= len(self.edge_segments_2d):
+                return
+            start, end = self.edge_segments_2d[best_idx]
+            best_point = self._closest_point_on_segment(
                 mouse_2d,
                 start,
                 end,
             )
-            distance = (candidate - mouse_2d).length_squared
-            if distance < best_distance:
-                best_distance = distance
-                best_idx = idx
-                best_point = candidate
+        else:
+            best_distance = float('inf')
+            best_idx = -1
+            best_point = None
+            for idx, (start, end) in enumerate(self.edge_segments_2d):
+                candidate = self._closest_point_on_segment(
+                    mouse_2d,
+                    start,
+                    end,
+                )
+                distance = (candidate - mouse_2d).length_squared
+                if distance < best_distance:
+                    best_distance = distance
+                    best_idx = idx
+                    best_point = candidate
+
+            # Keep the current nearest edge available to lock immediately
+            # when Shift is pressed on the next mouse event.
+            if best_idx != -1:
+                self.edge_idx = best_idx
 
         if best_idx == -1 or best_point is None:
             return
@@ -994,7 +1021,6 @@ class LineTool_PerpFromEdge(SurfaceDrawTool):
             mouse_2d - best_point
         ).dot(perpendicular)
 
-        self.edge_idx = best_idx
         self.head_3d = plane_to_world(best_point, self.Xp, self.Yp)
         self.tail_3d = (
             geometry_target.copy()
