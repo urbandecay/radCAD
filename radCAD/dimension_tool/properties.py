@@ -41,6 +41,14 @@ class RADCAD_PG_dimension_data(bpy.types.PropertyGroup):
         default=(0.0, 0.0, 1.0),
         options={"HIDDEN"},
     )
+    # Zero means the dimension remains aligned to its two measured anchors.
+    # A non-zero value stores a user-selected projected measurement direction.
+    linear_direction: bpy.props.FloatVectorProperty(
+        size=3,
+        subtype="XYZ",
+        default=(0.0, 0.0, 0.0),
+        options={"HIDDEN"},
+    )
     offset_distance: bpy.props.FloatProperty(name="Offset", subtype="DISTANCE", default=1.0, update=_update_dimension)
     text_override: bpy.props.StringProperty(
         name="Text Override",

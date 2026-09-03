@@ -83,9 +83,15 @@ def _screen_dimension_geometry(
     arrow_size,
     extension_gap,
     extension_overshoot,
+    dimension_direction=None,
 ):
     """Build the exact screen-space geometry used for drawing and picking."""
-    basis = dimension_basis(p1, p2, plane_normal)
+    basis = dimension_basis(
+        p1,
+        p2,
+        plane_normal,
+        dimension_direction,
+    )
     if basis is None:
         return None
     _line_world, offset_world, _normal = basis
@@ -93,8 +99,11 @@ def _screen_dimension_geometry(
     p2 = Vector(p2)
     distance = float(offset_distance)
     side = 1.0 if distance >= 0.0 else -1.0
-    d1 = p1 + offset_world * distance
-    d2 = p2 + offset_world * distance
+    source_midpoint = (p1 + p2) * 0.5
+    p1_offset = (p1 - source_midpoint).dot(offset_world)
+    p2_offset = (p2 - source_midpoint).dot(offset_world)
+    d1 = p1 + offset_world * (distance - p1_offset)
+    d2 = p2 + offset_world * (distance - p2_offset)
     gap = max(0.0, float(extension_gap))
     overshoot = max(0.0, float(extension_overshoot))
     world_points = (
@@ -190,6 +199,7 @@ def dimension_hit_distance(
     line_width,
     extension_gap,
     extension_overshoot,
+    dimension_direction=None,
 ):
     """Return a pixel hit distance, or None when the dimension was not clicked."""
     geometry = _screen_dimension_geometry(
@@ -204,6 +214,7 @@ def dimension_hit_distance(
         arrow_size,
         extension_gap,
         extension_overshoot,
+        dimension_direction,
     )
     if geometry is None:
         return None
@@ -245,6 +256,7 @@ def draw_screen_dimension(
     line_width,
     extension_gap,
     extension_overshoot,
+    dimension_direction=None,
 ):
     """Draw one complete dimension in POST_PIXEL; no scene geometry is used."""
     geometry = _screen_dimension_geometry(
@@ -259,6 +271,7 @@ def draw_screen_dimension(
         arrow_size,
         extension_gap,
         extension_overshoot,
+        dimension_direction,
     )
     if geometry is None:
         return
@@ -714,6 +727,7 @@ def draw_preview_2d(operator):
             scene.radcad_dimension_line_width,
             scene.radcad_dimension_extension_gap,
             scene.radcad_dimension_extension_overshoot,
+            getattr(operator, "linear_direction", None),
         )
 
 
@@ -770,4 +784,5 @@ def draw_persistent_dimensions_2d():
                 line_width,
                 data.extension_gap,
                 data.extension_overshoot,
+                data.linear_direction,
             )

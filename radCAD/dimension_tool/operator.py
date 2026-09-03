@@ -44,8 +44,9 @@ _AXIS_ALIGNED_DOT = math.cos(math.radians(1.0))
 
 
 def _dimension_offset_axes(line_direction):
-    """Return global axes projected into the dimension's cross-plane."""
+    """Return global axes projected into a dimension's cross-plane."""
     candidates = {}
+    line_direction = Vector(line_direction)
     for axis_name, axis in _GLOBAL_AXES.items():
         projected = axis - line_direction * axis.dot(line_direction)
         if projected.length_squared > 1.0e-10:
@@ -53,18 +54,47 @@ def _dimension_offset_axes(line_direction):
     return candidates
 
 
-def _cursor_driven_offset(context, event, p1, p2, fallback_normal, fallback_distance):
-    """Resolve a dimension offset from the cursor, with line-style axis inference."""
-    basis = dimension_basis(p1, p2, fallback_normal)
-    if basis is None:
+def _plane_axes(plane_normal):
+    """Return global axes projected into the supplied drawing plane."""
+    normal = Vector(plane_normal)
+    if normal.length_squared <= 1.0e-10:
+        return {}
+    normal.normalize()
+    candidates = {}
+    for axis_name, axis in _GLOBAL_AXES.items():
+        projected = axis - normal * axis.dot(normal)
+        if projected.length_squared > 1.0e-10:
+            candidates[axis_name] = projected.normalized()
+    return candidates
+
+
+def _cursor_driven_offset(
+    context,
+    event,
+    p1,
+    p2,
+    fallback_normal,
+    fallback_distance,
+    dimension_direction=None,
+    allow_projected=False,
+):
+    """Resolve a linear dimension's placement and optional direction.
+
+    During creation, a cursor direction that is close to a global axis can
+    choose the dimension direction itself.  This allows a diagonal pair of
+    points to produce a horizontal or vertical projected dimension.  Existing
+    dimensions pass their saved direction so repositioning only changes the
+    offset and does not change what they measure.
+    """
+    aligned_basis = dimension_basis(p1, p2, fallback_normal)
+    if aligned_basis is None:
         return None
 
-    line_direction, fallback_direction, _normal = basis
+    aligned_line_direction, aligned_fallback_direction, aligned_normal = aligned_basis
     midpoint = (Vector(p1) + Vector(p2)) * 0.5
 
-    # Read the mouse on a view-facing plane, then remove its component along
-    # the measured span. Unlike the old fixed dimension plane, this lets the
-    # witness direction rotate all the way around the measured line.
+    # Read the mouse on a view-facing plane, then use its position relative to
+    # the measured midpoint to determine the dimension offset.
     view_normal = (
         context.region_data.view_matrix.inverted().to_3x3()
         @ Vector((0.0, 0.0, 1.0))
@@ -80,48 +110,113 @@ def _cursor_driven_offset(context, event, p1, p2, fallback_normal, fallback_dist
         return None
 
     raw_offset = placement - midpoint
-    raw_offset -= line_direction * raw_offset.dot(line_direction)
-    if raw_offset.length_squared <= 1.0e-10:
+    requested = (
+        Vector(dimension_direction)
+        if dimension_direction is not None
+        else Vector((0.0, 0.0, 0.0))
+    )
+    has_requested_direction = requested.length_squared > 1.0e-10
+
+    # While creating a dimension, use the cursor's nearby global axis as the
+    # offset direction. The perpendicular axis then becomes the dimension
+    # direction, which creates projected horizontal/vertical measurements.
+    if allow_projected and not has_requested_direction:
+        strength = max(0.1, min(89.0, state.get("snap_strength", 6.0)))
+        inferred, offset_axis, axis_name = get_direction_snapped_location(
+            midpoint,
+            (event.mouse_region_x, event.mouse_region_y),
+            context,
+            _plane_axes(fallback_normal),
+            snap_threshold=math.cos(math.radians(strength)),
+        )
+        if inferred is not None and offset_axis is not None:
+            offset_direction = offset_axis.normalized()
+            line_direction = offset_direction.cross(Vector(fallback_normal))
+            if line_direction.length_squared > 1.0e-10:
+                line_direction.normalize()
+                if line_direction.dot(Vector(p2) - Vector(p1)) < 0.0:
+                    line_direction.negate()
+                distance = abs((inferred - midpoint).dot(offset_direction))
+                measured_length = abs(
+                    (Vector(p2) - Vector(p1)).dot(line_direction)
+                )
+                if distance > 1.0e-8 and measured_length > 1.0e-8:
+                    plane_normal = line_direction.cross(offset_direction)
+                    plane_normal.normalize()
+                    return (
+                        midpoint + offset_direction * distance,
+                        plane_normal,
+                        distance,
+                        _GLOBAL_AXES[axis_name].copy(),
+                        line_direction,
+                    )
+
+    if has_requested_direction:
+        basis = dimension_basis(
+            p1,
+            p2,
+            fallback_normal,
+            requested,
+        )
+        if basis is None:
+            return None
+        line_direction, fallback_direction, normal = basis
+    else:
+        line_direction = aligned_line_direction
+        fallback_direction = aligned_fallback_direction
+        normal = aligned_normal
+
+    offset_direction = raw_offset - line_direction * raw_offset.dot(line_direction)
+    if offset_direction.length_squared <= 1.0e-10:
         distance = float(fallback_distance)
-        return midpoint + fallback_direction * distance, _normal, distance, None
+        offset_direction = fallback_direction
+    else:
+        offset_direction.normalize()
+        distance = raw_offset.length
 
-    offset_direction = raw_offset.normalized()
-    distance = raw_offset.length
     inferred_axis = None
-
     strength = max(0.1, min(89.0, state.get("snap_strength", 6.0)))
     axis_aligned = (
         max(abs(line_direction.dot(axis)) for axis in _GLOBAL_AXES.values())
         >= _AXIS_ALIGNED_DOT
     )
-    # Like SketchUp, a dimension measured along a global axis always pulls out
-    # along whichever remaining global axis is closest to the cursor.  There is
-    # no useful crooked/free plane between those two choices.
     snap_threshold = 0.0 if axis_aligned else math.cos(math.radians(strength))
-
-    offset_axes = _dimension_offset_axes(line_direction)
     inferred, offset_axis, axis_name = get_direction_snapped_location(
         midpoint,
         (event.mouse_region_x, event.mouse_region_y),
         context,
-        offset_axes,
+        _dimension_offset_axes(line_direction),
         snap_threshold=snap_threshold,
     )
     if inferred is not None and offset_axis is not None:
         inferred_distance = (inferred - midpoint).dot(offset_axis)
+        if inferred_distance < 0.0:
+            offset_axis.negate()
+            inferred_distance = -inferred_distance
         if inferred_distance > 1.0e-8:
             offset_direction = offset_axis
             distance = inferred_distance
             inferred_axis = _GLOBAL_AXES[axis_name].copy()
-            if inferred_axis.dot(offset_direction) < 0.0:
-                inferred_axis.negate()
 
     plane_normal = line_direction.cross(offset_direction)
     if plane_normal.length_squared <= 1.0e-10:
         return None
     plane_normal.normalize()
     current = midpoint + offset_direction * distance
-    return current, plane_normal, distance, inferred_axis
+    saved_direction = line_direction.copy() if has_requested_direction else None
+    return current, plane_normal, distance, inferred_axis, saved_direction
+
+
+def _linear_measure_length(p1, p2, dimension_direction=None):
+    """Return the aligned or projected length represented by two points."""
+    delta = Vector(p2) - Vector(p1)
+    if (
+        dimension_direction is not None
+        and Vector(dimension_direction).length_squared > 1.0e-10
+    ):
+        direction = Vector(dimension_direction).normalized()
+        return abs(delta.dot(direction))
+    return delta.length
 
 
 def _project_point_to_plane(point, plane_point, plane_normal):
@@ -593,7 +688,7 @@ class VIEW3D_OT_radcad_dimension_angle(bpy.types.Operator):
 class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
     bl_idname = "view3d.radcad_dimension_linear"
     bl_label = "Linear Dimension"
-    bl_description = "Create an aligned dimension from two points and an offset"
+    bl_description = "Create an aligned or projected linear dimension from two points"
     bl_options = {"REGISTER", "UNDO", "BLOCKING"}
 
     running = False
@@ -621,6 +716,7 @@ class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
         self.pick_1 = None
         self.pick_2 = None
         self.plane_normal = None
+        self.linear_direction = None
         self.offset_distance = 0.0
         self.preview_label = ""
         self.running = True
@@ -670,11 +766,25 @@ class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
                 self.p2,
                 self.plane_normal,
                 self.offset_distance,
+                allow_projected=True,
             )
             if resolved is not None:
-                self.current, self.plane_normal, self.offset_distance, axis = resolved
+                (
+                    self.current,
+                    self.plane_normal,
+                    self.offset_distance,
+                    axis,
+                    self.linear_direction,
+                ) = resolved
                 state["current_axis_vector"] = axis
-            self.preview_label = format_dimension_length((self.p2 - self.p1).length, context.scene)
+            self.preview_label = format_dimension_length(
+                _linear_measure_length(
+                    self.p1,
+                    self.p2,
+                    self.linear_direction,
+                ),
+                context.scene,
+            )
         context.area.tag_redraw()
 
     def _click(self, context, event):
@@ -707,6 +817,7 @@ class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
             self.offset_distance,
             self.pick_1,
             self.pick_2,
+            linear_direction=self.linear_direction,
         )
         self.finish(context)
         return {"FINISHED"}
@@ -780,6 +891,9 @@ class VIEW3D_OT_radcad_dimension_reposition(bpy.types.Operator):
         data = self.root.radcad_dimension
         self.original_offset = data.offset_distance
         self.original_plane_normal = resolve_dimension_plane(data)
+        self.original_linear_direction = Vector(data.linear_direction)
+        if self.original_linear_direction.length_squared <= 1.0e-18:
+            self.original_linear_direction = None
         self.plane_normal = self.original_plane_normal.copy()
         self.context = context
         self.stage = 2
@@ -801,9 +915,24 @@ class VIEW3D_OT_radcad_dimension_reposition(bpy.types.Operator):
         else:
             self.p1 = resolve_anchor(data.anchor_1)
             self.p2 = resolve_anchor(data.anchor_2)
-            basis = dimension_basis(self.p1, self.p2, self.plane_normal)
+            self.linear_direction = Vector(data.linear_direction)
+            if self.linear_direction.length_squared <= 1.0e-18:
+                self.linear_direction = None
+            basis = dimension_basis(
+                self.p1,
+                self.p2,
+                self.plane_normal,
+                self.linear_direction,
+            )
             self.current = (self.p1 + self.p2) * 0.5 + basis[1] * data.offset_distance
-            self.preview_label = format_dimension_length((self.p2 - self.p1).length, context.scene)
+            self.preview_label = format_dimension_length(
+                _linear_measure_length(
+                    self.p1,
+                    self.p2,
+                    self.linear_direction,
+                ),
+                context.scene,
+            )
         self.running = True
         DrawManager.clear_all()
         self.tool_instance_id = f"DIMENSION_REPOSITION_{time.time()}"
@@ -836,9 +965,16 @@ class VIEW3D_OT_radcad_dimension_reposition(bpy.types.Operator):
             self.p2,
             self.plane_normal,
             self.offset_distance,
+            dimension_direction=self.linear_direction,
         )
         if resolved is not None:
-            self.current, self.plane_normal, self.offset_distance, axis = resolved
+            (
+                self.current,
+                self.plane_normal,
+                self.offset_distance,
+                axis,
+                self.linear_direction,
+            ) = resolved
             state["current_axis_vector"] = axis
         context.area.tag_redraw()
 
@@ -852,13 +988,28 @@ class VIEW3D_OT_radcad_dimension_reposition(bpy.types.Operator):
             self._update(context, event)
             return {"RUNNING_MODAL"}
         if event.type == "LEFTMOUSE" and event.value == "PRESS":
-            self.root.radcad_dimension.offset_distance = self.offset_distance
-            set_dimension_plane(self.root.radcad_dimension, self.plane_normal)
+            data = self.root.radcad_dimension
+            data.offset_distance = self.offset_distance
+            data.linear_direction = (
+                self.linear_direction.normalized()
+                if self.dimension_type == "LINEAR"
+                and self.linear_direction is not None
+                and self.linear_direction.length_squared > 1.0e-18
+                else (0.0, 0.0, 0.0)
+            )
+            set_dimension_plane(data, self.plane_normal)
             update_dimension(self.root)
             self.finish(context)
             return {"FINISHED"}
         if event.type == "ESC" and event.value == "PRESS":
-            self.root.radcad_dimension.offset_distance = self.original_offset
+            data = self.root.radcad_dimension
+            data.offset_distance = self.original_offset
+            data.linear_direction = (
+                self.original_linear_direction.normalized()
+                if self.original_linear_direction is not None
+                else (0.0, 0.0, 0.0)
+            )
+            set_dimension_plane(data, self.original_plane_normal)
             update_dimension(self.root)
             self.finish(context)
             return {"CANCELLED"}
@@ -1027,6 +1178,7 @@ class VIEW3D_OT_radcad_dimension_pick(bpy.types.Operator):
                     data.line_width if data.line_width >= 0.5 else 1.0,
                     data.extension_gap,
                     data.extension_overshoot,
+                    data.linear_direction,
                 )
             if distance is not None and distance < best_distance:
                 picked = root
@@ -1049,6 +1201,9 @@ class VIEW3D_OT_radcad_dimension_pick(bpy.types.Operator):
         self._drag_dimension_type = getattr(data, "dimension_type", "LINEAR")
         self._drag_original_offset = float(data.offset_distance)
         self._drag_original_plane_normal = resolve_dimension_plane(data)
+        self._drag_original_linear_direction = Vector(data.linear_direction)
+        if self._drag_original_linear_direction.length_squared <= 1.0e-18:
+            self._drag_original_linear_direction = None
         self._drag_plane_normal = self._drag_original_plane_normal.copy()
         self._drag_start_mouse = Vector(
             (event.mouse_region_x, event.mouse_region_y)
@@ -1082,13 +1237,18 @@ class VIEW3D_OT_radcad_dimension_pick(bpy.types.Operator):
                 p2,
                 self._drag_plane_normal,
                 self._drag_original_offset,
+                dimension_direction=(
+                    Vector(data.linear_direction)
+                    if Vector(data.linear_direction).length_squared > 1.0e-18
+                    else None
+                ),
             )
         if resolved is None:
             return
         if self._drag_dimension_type == "ANGLE":
             _point, offset_distance = resolved
         else:
-            _point, plane_normal, offset_distance, _axis = resolved
+            _point, plane_normal, offset_distance, _axis, _direction = resolved
             self._drag_plane_normal = plane_normal
             set_dimension_plane(data, plane_normal)
         data.offset_distance = offset_distance
@@ -1118,6 +1278,11 @@ class VIEW3D_OT_radcad_dimension_pick(bpy.types.Operator):
         if event.type == "ESC" and event.value == "PRESS":
             data = self._drag_root.radcad_dimension
             set_dimension_plane(data, self._drag_original_plane_normal)
+            data.linear_direction = (
+                self._drag_original_linear_direction.normalized()
+                if self._drag_original_linear_direction is not None
+                else (0.0, 0.0, 0.0)
+            )
             data.offset_distance = self._drag_original_offset
             update_dimension(self._drag_root)
             context.area.tag_redraw()

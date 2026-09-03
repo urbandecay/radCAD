@@ -451,7 +451,16 @@ def _apply_dimension_style(context, data):
     data.color = context.scene.radcad_dimension_color
 
 
-def create_dimension(context, p1, p2, plane_normal, offset_distance, snap_1=None, snap_2=None):
+def create_dimension(
+    context,
+    p1,
+    p2,
+    plane_normal,
+    offset_distance,
+    snap_1=None,
+    snap_2=None,
+    linear_direction=None,
+):
     collection = _get_collection(context.scene)
     root = bpy.data.objects.new(ROOT_PREFIX, None)
     collection.objects.link(root)
@@ -462,6 +471,13 @@ def create_dimension(context, p1, p2, plane_normal, offset_distance, snap_1=None
     set_anchor(data.anchor_1, p1, snap_1)
     set_anchor(data.anchor_2, p2, snap_2)
     set_dimension_plane(data, plane_normal, _common_anchor_target(data))
+    direction = (
+        Vector(linear_direction)
+        if linear_direction is not None
+        else Vector((0.0, 0.0, 0.0))
+    )
+    if direction.length_squared > 1.0e-18:
+        data.linear_direction = direction.normalized()
     data.offset_distance = offset_distance
     _apply_dimension_style(context, data)
 
@@ -531,6 +547,9 @@ def dimension_layout(root):
     p1 = resolve_anchor(data.anchor_1)
     p2 = resolve_anchor(data.anchor_2)
     _migrate_dimension_orientation(data, p1, p2)
+    linear_direction = Vector(data.linear_direction)
+    if linear_direction.length_squared <= 1.0e-18:
+        linear_direction = None
     layout = build_layout(
         p1,
         p2,
@@ -540,6 +559,7 @@ def dimension_layout(root):
         0.001,
         data.extension_gap,
         data.extension_overshoot,
+        dimension_direction=linear_direction,
     )
     if layout is None:
         return None, ""
@@ -590,6 +610,10 @@ def update_dimension(root):
     signature = (
         dimension_type,
         *(round(value, 12) for value in layout_values),
+        *(
+            round(float(value), 12)
+            for value in getattr(data, "linear_direction", (0.0, 0.0, 0.0))
+        ),
         round(float(data.offset_distance), 12),
         round(text_size, 12),
         round(text_thickness, 12),

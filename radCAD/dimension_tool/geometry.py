@@ -48,14 +48,35 @@ def _fallback_normal(line_direction):
     return normal.normalized()
 
 
-def dimension_basis(p1, p2, preferred_normal):
-    """Return an orthonormal basis whose X axis follows the measured span."""
+def dimension_basis(p1, p2, preferred_normal, dimension_direction=None):
+    """Return a basis for an aligned or direction-selected dimension."""
     line = Vector(p2) - Vector(p1)
     if line.length_squared <= EPSILON:
         return None
 
-    line_direction = line.normalized()
     normal = Vector(preferred_normal) if preferred_normal is not None else Vector((0.0, 0.0, 1.0))
+    if normal.length_squared <= EPSILON:
+        normal = Vector((0.0, 0.0, 1.0))
+    else:
+        normal.normalize()
+
+    requested_direction = (
+        Vector(dimension_direction)
+        if dimension_direction is not None
+        else Vector((0.0, 0.0, 0.0))
+    )
+    if requested_direction.length_squared > EPSILON:
+        requested_direction -= normal * requested_direction.dot(normal)
+        line_direction = (
+            requested_direction.normalized()
+            if requested_direction.length_squared > EPSILON
+            else line.normalized()
+        )
+        if line_direction.dot(line) < 0.0:
+            line_direction.negate()
+    else:
+        line_direction = line.normalized()
+
     normal -= line_direction * normal.dot(line_direction)
     if normal.length_squared <= EPSILON:
         normal = _fallback_normal(line_direction)
@@ -90,19 +111,39 @@ def build_layout(
     extension_gap,
     extension_overshoot,
     label="",
+    dimension_direction=None,
 ):
-    basis = dimension_basis(p1, p2, preferred_normal)
+    basis = dimension_basis(
+        p1,
+        p2,
+        preferred_normal,
+        dimension_direction,
+    )
     if basis is None:
         return None
 
     p1 = Vector(p1)
     p2 = Vector(p2)
     line_direction, offset_direction, normal = basis
-    measured_length = (p2 - p1).length
+    delta = p2 - p1
+    is_direction_selected = (
+        dimension_direction is not None
+        and Vector(dimension_direction).length_squared > EPSILON
+    )
+    measured_length = (
+        abs(delta.dot(line_direction))
+        if is_direction_selected
+        else delta.length
+    )
+    if measured_length <= EPSILON:
+        return None
     distance = float(offset_distance)
     side = 1.0 if distance >= 0.0 else -1.0
-    d1 = p1 + offset_direction * distance
-    d2 = p2 + offset_direction * distance
+    source_midpoint = (p1 + p2) * 0.5
+    p1_offset = (p1 - source_midpoint).dot(offset_direction)
+    p2_offset = (p2 - source_midpoint).dot(offset_direction)
+    d1 = p1 + offset_direction * (distance - p1_offset)
+    d2 = p2 + offset_direction * (distance - p2_offset)
     midpoint = (d1 + d2) * 0.5
 
     gap = max(0.0, float(extension_gap))
