@@ -115,6 +115,7 @@ IMPLEMENTED_TOOLS = {
     "polygon_size_size", 
     "line", 
     "line_perpendicular_from_curve", 
+    "line_perpendicular_from_edge",
     "line_tangent_to_two_curves", 
     "line_perpendicular_to_two_curves",
     "line_tangent_from_curve", 
@@ -135,6 +136,7 @@ TOOL_OPERATORS = {
     "point_edge_center": "view3d.point_edge_center",
     "line": "view3d.line_polyline",
     "line_perpendicular_from_curve": "view3d.line_perp_from_curve",
+    "line_perpendicular_from_edge": "view3d.line_perp_from_edge",
     "line_tangent_to_two_curves": "view3d.line_tan_tan",
     "line_perpendicular_to_two_curves": "view3d.line_perp_to_two_curves",
     "line_tangent_from_curve": "view3d.line_tangent_from_curve",
@@ -171,6 +173,7 @@ SVG_FILES = {
     "line_tangent_from_curve": "line_tangent_from_curve.svg",
     "line_tangent_to_two_curves": "line_tangent_to_two_curves.svg",
     "line_perpendicular_from_curve": "line_perpendicular_from_curve.svg",
+    "line_perpendicular_from_edge": "line_perpendicular_from_edge.svg",
     "line_perpendicular_to_two_curves": "line_perpendicular_to_two_curves.svg",
     "point_by_arcs": "point_by_arcs.svg",
     "point_center": "point_center.svg",
@@ -200,6 +203,7 @@ TOOL_LABELS = {
     "point_center": "Point Center",
     "point_edge_center": "Edge Center",
     "line_perpendicular_from_curve": "Line Perpendicular from Curve",
+    "line_perpendicular_from_edge": "Line Perpendicular from Edge",
     "line_perpendicular_to_two_curves": "Line Perpendicular to Two Curves",
     "line_tangent_from_curve": "Line Tangent from Curve",
     "line_tangent_to_two_curves": "Line Tangent to Two Curves",
@@ -255,6 +259,8 @@ class RADCAD_OT_generic(bpy.types.Operator):
                 bpy.ops.view3d.line_polyline('INVOKE_DEFAULT')
             elif self.name == "line_perpendicular_from_curve": 
                 bpy.ops.view3d.line_perp_from_curve('INVOKE_DEFAULT')
+            elif self.name == "line_perpendicular_from_edge":
+                bpy.ops.view3d.line_perp_from_edge('INVOKE_DEFAULT')
             elif self.name == "line_tangent_to_two_curves": 
                 bpy.ops.view3d.line_tan_tan('INVOKE_DEFAULT')
             elif self.name == "line_perpendicular_to_two_curves":

@@ -222,6 +222,10 @@ class ModalManager:
             from .operators import line_tools
             self.active_tool = line_tools.LineTool_PerpFromCurve(self)
 
+        elif t_mode == "LINE_PERP_FROM_EDGE":
+            from .operators import line_tools
+            self.active_tool = line_tools.LineTool_PerpFromEdge(self)
+
         elif t_mode == "LINE_TAN_TAN": 
             from .operators import line_tools
             self.active_tool = line_tools.LineTool_TanTan(self)
@@ -687,7 +691,7 @@ def commit_arc_to_mesh(ctx):
                    "RECTANGLE_CENTER_CORNER", "RECTANGLE_CORNER_CORNER", "RECTANGLE_3_POINTS"]
 
     # Line-to-Curve tools that should commit BOTH points without closing
-    complete_line_tools = ["LINE_PERP_FROM_CURVE", "LINE_PERP_TO_TWO_CURVES", "LINE_TANGENT_FROM_CURVE", "LINE_TAN_TAN"]
+    complete_line_tools = ["LINE_PERP_FROM_CURVE", "LINE_PERP_FROM_EDGE", "LINE_PERP_TO_TWO_CURVES", "LINE_TANGENT_FROM_CURVE", "LINE_TAN_TAN"]
 
     if state["tool_mode"] in shape_tools:
         is_closed = True
@@ -791,6 +795,7 @@ def begin_modal(self, ctx, ev):
         "POINT_EDGE_CENTER": ("point", "point_edge_center"),
         "LINE_POLY": ("line", "line"),
         "LINE_PERP_FROM_CURVE": ("line", "line_perpendicular_from_curve"),
+        "LINE_PERP_FROM_EDGE": ("line", "line_perpendicular_from_edge"),
         "LINE_TAN_TAN": ("line", "line_tangent_to_two_curves"),
         "LINE_PERP_TO_TWO_CURVES": ("line", "line_perpendicular_to_two_curves"),
         "LINE_TANGENT_FROM_CURVE": ("line", "line_tangent_from_curve"),
@@ -859,6 +864,7 @@ def finish_modal(self, ctx):
             "POINT_EDGE_CENTER",
             "LINE_POLY",
             "LINE_PERP_FROM_CURVE",
+            "LINE_PERP_FROM_EDGE",
             "LINE_TAN_TAN",
             "LINE_PERP_TO_TWO_CURVES",
             "LINE_TANGENT_FROM_CURVE",

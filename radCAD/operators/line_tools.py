@@ -875,6 +875,147 @@ class LineTool_PerpFromCurve(SurfaceDrawTool):
     def handle_input(self, context, event):
         return super().handle_plane_lock_input(context, event)
 
+class LineTool_PerpFromEdge(SurfaceDrawTool):
+    """Create a line perpendicular to the nearest selected mesh edge."""
+
+    def __init__(self, core):
+        super().__init__(core)
+        self.mode = "LINE_PERP_FROM_EDGE"
+        self.stage = 0
+        self.edge_segments = []
+        self.edge_segments_2d = []
+        self.edge_idx = -1
+        self.current = None
+        self.pivot = None
+
+        obj = bpy.context.edit_object
+        if obj and obj.type == 'MESH':
+            bm = bmesh.from_edit_mesh(obj.data)
+            self.edge_segments = [
+                (edge.verts[0].co.copy(), edge.verts[1].co.copy())
+                for edge in bm.edges
+                if edge.select
+            ]
+            if not self.edge_segments:
+                core.report({'WARNING'}, "Select at least one edge")
+
+    @staticmethod
+    def _closest_point_on_segment(point, start, end):
+        edge = end - start
+        length_squared = edge.length_squared
+        if length_squared <= 1.0e-12:
+            return start.copy()
+
+        parameter = (point - start).dot(edge) / length_squared
+        parameter = max(0.0, min(1.0, parameter))
+        return start + edge * parameter
+
+    def update(self, context, event, snap_point, snap_normal):
+        if self.Xp is None:
+            if not self.edge_segments:
+                return
+
+            self.update_initial_plane(context, event, snap_point, snap_normal)
+            mw = (
+                context.edit_object.matrix_world
+                if context.edit_object
+                else Matrix.Identity(4)
+            )
+            self.edge_segments_2d = [
+                (
+                    world_to_plane(mw @ start, self.Xp, self.Yp),
+                    world_to_plane(mw @ end, self.Xp, self.Yp),
+                )
+                for start, end in self.edge_segments
+            ]
+
+        if not self.edge_segments_2d:
+            return
+
+        region, rv3d = context.region, context.region_data
+        coord = (event.mouse_region_x, event.mouse_region_y)
+        ray_origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, coord)
+        ray_vector = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
+
+        # Use an enabled component snap as the exact target.  Otherwise,
+        # intersect the mouse ray with the current drawing plane.
+        geometry_target = None
+        if (
+            self.state.get("geometry_snap", False)
+            and snap_point is not None
+        ):
+            geometry_target = snap_point.copy()
+
+        ref_point = (
+            self.pivot
+            if self.pivot
+            else self.state.get("last_surface_hit") or Vector((0, 0, 0))
+        )
+        if geometry_target is not None:
+            raw_world_pos = geometry_target
+        elif ref_point and self.Zp:
+            denom = ray_vector.dot(self.Zp)
+            if abs(denom) > 1.0e-6:
+                distance = (ref_point - ray_origin).dot(self.Zp) / denom
+                raw_world_pos = ray_origin + ray_vector * distance
+            else:
+                raw_world_pos = ref_point
+        else:
+            raw_world_pos = ref_point
+
+        mouse_2d = world_to_plane(raw_world_pos, self.Xp, self.Yp)
+
+        best_distance = float('inf')
+        best_idx = -1
+        best_point = None
+        for idx, (start, end) in enumerate(self.edge_segments_2d):
+            candidate = self._closest_point_on_segment(
+                mouse_2d,
+                start,
+                end,
+            )
+            distance = (candidate - mouse_2d).length_squared
+            if distance < best_distance:
+                best_distance = distance
+                best_idx = idx
+                best_point = candidate
+
+        if best_idx == -1 or best_point is None:
+            return
+
+        start, end = self.edge_segments_2d[best_idx]
+        edge_vector = end - start
+        if edge_vector.length_squared <= 1.0e-12:
+            return
+
+        edge_direction = edge_vector.normalized()
+        perpendicular = Vector((-edge_direction.y, edge_direction.x))
+        tail_2d = best_point + perpendicular * (
+            mouse_2d - best_point
+        ).dot(perpendicular)
+
+        self.edge_idx = best_idx
+        self.head_3d = plane_to_world(best_point, self.Xp, self.Yp)
+        self.tail_3d = (
+            geometry_target.copy()
+            if geometry_target is not None
+            else plane_to_world(tail_2d, self.Xp, self.Yp)
+        )
+        self.preview_pts = [self.head_3d, self.tail_3d]
+        self.current = self.tail_3d
+
+    def handle_click(self, context, event, snap_point, snap_normal, button_id=None):
+        if self.edge_segments:
+            self.update(context, event, snap_point, snap_normal)
+        if self.edge_idx != -1:
+            # Recalculate at click time so the committed endpoint exactly
+            # matches the current vertex/edge snap, if one is active.
+            return 'FINISHED'
+        return None
+
+    def handle_input(self, context, event):
+        return super().handle_plane_lock_input(context, event)
+
 class LineTool_TangentFromCurve(SurfaceDrawTool):
     def __init__(self, core):
         super().__init__(core)

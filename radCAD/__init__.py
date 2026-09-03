@@ -44,6 +44,7 @@ op_rectangle_cor_cor = _import("operators.op_rectangle_cor_cor")
 op_rectangle_3_points = _import("operators.op_rectangle_3_points") # <--- NEW
 op_line_polyline = _import("operators.op_line_polyline")
 op_line_perp_from_curve = _import("operators.op_line_perp_from_curve") 
+op_line_perp_from_edge = _import("operators.op_line_perp_from_edge")
 op_line_tan_tan = _import("operators.op_line_tan_tan") 
 op_line_perp_to_two_curves = _import("operators.op_line_perp_to_two_curves")
 op_line_tangent_from_curve = _import("operators.op_line_tangent_from_curve")
@@ -92,6 +93,7 @@ def register():
     bpy.utils.register_class(op_rectangle_3_points.VIEW3D_OT_rectangle_3_points) # <--- REGISTER
     bpy.utils.register_class(op_line_polyline.VIEW3D_OT_line_polyline)
     bpy.utils.register_class(op_line_perp_from_curve.VIEW3D_OT_line_perp_from_curve)
+    bpy.utils.register_class(op_line_perp_from_edge.VIEW3D_OT_line_perp_from_edge)
     bpy.utils.register_class(op_line_tan_tan.VIEW3D_OT_line_tan_tan) 
     bpy.utils.register_class(op_line_perp_to_two_curves.VIEW3D_OT_line_perp_to_two_curves)
     bpy.utils.register_class(op_line_tangent_from_curve.VIEW3D_OT_line_tangent_from_curve) 
@@ -126,6 +128,7 @@ def unregister():
     bpy.utils.unregister_class(op_line_tangent_from_curve.VIEW3D_OT_line_tangent_from_curve)
     bpy.utils.unregister_class(op_line_perp_to_two_curves.VIEW3D_OT_line_perp_to_two_curves)
     bpy.utils.unregister_class(op_line_tan_tan.VIEW3D_OT_line_tan_tan) 
+    bpy.utils.unregister_class(op_line_perp_from_edge.VIEW3D_OT_line_perp_from_edge)
     bpy.utils.unregister_class(op_line_perp_from_curve.VIEW3D_OT_line_perp_from_curve)
     bpy.utils.unregister_class(op_line_polyline.VIEW3D_OT_line_polyline)
     bpy.utils.unregister_class(op_rectangle_3_points.VIEW3D_OT_rectangle_3_points) # <--- UNREGISTER

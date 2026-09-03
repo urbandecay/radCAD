@@ -1032,7 +1032,7 @@ def draw_cb_3d():
                 draw_points(ctx, shaders, center_pts, (0, 0, 0, 1), settings.get("PREVIEW_VERTEX_SIZE", 5), settings, custom_lift=settings.get("LIFT_ARC", 20.0) + 50.0)
 
         # UPDATED: Added all Line Curve Tools
-        elif mode in ["LINE_POLY", "CURVE_INTERPOLATE", "CURVE_FREEHAND", "LINE_PERP_FROM_CURVE", "LINE_PERP_TO_TWO_CURVES", "LINE_TANGENT_FROM_CURVE", "LINE_TAN_TAN"]:
+        elif mode in ["LINE_POLY", "CURVE_INTERPOLATE", "CURVE_FREEHAND", "LINE_PERP_FROM_CURVE", "LINE_PERP_FROM_EDGE", "LINE_PERP_TO_TWO_CURVES", "LINE_TANGENT_FROM_CURVE", "LINE_TAN_TAN"]:
             
             pts = state.get("preview_pts", [])
             if pts:
