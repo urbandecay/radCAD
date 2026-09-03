@@ -2,7 +2,7 @@
 
 import bpy
 
-from ...units_utils import format_length
+from ..units_utils import format_length
 
 
 def format_dimension_length(measured_length, scene=None):

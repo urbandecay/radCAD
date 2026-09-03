@@ -16,16 +16,15 @@ whenever the source topology remains compatible.
 
 Module responsibilities:
 
-- `../operators/op_dimension_linear.py`: linear-dimension creation entry point.
-- `../operators/op_dimension_angle.py`: angle-dimension creation entry point.
-- `../operators/op_dimension_edit.py`: shared dimension selection, editing, and deletion entry points.
-- `linear/`: linear measurement geometry and length formatting.
-- `angular/`: angular measurement geometry and angle formatting.
-- `operator.py`: shared interaction implementation used by those operator entry points.
-- `geometry.py` and `formatting.py`: compatibility exports for older internal imports.
+- `../operators/op_dimension_linear.py`: linear-dimension creation operator.
+- `../operators/op_dimension_angle.py`: angle-dimension creation operator.
+- `../operators/op_dimension_edit.py`: dimension selection, editing, refresh, and deletion operators.
+- `linear_geometry.py` and `linear_formatting.py`: linear measurement geometry and length formatting.
+- `angular_geometry.py` and `angular_formatting.py`: angular measurement geometry and angle formatting.
+- `interaction.py`: shared interaction helpers used by the operators.
+- `formatting.py`: shared label dispatch between linear and angular formatting.
 - `model.py`: hidden persistent data and associative anchor resolution.
 - `drawing.py`: modal preview plus persistent POST_PIXEL dimension overlays.
 - `snapping.py`: existing radCAD snap-engine integration and plane projection.
 - `properties.py`: saved dimension/style properties.
-- `formatting.py`: scene-unit label formatting.
 - `updater.py`: dependency-graph and file-load refresh handlers.

@@ -57,6 +57,23 @@ op_rotate = _import("operators.op_rotate")
 op_dimension_linear = _import("operators.op_dimension_linear")
 op_dimension_angle = _import("operators.op_dimension_angle")
 op_dimension_edit = _import("operators.op_dimension_edit")
+op_construction_translate = _import("operators.op_construction_translate")
+op_construction_line = _import("operators.op_construction_line")
+op_construction_pick = _import("operators.op_construction_pick")
+op_construction_edit = _import("operators.op_construction_edit")
+
+_DIMENSION_OPERATOR_CLASSES = (
+    op_dimension_linear.VIEW3D_OT_radcad_dimension_linear,
+    op_dimension_angle.VIEW3D_OT_radcad_dimension_angle,
+    *op_dimension_edit.CLASSES,
+)
+_CONSTRUCTION_OPERATOR_CLASSES = (
+    op_construction_translate.VIEW3D_OT_radcad_construction_translate,
+    op_construction_translate.VIEW3D_OT_radcad_construction_duplicate_translate,
+    op_construction_pick.VIEW3D_OT_radcad_construction_pick,
+    op_construction_line.VIEW3D_OT_radcad_construction_line,
+    *op_construction_edit.CLASSES,
+)
 
 def register():
     bpy.utils.register_class(prefs.RADCAD_Preferences)
@@ -75,9 +92,9 @@ def register():
     construction_tool.register()
     erase_tool.register()
 
-    bpy.utils.register_class(op_dimension_linear.VIEW3D_OT_radcad_dimension_linear)
-    bpy.utils.register_class(op_dimension_angle.VIEW3D_OT_radcad_dimension_angle)
-    for cls in op_dimension_edit.CLASSES:
+    for cls in _DIMENSION_OPERATOR_CLASSES:
+        bpy.utils.register_class(cls)
+    for cls in _CONSTRUCTION_OPERATOR_CLASSES:
         bpy.utils.register_class(cls)
 
     bpy.utils.register_class(op_1pt.VIEW3D_OT_arc_overlay_preview)
@@ -124,7 +141,6 @@ def unregister():
         panel.unregister()
 
     erase_tool.unregister()
-    construction_tool.unregister()
 
     bpy.utils.unregister_class(op_rotate.VIEW3D_OT_radcad_rotate)
     bpy.utils.unregister_class(op_point_edge_center.VIEW3D_OT_point_edge_center)
@@ -158,10 +174,11 @@ def unregister():
     bpy.utils.unregister_class(op_2pt.VIEW3D_OT_arc_2pt)
     bpy.utils.unregister_class(op_1pt.VIEW3D_OT_arc_overlay_preview)
 
-    for cls in reversed(op_dimension_edit.CLASSES):
+    for cls in reversed(_CONSTRUCTION_OPERATOR_CLASSES):
         bpy.utils.unregister_class(cls)
-    bpy.utils.unregister_class(op_dimension_angle.VIEW3D_OT_radcad_dimension_angle)
-    bpy.utils.unregister_class(op_dimension_linear.VIEW3D_OT_radcad_dimension_linear)
+    for cls in reversed(_DIMENSION_OPERATOR_CLASSES):
+        bpy.utils.unregister_class(cls)
+    construction_tool.unregister()
     dimension_tool.unregister()
     
     # Unregister modal

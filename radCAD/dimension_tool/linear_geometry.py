@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from mathutils import Matrix, Vector
 
-from ..constants import EPSILON
+from .constants import EPSILON
 
 
 @dataclass

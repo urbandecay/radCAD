@@ -1,44 +1,29 @@
-"""Viewport selection and repositioning for persistent construction guides."""
+"""Blender operator for selecting and moving construction lines."""
 
 import math
 
 import bpy
-from bpy_extras.view3d_utils import (
-    region_2d_to_origin_3d,
-    region_2d_to_vector_3d,
-)
 from mathutils import Vector
-from mathutils.geometry import intersect_line_plane
 
-from ..modal_core import is_event_over_ui, is_number_input
-from ..modal_state import state
-from ..snapping_utils import snap_scene_geometry
-from ..units_utils import parse_length_input
-from .model import has_visible_construction_lines, iter_construction_lines
-from .native_snap import sync_scene_snap_proxy
-from .properties import tag_redraw_all_view3d
-from .snapping import CONSTRUCTION_LINE_HIT_RADIUS, pick_construction_line
-from .projection import guide_vectors
-from .drawing import (
+from ..construction_tool.drawing import (
     clear_construction_move_distance_input,
     clear_construction_move_preview,
     set_construction_move_distance_input,
     set_construction_move_preview,
 )
+from ..construction_tool.model import has_visible_construction_lines, iter_construction_lines
+from ..construction_tool.native_snap import sync_scene_snap_proxy
+from ..construction_tool.projection import guide_vectors
+from ..construction_tool.selection_helpers import _project_cursor_to_plane
+from ..construction_tool.snapping import CONSTRUCTION_LINE_HIT_RADIUS, pick_construction_line
+from ..construction_tool.properties import tag_redraw_all_view3d
+from ..modal_core import is_event_over_ui, is_number_input
+from ..modal_state import state
+from ..snapping_utils import snap_scene_geometry
+from ..units_utils import parse_length_input
 
 
 _DRAG_THRESHOLD_PX = 3.0
-
-
-def _project_cursor_to_plane(context, x, y, plane_point, plane_normal):
-    origin = region_2d_to_origin_3d(context.region, context.region_data, (x, y))
-    direction = region_2d_to_vector_3d(context.region, context.region_data, (x, y))
-    return intersect_line_plane(
-        origin,
-        origin + direction * 100000.0,
-        plane_point,
-        plane_normal,
-    )
 
 
 class VIEW3D_OT_radcad_construction_pick(bpy.types.Operator):
@@ -434,6 +419,3 @@ class VIEW3D_OT_radcad_construction_pick(bpy.types.Operator):
             return {"CANCELLED"}
 
         return {"RUNNING_MODAL"}
-
-
-CLASSES = (VIEW3D_OT_radcad_construction_pick,)

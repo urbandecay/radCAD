@@ -3,7 +3,7 @@
 import bpy
 
 from . import native_snap, overlay, properties
-from .operator import CLASSES, register_translate_keymap, unregister_translate_keymap
+from .keymap import register_translate_keymap, unregister_translate_keymap
 
 
 def _draw_construction_delete_entry(menu, context):
@@ -32,8 +32,6 @@ def _unregister_delete_menu():
 def register():
     properties.register()
     native_snap.register()
-    for cls in CLASSES:
-        bpy.utils.register_class(cls)
     register_translate_keymap()
     _register_delete_menu()
     overlay.register()
@@ -43,7 +41,5 @@ def unregister():
     overlay.unregister()
     _unregister_delete_menu()
     unregister_translate_keymap()
-    for cls in reversed(CLASSES):
-        bpy.utils.unregister_class(cls)
     native_snap.unregister()
     properties.unregister()

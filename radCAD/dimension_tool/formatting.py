@@ -1,7 +1,7 @@
 """Shared dimension label dispatch."""
 
-from .angular.formatting import format_dimension_angle
-from .linear.formatting import format_dimension_length
+from .angular_formatting import format_dimension_angle
+from .linear_formatting import format_dimension_length
 
 
 def dimension_label(data, measured_value, scene=None):
