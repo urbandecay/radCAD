@@ -972,7 +972,7 @@ class VIEW3D_OT_radcad_dimension_pick(bpy.types.Operator):
     bl_idname = "view3d.radcad_dimension_pick"
     bl_label = "Select Dimension"
     bl_description = "Select a radCAD dimension by clicking its viewport annotation"
-    bl_options = {"INTERNAL"}
+    bl_options = {"INTERNAL", "UNDO", "BLOCKING"}
 
     @classmethod
     def poll(cls, context):
@@ -1040,7 +1040,90 @@ class VIEW3D_OT_radcad_dimension_pick(bpy.types.Operator):
 
         context.scene.radcad_active_dimension = picked
         context.area.tag_redraw()
-        return {"FINISHED"}
+
+        # Both dimension types can be resized directly from the viewport.
+        # Keep the picker modal after the press so a simple click still
+        # selects, while a drag changes the offset until release.
+        data = picked.radcad_dimension
+        self._drag_root = picked
+        self._drag_dimension_type = getattr(data, "dimension_type", "LINEAR")
+        self._drag_original_offset = float(data.offset_distance)
+        self._drag_original_plane_normal = resolve_dimension_plane(data)
+        self._drag_plane_normal = self._drag_original_plane_normal.copy()
+        self._drag_start_mouse = Vector(
+            (event.mouse_region_x, event.mouse_region_y)
+        )
+        self._dragging = False
+        context.window_manager.modal_handler_add(self)
+        return {"RUNNING_MODAL"}
+
+    def _update_dimension_drag(self, context, event):
+        data = self._drag_root.radcad_dimension
+        if self._drag_dimension_type == "ANGLE":
+            vertex = resolve_anchor(data.anchor_1)
+            if vertex is None:
+                return
+            resolved = _cursor_driven_angle_radius(
+                context,
+                event,
+                vertex,
+                self._drag_plane_normal,
+                self._drag_original_offset,
+            )
+        else:
+            p1 = resolve_anchor(data.anchor_1)
+            p2 = resolve_anchor(data.anchor_2)
+            if p1 is None or p2 is None:
+                return
+            resolved = _cursor_driven_offset(
+                context,
+                event,
+                p1,
+                p2,
+                self._drag_plane_normal,
+                self._drag_original_offset,
+            )
+        if resolved is None:
+            return
+        if self._drag_dimension_type == "ANGLE":
+            _point, offset_distance = resolved
+        else:
+            _point, plane_normal, offset_distance, _axis = resolved
+            self._drag_plane_normal = plane_normal
+            set_dimension_plane(data, plane_normal)
+        data.offset_distance = offset_distance
+        update_dimension(self._drag_root)
+        context.area.tag_redraw()
+
+    def modal(self, context, event):
+        if context.scene.active_cad_tool_id:
+            return {"FINISHED"}
+
+        if event.type == "MOUSEMOVE":
+            mouse = Vector((event.mouse_region_x, event.mouse_region_y))
+            if (
+                not self._dragging
+                and (mouse - self._drag_start_mouse).length >= 3.0
+            ):
+                self._dragging = True
+            if self._dragging:
+                self._update_dimension_drag(context, event)
+            return {"RUNNING_MODAL"}
+
+        if event.type == "LEFTMOUSE" and event.value == "RELEASE":
+            if self._dragging:
+                self._update_dimension_drag(context, event)
+            return {"FINISHED"}
+
+        if event.type == "ESC" and event.value == "PRESS":
+            data = self._drag_root.radcad_dimension
+            set_dimension_plane(data, self._drag_original_plane_normal)
+            data.offset_distance = self._drag_original_offset
+            update_dimension(self._drag_root)
+            context.area.tag_redraw()
+            return {"CANCELLED"}
+
+        return {"RUNNING_MODAL"}
 
 
 class VIEW3D_OT_radcad_dimension_delete(bpy.types.Operator):

@@ -632,3 +632,9 @@ def delete_dimension(root):
         if getattr(scene, "radcad_active_dimension", None) == root:
             scene.radcad_active_dimension = None
     bpy.data.objects.remove(root, do_unlink=True)
+
+    # The collection is created by the dimension tool solely as a container
+    # for dimension data objects. Remove it once the final dimension is gone.
+    collection = bpy.data.collections.get(COLLECTION_NAME)
+    if collection is not None and not collection.objects and not collection.children:
+        bpy.data.collections.remove(collection, do_unlink=True)
