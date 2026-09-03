@@ -794,10 +794,24 @@ class LineTool_PerpFromCurve(SurfaceDrawTool):
         ray_origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, coord)
         ray_vector = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
         
-        # --- CALCULATE PURE RAY-PLANE INTERSECTION (no geometry snap) ---
+        # A component snap is the actual endpoint target.  The snap marker is
+        # produced by ModalManager before this method is called, so ignoring
+        # snap_point here makes the preview appear to snap while the committed
+        # line still uses the unsnapped mouse/ray position.
+        geometry_target = None
+        if (
+            self.state.get("geometry_snap", False)
+            and snap_point is not None
+        ):
+            geometry_target = snap_point.copy()
+
+        # Calculate the unconstrained mouse target when no component is
+        # snapped.  Perpendicular solving is still done in the drawing plane.
         ref_point = self.pivot if self.pivot else self.state.get("last_surface_hit") or Vector((0,0,0))
         raw_world_pos = Vector((0,0,0))
-        if ref_point and self.Zp:
+        if geometry_target is not None:
+            raw_world_pos = geometry_target
+        elif ref_point and self.Zp:
             denom = ray_vector.dot(self.Zp)
             if abs(denom) > 1e-6:
                 t = (ref_point - ray_origin).dot(self.Zp) / denom
@@ -838,7 +852,11 @@ class LineTool_PerpFromCurve(SurfaceDrawTool):
                     norm = Vector((-tan.y, tan.x))
                 
                 t2 = h2 + norm * (m_2d - h2).dot(norm)
-                self.tail_3d = plane_to_world(t2, self.Xp, self.Yp)
+                self.tail_3d = (
+                    geometry_target.copy()
+                    if geometry_target is not None
+                    else plane_to_world(t2, self.Xp, self.Yp)
+                )
                 
                 self.preview_pts = [self.head_3d, self.tail_3d]
                 self.current = self.tail_3d
@@ -846,6 +864,10 @@ class LineTool_PerpFromCurve(SurfaceDrawTool):
     def handle_click(self, context, event, snap_point, snap_normal, button_id=None):
         if self.stage == 0:
             if self.source_idx != -1:
+                # Refresh at the click location so a vertex/edge snap is
+                # reflected in the points that are committed, even when the
+                # last mouse-move preview was one event behind.
+                self.update(context, event, snap_point, snap_normal)
                 return 'FINISHED'
             return None
         return 'FINISHED'
