@@ -1,6 +1,7 @@
-# radCAD Linear Dimension
+# radCAD Dimensions
 
-The Dimension panel exposes a SketchUp-style three-click workflow:
+The Dimension panel exposes SketchUp-style linear and angular dimension workflows.
+Linear dimensions use a three-click workflow:
 
 1. Pick the first measured point.
 2. Pick the second measured point.
@@ -18,9 +19,11 @@ Module responsibilities:
 - `../operators/op_dimension_linear.py`: linear-dimension creation entry point.
 - `../operators/op_dimension_angle.py`: angle-dimension creation entry point.
 - `../operators/op_dimension_edit.py`: shared dimension selection, editing, and deletion entry points.
-- `operator.py`: shared implementation used by those operator entry points.
+- `linear/`: linear measurement geometry and length formatting.
+- `angular/`: angular measurement geometry and angle formatting.
+- `operator.py`: shared interaction implementation used by those operator entry points.
+- `geometry.py` and `formatting.py`: compatibility exports for older internal imports.
 - `model.py`: hidden persistent data and associative anchor resolution.
-- `geometry.py`: dimension-plane and annotation layout math.
 - `drawing.py`: modal preview plus persistent POST_PIXEL dimension overlays.
 - `snapping.py`: existing radCAD snap-engine integration and plane projection.
 - `properties.py`: saved dimension/style properties.

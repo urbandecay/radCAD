@@ -8,7 +8,8 @@ from mathutils import Vector
 
 from .constants import COLLECTION_NAME, ROOT_PREFIX
 from .formatting import dimension_label
-from .geometry import build_angle_layout, build_layout, dimension_basis
+from .angular.geometry import build_angle_layout
+from .linear.geometry import build_layout, dimension_basis
 
 
 _UPDATE_SIGNATURES = {}

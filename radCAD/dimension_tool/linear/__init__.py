@@ -1,7 +1,7 @@
-"""Compatibility exports for the split linear and angular dimension packages."""
+"""Linear-dimension geometry and formatting."""
 
-from .angular.geometry import AngleLayout, build_angle_layout
-from .linear.geometry import (
+from .formatting import format_dimension_length
+from .geometry import (
     DimensionLayout,
     build_layout,
     dimension_basis,
@@ -10,11 +10,10 @@ from .linear.geometry import (
 )
 
 __all__ = (
-    "AngleLayout",
     "DimensionLayout",
-    "build_angle_layout",
     "build_layout",
     "dimension_basis",
+    "format_dimension_length",
     "signed_offset_from_point",
     "text_rotation",
 )

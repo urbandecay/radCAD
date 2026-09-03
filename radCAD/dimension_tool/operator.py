@@ -1,4 +1,4 @@
-"""Interactive creation and editing operators for dimensions."""
+"""Shared interaction implementations for dimension operators."""
 
 import math
 import time
@@ -18,8 +18,10 @@ from .drawing import (
     draw_preview_2d,
     draw_preview_3d,
 )
-from .formatting import format_dimension_angle, format_dimension_length
-from .geometry import build_angle_layout, dimension_basis
+from .angular.formatting import format_dimension_angle
+from .angular.geometry import build_angle_layout
+from .linear.formatting import format_dimension_length
+from .linear.geometry import dimension_basis
 from .model import (
     create_angle_dimension,
     create_dimension,

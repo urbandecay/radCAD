@@ -9,7 +9,8 @@ from gpu_extras.batch import batch_for_shader
 from mathutils import Vector
 
 from ..modal_state import state
-from .geometry import build_angle_layout, dimension_basis
+from .angular.geometry import build_angle_layout
+from .linear.geometry import dimension_basis
 
 
 DIMENSION_HIT_RADIUS = 9.0
