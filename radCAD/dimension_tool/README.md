@@ -15,7 +15,10 @@ whenever the source topology remains compatible.
 
 Module responsibilities:
 
-- `operator.py`: creation, repositioning, refresh, and deletion operators.
+- `../operators/op_dimension_linear.py`: linear-dimension creation entry point.
+- `../operators/op_dimension_angle.py`: angle-dimension creation entry point.
+- `../operators/op_dimension_edit.py`: shared dimension selection, editing, and deletion entry points.
+- `operator.py`: shared implementation used by those operator entry points.
 - `model.py`: hidden persistent data and associative anchor resolution.
 - `geometry.py`: dimension-plane and annotation layout math.
 - `drawing.py`: modal preview plus persistent POST_PIXEL dimension overlays.

@@ -54,6 +54,9 @@ op_point_by_arcs = _import("operators.op_point_by_arcs")
 op_point_center = _import("operators.op_point_center")
 op_point_edge_center = _import("operators.op_point_edge_center")
 op_rotate = _import("operators.op_rotate")
+op_dimension_linear = _import("operators.op_dimension_linear")
+op_dimension_angle = _import("operators.op_dimension_angle")
+op_dimension_edit = _import("operators.op_dimension_edit")
 
 def register():
     bpy.utils.register_class(prefs.RADCAD_Preferences)
@@ -71,6 +74,11 @@ def register():
     dimension_tool.register()
     construction_tool.register()
     erase_tool.register()
+
+    bpy.utils.register_class(op_dimension_linear.VIEW3D_OT_radcad_dimension_linear)
+    bpy.utils.register_class(op_dimension_angle.VIEW3D_OT_radcad_dimension_angle)
+    for cls in op_dimension_edit.CLASSES:
+        bpy.utils.register_class(cls)
 
     bpy.utils.register_class(op_1pt.VIEW3D_OT_arc_overlay_preview)
     bpy.utils.register_class(op_2pt.VIEW3D_OT_arc_2pt)
@@ -117,7 +125,6 @@ def unregister():
 
     erase_tool.unregister()
     construction_tool.unregister()
-    dimension_tool.unregister()
 
     bpy.utils.unregister_class(op_rotate.VIEW3D_OT_radcad_rotate)
     bpy.utils.unregister_class(op_point_edge_center.VIEW3D_OT_point_edge_center)
@@ -150,6 +157,12 @@ def unregister():
     bpy.utils.unregister_class(op_3pt.VIEW3D_OT_arc_3pt)
     bpy.utils.unregister_class(op_2pt.VIEW3D_OT_arc_2pt)
     bpy.utils.unregister_class(op_1pt.VIEW3D_OT_arc_overlay_preview)
+
+    for cls in reversed(op_dimension_edit.CLASSES):
+        bpy.utils.unregister_class(cls)
+    bpy.utils.unregister_class(op_dimension_angle.VIEW3D_OT_radcad_dimension_angle)
+    bpy.utils.unregister_class(op_dimension_linear.VIEW3D_OT_radcad_dimension_linear)
+    dimension_tool.unregister()
     
     # Unregister modal
     bpy.utils.unregister_class(modal_core.VIEW3D_OT_radcad_modal)

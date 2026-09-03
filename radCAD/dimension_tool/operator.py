@@ -1304,14 +1304,3 @@ class VIEW3D_OT_radcad_dimension_delete(bpy.types.Operator):
     def execute(self, context):
         delete_dimension(selected_dimension(context))
         return {"FINISHED"}
-
-
-CLASSES = (
-    VIEW3D_OT_radcad_dimension_angle,
-    VIEW3D_OT_radcad_dimension_linear,
-    VIEW3D_OT_radcad_dimension_reposition,
-    VIEW3D_OT_radcad_dimension_refresh,
-    VIEW3D_OT_radcad_dimension_parameters,
-    VIEW3D_OT_radcad_dimension_pick,
-    VIEW3D_OT_radcad_dimension_delete,
-)

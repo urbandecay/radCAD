@@ -3,7 +3,6 @@
 import bpy
 
 from . import properties, updater
-from .operator import CLASSES
 
 
 _ADDON_KEYMAPS = []
@@ -60,8 +59,6 @@ def _unregister_keymaps():
 
 def register():
     properties.register()
-    for cls in CLASSES:
-        bpy.utils.register_class(cls)
     updater.register()
     _register_keymaps()
     _register_delete_menu()
@@ -71,6 +68,4 @@ def unregister():
     _unregister_delete_menu()
     _unregister_keymaps()
     updater.unregister()
-    for cls in reversed(CLASSES):
-        bpy.utils.unregister_class(cls)
     properties.unregister()
