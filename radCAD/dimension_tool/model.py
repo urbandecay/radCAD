@@ -466,7 +466,8 @@ def create_dimension(context, p1, p2, plane_normal, offset_distance, snap_1=None
     _apply_dimension_style(context, data)
 
     update_dimension(root)
-    context.scene.radcad_active_dimension = root
+    # Linear dimensions are finished annotations, not an active selection.
+    context.scene.radcad_active_dimension = None
     return root
 
 
@@ -497,7 +498,8 @@ def create_angle_dimension(
     _apply_dimension_style(context, data)
 
     update_dimension(root)
-    context.scene.radcad_active_dimension = root
+    # Angle dimensions are finished annotations, not an active selection.
+    context.scene.radcad_active_dimension = None
     return root
 
 
