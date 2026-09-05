@@ -217,6 +217,13 @@ def draw_hotkeys_panel():
     if show_perp:
         lines.append((f"P: Perpendicular ({perp_state})", perp_col))
 
+    # The 1-point arc uses L to keep the compass on the current drawing plane.
+    # Keep this directly beneath the perpendicular hint so the two related
+    # compass controls are visible together.
+    if tool_mode == "1POINT":
+        plane_lock_state = "ON" if state.get("locked") else "OFF"
+        lines.append((f"L: Lock Plane ({plane_lock_state})", None))
+
     # --- INSERT SPACER IF RADIUS/DISTANCE IS ABOUT TO BE SHOWN ---
     if state["stage"] >= 1:
         lines.append((None, None))
@@ -233,7 +240,7 @@ def draw_hotkeys_panel():
                 lines.append(("Alt: Bypass Axis Snap", None))
         elif state.get("tool_mode") == "ELLIPSE_ENDPOINTS" and state["stage"] == 1:
             lines.append(("D: Set Diameter", None))
-        elif state.get("tool_mode") == "LINE_POLY":            lines.append(("L: Set Length", None)) # --- NEW: Line Length Hint ---
+        elif state.get("tool_mode") in {"LINE_POLY", "POINT_BY_LINE"}:            lines.append(("L: Set Length", None)) # --- NEW: Line Length Hint ---
         elif state.get("tool_mode") in {"RECTANGLE_CENTER_CORNER", "RECTANGLE_CORNER_CORNER"}:
             square_state = "ON" if state.get("rectangle_square_locked", False) else "OFF"
             lines.append((f"Shift: Square ({square_state})", None))
@@ -293,7 +300,7 @@ def draw_hotkeys_panel():
             lines.append(("H: Set Sagitta Height", None))
             # === NEW: Stage 2 Alt Hint (Bypass 180 Snap) ===
             lines.append(("Alt: Bypass 180\u00B0 Snap", None))
-        elif tool_mode not in ["3POINT", "CIRCLE_3POINT", "CIRCLE_TAN_TAN_TAN", "LINE_POLY", "ELLIPSE_FOCI", "ELLIPSE_RADIUS", "ELLIPSE_ENDPOINTS"]:
+        elif tool_mode not in ["3POINT", "CIRCLE_3POINT", "CIRCLE_TAN_TAN_TAN", "LINE_POLY", "POINT_BY_LINE", "ELLIPSE_FOCI", "ELLIPSE_RADIUS", "ELLIPSE_ENDPOINTS"]:
             lines.append(("A: Set Angle", None))
             
         if tool_mode != "ROTATE":
@@ -646,7 +653,7 @@ def draw_hud_2d():
                         else: label = "R:" # Default for 3pt Stage 2 or CIRCLE_2POINT Stage 2 is Radius
                     elif tool_mode == "ELLIPSE_ENDPOINTS" and state["stage"] == 1:
                         label = "D:"
-                    elif tool_mode == "LINE_POLY": label = "" # --- REMOVED 'L' for Line Tool
+                    elif tool_mode in {"LINE_POLY", "POINT_BY_LINE"}: label = "" # --- REMOVED 'L' for line-like tools
                     elif tool_mode == "ELLIPSE_FOCI": 
                         label = "F:" if state["stage"] == 1 else ""
                     elif tool_mode == "ELLIPSE_RADIUS":
@@ -813,7 +820,7 @@ def draw_hud_2d():
                     pass
                 else:
                     label = "R: "
-                    if tool_mode == "LINE_POLY": label = "" # --- REMOVED 'L' for Line Tool
+                    if tool_mode in {"LINE_POLY", "POINT_BY_LINE"}: label = "" # --- REMOVED 'L' for line-like tools
                     
                     r_val = state["radius"] if state["stage"] == 2 else ((state["current"] - state["pivot"]).length if (state["current"] and state["pivot"]) else 0.0)
                     r_txt = label + format_length(r_val)
@@ -822,7 +829,7 @@ def draw_hud_2d():
             
             if state["stage"] == 2:
                 # --- HIDE ANGLE IF 2POINT, 3POINT, LINE_POLY, ELLIPSE_FOCI OR ELLIPSE_RADIUS ---
-                if tool_mode not in ["2POINT", "3POINT", "CIRCLE_3POINT", "CIRCLE_TAN_TAN_TAN", "LINE_POLY", "ELLIPSE_FOCI", "ELLIPSE_RADIUS", "ELLIPSE_ENDPOINTS", "CURVE_FREEHAND", "RECTANGLE_3_POINTS"]:
+                if tool_mode not in ["2POINT", "3POINT", "CIRCLE_3POINT", "CIRCLE_TAN_TAN_TAN", "LINE_POLY", "POINT_BY_LINE", "ELLIPSE_FOCI", "ELLIPSE_RADIUS", "ELLIPSE_ENDPOINTS", "CURVE_FREEHAND", "RECTANGLE_3_POINTS"]:
                     is_input_a = (state["input_mode"] == 'ANGLE')
                     if is_input_a: a_txt = get_display_str("\u2220", state['input_string'], True)
                     else:
@@ -833,7 +840,7 @@ def draw_hud_2d():
                     current_y -= (h2 + 4)
                 
                 # --- HIDE SEGMENTS FOR LINE_POLY AND CURVE_FREEHAND ---
-                if tool_mode not in ["LINE_POLY", "CURVE_FREEHAND", "ROTATE", "RECTANGLE_3_POINTS"]:
+                if tool_mode not in ["LINE_POLY", "POINT_BY_LINE", "CURVE_FREEHAND", "ROTATE", "RECTANGLE_3_POINTS"]:
                     is_input_s = (state["input_mode"] == 'SEGMENTS')
                     if is_input_s: s_txt = get_display_str("Segments:", state['input_string'], True)
                     else: s_txt = f"Segments: {state['segments']}"

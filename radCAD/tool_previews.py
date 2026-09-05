@@ -1032,15 +1032,16 @@ def draw_cb_3d():
                 draw_points(ctx, shaders, center_pts, (0, 0, 0, 1), settings.get("PREVIEW_VERTEX_SIZE", 5), settings, custom_lift=settings.get("LIFT_ARC", 20.0) + 50.0)
 
         # UPDATED: Added all Line Curve Tools
-        elif mode in ["LINE_POLY", "CURVE_INTERPOLATE", "CURVE_FREEHAND", "LINE_PERP_FROM_CURVE", "LINE_PERP_FROM_EDGE", "LINE_PERP_TO_TWO_CURVES", "LINE_TANGENT_FROM_CURVE", "LINE_TAN_TAN"]:
+        elif mode in ["LINE_POLY", "POINT_BY_LINE", "CURVE_INTERPOLATE", "CURVE_FREEHAND", "LINE_PERP_FROM_CURVE", "LINE_PERP_FROM_EDGE", "LINE_PERP_TO_TWO_CURVES", "LINE_TANGENT_FROM_CURVE", "LINE_TAN_TAN"]:
             
             pts = state.get("preview_pts", [])
             if pts:
                 # DEFAULT COLOR
                 base_color = (0, 0, 0, 1) # Black
                 
-                # If LINE_POLY, handle segment coloring for axis snaps
-                if mode == "LINE_POLY" and len(pts) >= 2:
+                # Point by Line uses the exact same preview as LINE_POLY.
+                # Its only difference is that the final commit omits edges.
+                if mode in {"LINE_POLY", "POINT_BY_LINE"} and len(pts) >= 2:
                     # Draw fixed segments (all except last segment)
                     if len(pts) > 2:
                         draw_polyline(ctx, shaders, pts[:-1], base_color, settings)

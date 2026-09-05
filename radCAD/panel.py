@@ -134,6 +134,7 @@ IMPLEMENTED_TOOLS = {
     "curve_interpolate_points",
     "curve_freehand",
     "point_by_arcs",
+    "point_by_line",
     "point_center",
     "point_edge_center",
     "rectangle_from_center",
@@ -144,6 +145,7 @@ IMPLEMENTED_TOOLS = {
 
 TOOL_OPERATORS = {
     "point_by_arcs": "view3d.point_by_arcs",
+    "point_by_line": "view3d.point_by_line",
     "point_center": "view3d.point_center",
     "point_edge_center": "view3d.point_edge_center",
     "line": "view3d.line_polyline",
@@ -188,6 +190,7 @@ SVG_FILES = {
     "line_perpendicular_from_edge": "line_perpendicular_from_edge.svg",
     "line_perpendicular_to_two_curves": "line_perpendicular_to_two_curves.svg",
     "point_by_arcs": "point_by_arcs.svg",
+    "point_by_line": "point_by_line.svg",
     "point_center": "point_center.svg",
     "point_edge_center": "point_edge_center.svg",
     "circle_center_radius": "circle_center_radius.svg",
@@ -212,6 +215,7 @@ SVG_FILES = {
 
 TOOL_LABELS = {
     "point_by_arcs": "Point by Arcs",
+    "point_by_line": "Point by Line",
     "point_center": "Point Center",
     "point_edge_center": "Edge Center",
     "line_perpendicular_from_curve": "Line Perpendicular from Curve",
@@ -341,6 +345,8 @@ class RADCAD_OT_generic(bpy.types.Operator):
         elif self.panel == "point":
             if self.name == "point_by_arcs":
                 bpy.ops.view3d.point_by_arcs('INVOKE_DEFAULT')
+            elif self.name == "point_by_line":
+                bpy.ops.view3d.point_by_line('INVOKE_DEFAULT')
             elif self.name == "point_center":
                 bpy.ops.view3d.point_center('INVOKE_DEFAULT')
             elif self.name == "point_edge_center":
@@ -424,6 +430,7 @@ class RADCAD_PT_Point(bpy.types.Panel):
     def draw(self, context):
         draw_header(self.layout, context.scene.radcad_point_icon)
         draw_tool_button(self.layout, "point_by_arcs")
+        draw_tool_button(self.layout, "point_by_line")
         draw_tool_button(self.layout, "point_center")
         draw_tool_button(self.layout, "point_edge_center")
 

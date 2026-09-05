@@ -5,6 +5,15 @@ from ..geometry_utils import snap_angle_soft, unwrap, arc_points_world
 from ..plane_utils import world_to_plane, plane_to_world
 from ..orientation_utils import orthonormal_basis_from_normal
 from .base_tool import SurfaceDrawTool, CAD_BaseTool
+from .line_tools import LineTool_Poly
+
+
+class PointTool_ByLine(LineTool_Poly):
+    """Reuse the polyline interaction while committing vertices only."""
+
+    def __init__(self, core):
+        super().__init__(core)
+        self.mode = "POINT_BY_LINE"
 
 def intersect_circles_3d(c1, r1, c2, r2, Xp, Yp):
     """

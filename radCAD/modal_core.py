@@ -279,6 +279,10 @@ class ModalManager:
         elif t_mode == "LINE_POLY": 
             from .operators import line_tools
             self.active_tool = line_tools.LineTool_Poly(self)
+
+        elif t_mode == "POINT_BY_LINE":
+            from .operators import point_tools
+            self.active_tool = point_tools.PointTool_ByLine(self)
         
         elif t_mode == "LINE_PERP_FROM_CURVE":
             from .operators import line_tools
@@ -432,7 +436,7 @@ class ModalManager:
 
             # --- PREVIEW SNAPPING (SELF-SNAP) ---
             self_snap_targets = []
-            if state.get("tool_mode") == "LINE_POLY":
+            if state.get("tool_mode") in {"LINE_POLY", "POINT_BY_LINE"}:
                 preview_pts = state.get("preview_pts", [])
                 if len(preview_pts) > 1: self_snap_targets = preview_pts[:-1]
             elif state.get("tool_mode") == "CURVE_INTERPOLATE":
@@ -744,7 +748,8 @@ def commit_arc_to_mesh(ctx):
     is_closed = abs(state["accum_angle"]) >= (2 * math.pi - 0.001)
     
     # Continuous tools that always have a "floating" mouse point at the end
-    continuous_tools = ["LINE_POLY", "CURVE_INTERPOLATE"]
+    continuous_tools = ["LINE_POLY", "POINT_BY_LINE", "CURVE_INTERPOLATE"]
+    point_only_tools = {"POINT_BY_LINE"}
     
     # Shape tools that should be closed automatically
     shape_tools = ["CIRCLE_1POINT", "CIRCLE_2POINT", "CIRCLE_3POINT", "CIRCLE_TAN_TAN", "CIRCLE_TAN_TAN_TAN",
@@ -778,21 +783,22 @@ def commit_arc_to_mesh(ctx):
         v.select = True 
         created_verts.append(v)
     created_edges = []
-    for i in range(len(created_verts) - 1):
-        v1, v2 = created_verts[i], created_verts[i+1]
-        try: e = bm.edges.new((v1, v2))
-        except ValueError: e = bm.edges.get((v1, v2))
-        if e: 
-            e.select = True
-            created_edges.append(e)
-    if is_closed and len(created_verts) > 2:
-        v_last = created_verts[-1]
-        v_first = created_verts[0]
-        try: e = bm.edges.new((v_last, v_first))
-        except ValueError: e = bm.edges.get((v_last, v_first))
-        if e: 
-            e.select = True
-            created_edges.append(e)
+    if state["tool_mode"] not in point_only_tools:
+        for i in range(len(created_verts) - 1):
+            v1, v2 = created_verts[i], created_verts[i+1]
+            try: e = bm.edges.new((v1, v2))
+            except ValueError: e = bm.edges.get((v1, v2))
+            if e:
+                e.select = True
+                created_edges.append(e)
+        if is_closed and len(created_verts) > 2:
+            v_last = created_verts[-1]
+            v_first = created_verts[0]
+            try: e = bm.edges.new((v_last, v_first))
+            except ValueError: e = bm.edges.get((v_last, v_first))
+            if e:
+                e.select = True
+                created_edges.append(e)
     bm.select_history.clear()
     bm.verts.ensure_lookup_table()
     bm.edges.ensure_lookup_table()
@@ -855,6 +861,7 @@ def begin_modal(self, ctx, ev):
         "POINT_BY_ARCS": ("point", "point_by_arcs"),
         "POINT_CENTER": ("point", "point_center"),
         "POINT_EDGE_CENTER": ("point", "point_edge_center"),
+        "POINT_BY_LINE": ("point", "point_by_line"),
         "LINE_POLY": ("line", "line"),
         "LINE_PERP_FROM_CURVE": ("line", "line_perpendicular_from_curve"),
         "LINE_PERP_FROM_EDGE": ("line", "line_perpendicular_from_edge"),
@@ -924,6 +931,7 @@ def finish_modal(self, ctx):
             "POINT_BY_ARCS",
             "POINT_CENTER",
             "POINT_EDGE_CENTER",
+            "POINT_BY_LINE",
             "LINE_POLY",
             "LINE_PERP_FROM_CURVE",
             "LINE_PERP_FROM_EDGE",
@@ -950,7 +958,7 @@ def finish_modal(self, ctx):
             tool_mode = state.get("tool_mode", "")
             if tool_mode in {"1POINT", "2POINT", "3POINT"}:
                 ctx.scene.radcad_arc_icon = "arc_default"
-            elif tool_mode in {"POINT_BY_ARCS", "POINT_CENTER", "POINT_EDGE_CENTER"}:
+            elif tool_mode in {"POINT_BY_ARCS", "POINT_CENTER", "POINT_EDGE_CENTER", "POINT_BY_LINE"}:
                 ctx.scene.radcad_point_icon = "point_default"
             elif tool_mode.startswith("LINE_"):
                 ctx.scene.radcad_line_icon = "line_default"
@@ -1010,7 +1018,7 @@ def modal_arc_common(self, ctx, ev):
                      # Force immediate update with fresh coordinates
                      self.manager.on_move(ctx, ev)
                      if (
-                         state.get("tool_mode") == "LINE_POLY"
+                         state.get("tool_mode") in {"LINE_POLY", "POINT_BY_LINE"}
                          and ev.type in {'RET', 'NUMPAD_ENTER'}
                          and ev.value == 'PRESS'
                          and state.get("stage", 0) > 0
@@ -1033,7 +1041,7 @@ def modal_arc_common(self, ctx, ev):
             return {'CANCELLED'}
 
         if self.manager.active_tool:
-            if state["tool_mode"] == "LINE_POLY":
+            if state["tool_mode"] in {"LINE_POLY", "POINT_BY_LINE"}:
                 # If we have a keyboard value active, commit it as a click first
                 if state.get("input_string"):
                     mx, my = ev.mouse_region_x, ev.mouse_region_y
@@ -1098,7 +1106,7 @@ def modal_arc_common(self, ctx, ev):
             return {'RUNNING_MODAL'} 
 
     if ev.type == 'WHEELUPMOUSE':
-        if state.get("tool_mode") not in ["POINT_BY_ARCS", "LINE_POLY", "ROTATE", "RECTANGLE_3_POINTS"]:
+        if state.get("tool_mode") not in ["POINT_BY_ARCS", "LINE_POLY", "POINT_BY_LINE", "ROTATE", "RECTANGLE_3_POINTS"]:
             step = 2 if state.get("tool_mode") == "POLYGON_EDGE" else 1
             state["segments"] = min(256, state["segments"] + step)
             if self.manager.active_tool: 
@@ -1110,7 +1118,7 @@ def modal_arc_common(self, ctx, ev):
         return {'RUNNING_MODAL'}
         
     if ev.type == 'WHEELDOWNMOUSE':
-        if state.get("tool_mode") not in ["POINT_BY_ARCS", "LINE_POLY", "ROTATE", "RECTANGLE_3_POINTS"]:
+        if state.get("tool_mode") not in ["POINT_BY_ARCS", "LINE_POLY", "POINT_BY_LINE", "ROTATE", "RECTANGLE_3_POINTS"]:
             step = 2 if state.get("tool_mode") == "POLYGON_EDGE" else 1
             state["segments"] = max(1 if "CURVE" in state.get("tool_mode", "") else 3, state["segments"] - step)
             if self.manager.active_tool: 
@@ -1210,8 +1218,8 @@ def modal_arc_common(self, ctx, ev):
         elif ev.type == 'D' and tool_mode in ["2POINT", "CIRCLE_2POINT", "ELLIPSE_ENDPOINTS", "ELLIPSE_RADIUS"]: target_mode = 'RADIUS'; state["input_target"] = 'DIAMETER'
         elif ev.type == 'H' and tool_mode == "2POINT" and state["stage"] == 2: target_mode = 'RADIUS'; state["input_target"] = 'SAGITTA'
         elif ev.type == 'A' and tool_mode == "POLYGON_CENTER_TANGENT": target_mode = 'RADIUS'; state["input_target"] = 'RADIUS'
-        elif ev.type == 'L' and tool_mode in ["POLYGON_CORNER_CORNER", "POLYGON_EDGE", "LINE_POLY"]: target_mode = 'RADIUS'; state["input_target"] = 'RADIUS'
-        elif ev.type == 'A' and state["stage"] == 2 and tool_mode not in ["2POINT", "CIRCLE_TAN_TAN_TAN", "LINE_POLY", "ELLIPSE_CORNERS", "ELLIPSE_ENDPOINTS", "ELLIPSE_FOCI", "RECTANGLE_3_POINTS"]:
+        elif ev.type == 'L' and tool_mode in ["POLYGON_CORNER_CORNER", "POLYGON_EDGE", "LINE_POLY", "POINT_BY_LINE"]: target_mode = 'RADIUS'; state["input_target"] = 'RADIUS'
+        elif ev.type == 'A' and state["stage"] == 2 and tool_mode not in ["2POINT", "CIRCLE_TAN_TAN_TAN", "LINE_POLY", "POINT_BY_LINE", "ELLIPSE_CORNERS", "ELLIPSE_ENDPOINTS", "ELLIPSE_FOCI", "RECTANGLE_3_POINTS"]:
             target_mode = 'ANGLE'        
         if is_number_input(ev): 
             # --- FIX: Context-aware number typing ---
