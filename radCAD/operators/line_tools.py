@@ -611,17 +611,15 @@ class LineTool_Poly(SurfaceDrawTool):
             res = geometry.intersect_line_line(ray_o, ray_o + ray_v, ref, ref + self.constraint_axis)
             if res: target = res[1]
 
-            # If the geometry snap is already on the constrained axis, keep
-            # the exact snapped vertex instead of replacing it with the
-            # cursor/ray intersection.
+            # Match Shift + snap behavior: use the snapped point to determine
+            # the distance along the constrained axis instead of discarding
+            # it in favor of the cursor/ray intersection.
             if self.state.get("geometry_snap") and snap_point is not None:
                 delta = snap_point - ref
-                on_axis = delta - self.constraint_axis * delta.dot(self.constraint_axis)
-                if on_axis.length <= max(1.0e-5, delta.length * 1.0e-4):
-                    target = snap_point.copy()
+                target = ref + self.constraint_axis * delta.dot(self.constraint_axis)
 
-        # 2. Axis Inference (Override target if active and applicable)
-        elif not self.shift_lock_vec:
+        # 2. Passive axis inference must not replace an explicit geometry snap.
+        elif not self.shift_lock_vec and not self.state.get("geometry_snap", False):
             strength = max(0.1, min(89.0, self.state.get("snap_strength", 6.0)))
             inf_loc, inf_axis, _ = get_axis_snapped_location(ref, (event.mouse_region_x, event.mouse_region_y), context, snap_threshold=math.cos(math.radians(strength)))
             if inf_loc: 
