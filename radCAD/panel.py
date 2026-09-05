@@ -233,6 +233,18 @@ class RADCAD_OT_reset_overlays(bpy.types.Operator):
     def execute(self, context):
         state["active"] = False
         DrawManager.clear_all()
+
+        # Dimension and construction overlays have their own persistent
+        # registries. Rebuild them here so a reload or interrupted modal tool
+        # cannot leave an old, unselectable dimension renderer underneath the
+        # current projected one.
+        from .dimension_tool import updater as dimension_updater
+        from .construction_tool import overlay as construction_overlay
+
+        dimension_updater._remove_overlay_handlers()
+        construction_overlay._remove_overlay_handlers()
+        dimension_updater._register_overlay_handlers()
+        construction_overlay.register()
         
         # Clear legacy/driver based handles if any persist
         if "radcad_handles" in bpy.app.driver_namespace:

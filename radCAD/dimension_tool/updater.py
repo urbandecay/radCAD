@@ -38,7 +38,7 @@ def _remove_overlay_handlers():
     for handle, region_type in handles:
         try:
             bpy.types.SpaceView3D.draw_handler_remove(handle, region_type)
-        except (ReferenceError, ValueError):
+        except (ReferenceError, RuntimeError, ValueError):
             pass
     bpy.app.driver_namespace[_OVERLAY_KEY] = []
 

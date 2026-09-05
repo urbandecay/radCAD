@@ -45,6 +45,47 @@ _GLOBAL_AXES = {
 _AXIS_ALIGNED_DOT = math.cos(math.radians(1.0))
 
 
+def _axis_aligned_view_normal(context):
+    """Return the screen-plane normal for an axis-aligned ortho view.
+
+    A snapped vertex can be shared by faces with several different normals.
+    In a true 2D orthographic view those face normals must not decide whether
+    the dimension can be horizontal or vertical; the viewport plane does.
+    Oblique and perspective views keep the existing picked-plane behavior.
+    """
+    rv3d = getattr(context, "region_data", None)
+    if rv3d is None or getattr(rv3d, "view_perspective", None) != "ORTHO":
+        return None
+    try:
+        view_normal = rv3d.view_matrix.inverted().to_3x3() @ Vector((0.0, 0.0, 1.0))
+    except (AttributeError, ValueError):
+        return None
+    if view_normal.length_squared <= 1.0e-12:
+        return None
+    view_normal.normalize()
+    best_alignment = max(
+        abs(view_normal.dot(axis)) for axis in _GLOBAL_AXES.values()
+    )
+    if best_alignment < _AXIS_ALIGNED_DOT:
+        return None
+    return view_normal
+
+
+def _projected_dimension_plane(context, fallback_normal):
+    """Choose the plane used to infer projected X/Y/Z dimensions."""
+    view_normal = _axis_aligned_view_normal(context)
+    if view_normal is not None:
+        return view_normal
+    normal = (
+        Vector(fallback_normal)
+        if fallback_normal is not None
+        else Vector((0.0, 0.0, 1.0))
+    )
+    if normal.length_squared <= 1.0e-12:
+        return Vector((0.0, 0.0, 1.0))
+    return normal.normalized()
+
+
 def _dimension_offset_axes(line_direction):
     """Return global axes projected into a dimension's cross-plane."""
     candidates = {}
@@ -122,18 +163,22 @@ def _cursor_driven_offset(
     # While creating a dimension, use the cursor's nearby global axis as the
     # offset direction. The perpendicular axis then becomes the dimension
     # direction, which creates projected horizontal/vertical measurements.
-    if allow_projected and not has_requested_direction:
+    # Keep doing this when a direction was already inferred so moving from
+    # horizontal to vertical remains possible; if the cursor is not close to
+    # another axis, the requested direction is retained below.
+    if allow_projected:
+        projected_normal = _projected_dimension_plane(context, fallback_normal)
         strength = max(0.1, min(89.0, state.get("snap_strength", 6.0)))
         inferred, offset_axis, axis_name = get_direction_snapped_location(
             midpoint,
             (event.mouse_region_x, event.mouse_region_y),
             context,
-            _plane_axes(fallback_normal),
+            _plane_axes(projected_normal),
             snap_threshold=math.cos(math.radians(strength)),
         )
         if inferred is not None and offset_axis is not None:
             offset_direction = offset_axis.normalized()
-            line_direction = offset_direction.cross(Vector(fallback_normal))
+            line_direction = offset_direction.cross(projected_normal)
             if line_direction.length_squared > 1.0e-10:
                 line_direction.normalize()
                 if line_direction.dot(Vector(p2) - Vector(p1)) < 0.0:
@@ -768,6 +813,7 @@ class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
                 self.p2,
                 self.plane_normal,
                 self.offset_distance,
+                dimension_direction=self.linear_direction,
                 allow_projected=True,
             )
             if resolved is not None:
@@ -793,7 +839,10 @@ class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
         if self.stage == 0:
             self.p1 = self.current.copy()
             self.pick_1 = self.current_pick.snap_result
-            self.plane_normal = self.current_pick.normal.copy()
+            self.plane_normal = _projected_dimension_plane(
+                context,
+                self.current_pick.normal,
+            )
             self.stage = 1
             return {"RUNNING_MODAL"}
         if self.stage == 1:
@@ -802,6 +851,7 @@ class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
                 return {"RUNNING_MODAL"}
             self.p2 = self.current.copy()
             self.pick_2 = self.current_pick.snap_result
+            self.linear_direction = None
             basis = dimension_basis(self.p1, self.p2, self.plane_normal)
             self.plane_normal = basis[2]
             default_offset = max((self.p2 - self.p1).length * 0.25, context.scene.radcad_dimension_text_size * 2.0)
@@ -843,6 +893,7 @@ class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
         if event.type in {"BACK_SPACE", "BACKSPACE"} and event.value == "PRESS":
             if self.stage == 2:
                 self.stage = 1
+                self.linear_direction = None
             elif self.stage == 1:
                 self.stage = 0
                 self.p1 = None

@@ -49,12 +49,12 @@ def dimension_basis(p1, p2, preferred_normal, dimension_direction=None):
         else Vector((0.0, 0.0, 0.0))
     )
     if requested_direction.length_squared > EPSILON:
-        requested_direction -= normal * requested_direction.dot(normal)
-        line_direction = (
-            requested_direction.normalized()
-            if requested_direction.length_squared > EPSILON
-            else line.normalized()
-        )
+        # A requested direction is an instruction for the measurement line,
+        # not a vector that should be projected back onto a possibly stale
+        # dimension plane.  Projecting it here is what made a saved horizontal
+        # or vertical dimension turn back into the original diagonal when the
+        # picked face supplied an unrelated normal.
+        line_direction = requested_direction.normalized()
         if line_direction.dot(line) < 0.0:
             line_direction.negate()
     else:

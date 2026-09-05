@@ -67,5 +67,14 @@ def register():
 def unregister():
     _unregister_delete_menu()
     _unregister_keymaps()
+    # A reload can occur while a modal dimension operator is active. Remove
+    # its preview callbacks before the old module objects disappear, otherwise
+    # the old aligned preview can remain visible and cannot be picked by the
+    # new dimension picker.
+    from ..modal_core import DrawManager
+    from .constants import DRAW_HANDLER_2D, DRAW_HANDLER_3D, DRAW_HANDLER_SNAP_HUD
+
+    for source_id in (DRAW_HANDLER_3D, DRAW_HANDLER_2D, DRAW_HANDLER_SNAP_HUD):
+        DrawManager.remove_handler(source_id)
     updater.unregister()
     properties.unregister()
