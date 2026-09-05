@@ -154,9 +154,9 @@ def _cursor_driven_offset(
         return None
 
     raw_offset = placement - midpoint
-    # Alt is the explicit aligned-dimension override. Without this, a
-    # projected dimension that was already inferred remains sticky even when
-    # the cursor is moved back toward the measured edge's normal.
+    # Alt remains a bypass for axis inference, but it is not required for an
+    # aligned dimension.  The mouse position itself decides which placement
+    # mode is active.
     bypass_projected = bool(getattr(event, "alt", False)) and allow_projected
     requested = (
         Vector(dimension_direction)
@@ -168,9 +168,9 @@ def _cursor_driven_offset(
     # While creating a dimension, use the cursor's nearby global axis as the
     # offset direction. The perpendicular axis then becomes the dimension
     # direction, which creates projected horizontal/vertical measurements.
-    # Keep doing this when a direction was already inferred so moving from
-    # horizontal to vertical remains possible; if the cursor is not close to
-    # another axis, the requested direction is retained below.
+    # Re-evaluate this on every mouse move.  A projected direction is not
+    # sticky: moving the cursor away from the global axes must return to the
+    # measured span's own direction.
     if allow_projected and not bypass_projected:
         projected_normal = _projected_dimension_plane(context, fallback_normal)
         strength = max(0.1, min(89.0, state.get("snap_strength", 6.0)))
@@ -203,7 +203,10 @@ def _cursor_driven_offset(
                         line_direction,
                     )
 
-    if has_requested_direction:
+    # Saved projected dimensions (reposition/drag paths) keep their requested
+    # direction. During creation, however, a missed projected inference means
+    # the cursor is asking for the normal/aligned dimension again.
+    if has_requested_direction and not allow_projected:
         basis = dimension_basis(
             p1,
             p2,
@@ -255,7 +258,11 @@ def _cursor_driven_offset(
         return None
     plane_normal.normalize()
     current = midpoint + offset_direction * distance
-    saved_direction = line_direction.copy() if has_requested_direction else None
+    saved_direction = (
+        line_direction.copy()
+        if has_requested_direction and not allow_projected
+        else None
+    )
     return current, plane_normal, distance, inferred_axis, saved_direction
 
 

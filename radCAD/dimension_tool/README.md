@@ -7,9 +7,10 @@ Linear dimensions use a three-click workflow:
 2. Pick the second measured point.
 3. Place the dimension line.
 
-During the third step, nearby global axes can infer projected horizontal or
-vertical measurements. Hold `Alt` while placing to force a normal/aligned
-dimension parallel to the measured span.
+During the third step, the mouse position controls the placement: nearby
+global axes can infer projected horizontal or vertical measurements, while
+moving away from those axes returns to a normal/aligned dimension parallel to
+the measured span. `Alt` can still be held to bypass axis inference entirely.
 
 The resulting annotation is drawn entirely as a persistent GPU/HUD overlay.
 It creates no visible Empty, Curve, Font, or renderable geometry. A hidden data
