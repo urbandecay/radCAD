@@ -154,9 +154,13 @@ def _cursor_driven_offset(
         return None
 
     raw_offset = placement - midpoint
+    # Alt is the explicit aligned-dimension override. Without this, a
+    # projected dimension that was already inferred remains sticky even when
+    # the cursor is moved back toward the measured edge's normal.
+    bypass_projected = bool(getattr(event, "alt", False)) and allow_projected
     requested = (
         Vector(dimension_direction)
-        if dimension_direction is not None
+        if dimension_direction is not None and not bypass_projected
         else Vector((0.0, 0.0, 0.0))
     )
     has_requested_direction = requested.length_squared > 1.0e-10
@@ -167,7 +171,7 @@ def _cursor_driven_offset(
     # Keep doing this when a direction was already inferred so moving from
     # horizontal to vertical remains possible; if the cursor is not close to
     # another axis, the requested direction is retained below.
-    if allow_projected:
+    if allow_projected and not bypass_projected:
         projected_normal = _projected_dimension_plane(context, fallback_normal)
         strength = max(0.1, min(89.0, state.get("snap_strength", 6.0)))
         inferred, offset_axis, axis_name = get_direction_snapped_location(
@@ -910,6 +914,12 @@ class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
             self._update(context, event)
             return {"RUNNING_MODAL"}
 
+        # A modifier press does not necessarily generate a mouse-move event.
+        # Refresh once on Alt-click so the aligned override is applied to the
+        # committed state even when the cursor has not moved after Alt was
+        # pressed.
+        if getattr(event, "alt", False):
+            self._update(context, event)
         debug.log_dimension_snapshot(
             context.scene,
             "linear_commit_before",

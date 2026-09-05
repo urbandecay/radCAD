@@ -752,7 +752,11 @@ def draw_preview_2d(operator):
     )
     prompt = prompts[min(operator.stage, 2)]
     _draw_box(20, operator.context.region.height - 48, prompt)
-    _draw_box(20, 20, "F1–F5 snapping   •   Backspace previous   •   Esc cancel")
+    _draw_box(
+        20,
+        20,
+        "F1–F5 snapping   •   Alt: aligned dimension   •   Backspace previous   •   Esc cancel",
+    )
 
     if operator.stage >= 2 and operator.p1 is not None and operator.p2 is not None:
         scene = operator.context.scene
