@@ -14,9 +14,10 @@ selected for editing from the Dimension panel. Vertex, edge, and face-surface
 picks retain mesh element weights, so endpoints follow edits and transforms
 whenever the source topology remains compatible.
 
-Creating a new linear dimension replaces all prior linear annotations, leaving
-one visible linear dimension. Existing duplicate linear annotations are also
-collapsed during add-on registration and file updates.
+Each committed linear dimension remains visible. Multiple linear dimensions
+can measure the same edge; their placement offsets and saved styles remain
+independent. Existing dimensions are only removed explicitly through the
+dimension delete/edit controls.
 
 Module responsibilities:
 
