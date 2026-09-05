@@ -7,6 +7,7 @@ import bpy
 from mathutils import Vector
 
 from .constants import COLLECTION_NAME, ROOT_PREFIX
+from . import debug
 from .formatting import dimension_label
 from .angular.geometry import build_angle_layout
 from .linear.geometry import build_layout, dimension_basis
@@ -342,6 +343,16 @@ def _common_anchor_target(data):
     return None
 
 
+def _linear_dimensions_for_replacement(scene):
+    """Return every saved linear annotation before a new one is committed."""
+    return [
+        root
+        for root in iter_dimensions(scene)
+        if getattr(getattr(root, "radcad_dimension", None), "dimension_type", "LINEAR")
+        == "LINEAR"
+    ]
+
+
 def _migrate_dimension_orientation(data, p1, p2):
     """Attach legacy world-fixed planes to their measured object when possible."""
     if data.orientation_initialized:
@@ -462,6 +473,28 @@ def create_dimension(
     snap_2=None,
     linear_direction=None,
 ):
+    debug.log_dimension_snapshot(
+        context.scene,
+        "create_linear_begin",
+        p1=p1,
+        p2=p2,
+        plane=plane_normal,
+        offset=offset_distance,
+        direction=linear_direction,
+    )
+    replacements = _linear_dimensions_for_replacement(context.scene)
+    replacement_names = [root.name for root in replacements]
+    debug.log(
+        "linear_replacement_candidates",
+        policy="replace_all_linear",
+        candidates=[
+            {
+                "name": root.name,
+                "pointer": root.as_pointer(),
+            }
+            for root in replacements
+        ],
+    )
     collection = _get_collection(context.scene)
     root = bpy.data.objects.new(ROOT_PREFIX, None)
     collection.objects.link(root)
@@ -482,9 +515,25 @@ def create_dimension(
     data.offset_distance = offset_distance
     _apply_dimension_style(context, data)
 
-    update_dimension(root)
+    updated = update_dimension(root)
+    if updated:
+        for previous_root in replacements:
+            if previous_root != root:
+                delete_dimension(previous_root)
+    debug.log(
+        "linear_replacement_applied",
+        created=root.name,
+        updated=updated,
+        removed=replacement_names,
+    )
     # Linear dimensions are finished annotations, not an active selection.
     context.scene.radcad_active_dimension = None
+    debug.log_dimension_snapshot(
+        context.scene,
+        "create_linear_end",
+        created=root.name,
+        pointer=root.as_pointer(),
+    )
     return root
 
 
@@ -500,6 +549,15 @@ def create_angle_dimension(
     snap_ray_2=None,
 ):
     """Create a persistent angle annotation from a vertex and two ray points."""
+    debug.log_dimension_snapshot(
+        context.scene,
+        "create_angle_begin",
+        vertex=vertex,
+        ray_1=ray_1,
+        ray_2=ray_2,
+        plane=plane_normal,
+        radius=radius,
+    )
     collection = _get_collection(context.scene)
     root = bpy.data.objects.new(ROOT_PREFIX, None)
     collection.objects.link(root)
@@ -517,6 +575,12 @@ def create_angle_dimension(
     update_dimension(root)
     # Angle dimensions are finished annotations, not an active selection.
     context.scene.radcad_active_dimension = None
+    debug.log_dimension_snapshot(
+        context.scene,
+        "create_angle_end",
+        created=root.name,
+        pointer=root.as_pointer(),
+    )
     return root
 
 
@@ -641,7 +705,29 @@ def update_dimension(root):
 
 
 def update_all_dimensions(scene=None):
-    for obj in iter_dimensions(scene):
+    roots = list(iter_dimensions(scene))
+    linear_roots = [
+        root
+        for root in roots
+        if getattr(getattr(root, "radcad_dimension", None), "dimension_type", "LINEAR")
+        == "LINEAR"
+    ]
+    if len(linear_roots) > 1:
+        # A file created before the one-linear-dimension policy may already
+        # contain duplicates. Keep the newest linked root and remove the rest
+        # before the persistent renderer sees them again.
+        survivor = linear_roots[-1]
+        removed_names = [root.name for root in linear_roots[:-1]]
+        debug.log(
+            "linear_duplicate_cleanup",
+            kept=survivor.name,
+            removed=removed_names,
+        )
+        for duplicate in linear_roots[:-1]:
+            delete_dimension(duplicate)
+        roots = list(iter_dimensions(scene))
+
+    for obj in roots:
         if dimension_anchors_valid(obj):
             update_dimension(obj)
         else:

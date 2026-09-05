@@ -2,6 +2,7 @@
 
 import bpy
 
+from . import debug
 from . import properties, updater
 
 
@@ -29,7 +30,10 @@ def _register_delete_menu():
 
 
 def _unregister_delete_menu():
-    bpy.types.VIEW3D_MT_edit_mesh_delete.remove(_draw_dimension_delete_entry)
+    try:
+        bpy.types.VIEW3D_MT_edit_mesh_delete.remove(_draw_dimension_delete_entry)
+    except (ReferenceError, RuntimeError, ValueError):
+        pass
 
 
 def _register_keymaps():
@@ -58,13 +62,17 @@ def _unregister_keymaps():
 
 
 def register():
+    debug.log("dimension_tool_register_begin", handlers=debug.handler_snapshot())
     properties.register()
     updater.register()
     _register_keymaps()
     _register_delete_menu()
+    debug.log("dimension_tool_register_end", handlers=debug.handler_snapshot())
 
 
 def unregister():
+    debug.invalidate_active_preview("dimension_tool_unregister")
+    debug.log("dimension_tool_unregister_begin", handlers=debug.handler_snapshot())
     _unregister_delete_menu()
     _unregister_keymaps()
     # A reload can occur while a modal dimension operator is active. Remove
@@ -78,3 +86,4 @@ def unregister():
         DrawManager.remove_handler(source_id)
     updater.unregister()
     properties.unregister()
+    debug.log("dimension_tool_unregister_end", handlers=debug.handler_snapshot())

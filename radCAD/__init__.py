@@ -10,6 +10,7 @@ bl_info = {
 
 import bpy
 from importlib import import_module
+from .registration_utils import safe_unregister_class
 
 def _import(name):
     return import_module(f".{name}", package=__name__)
@@ -126,48 +127,48 @@ def unregister():
     erase_tool.unregister()
     construction_tool.unregister()
 
-    bpy.utils.unregister_class(op_rotate.VIEW3D_OT_radcad_rotate)
-    bpy.utils.unregister_class(op_point_edge_center.VIEW3D_OT_point_edge_center)
-    bpy.utils.unregister_class(op_point_center.VIEW3D_OT_point_center)
-    bpy.utils.unregister_class(op_point_by_arcs.VIEW3D_OT_point_by_arcs)
-    bpy.utils.unregister_class(op_curve_freehand.VIEW3D_OT_curve_freehand)
-    bpy.utils.unregister_class(op_curve_interpolate.VIEW3D_OT_curve_interpolate)
-    bpy.utils.unregister_class(op_line_tangent_from_curve.VIEW3D_OT_line_tangent_from_curve)
-    bpy.utils.unregister_class(op_line_perp_to_two_curves.VIEW3D_OT_line_perp_to_two_curves)
-    bpy.utils.unregister_class(op_line_tan_tan.VIEW3D_OT_line_tan_tan) 
-    bpy.utils.unregister_class(op_line_perp_from_edge.VIEW3D_OT_line_perp_from_edge)
-    bpy.utils.unregister_class(op_line_perp_from_curve.VIEW3D_OT_line_perp_from_curve)
-    bpy.utils.unregister_class(op_line_polyline.VIEW3D_OT_line_polyline)
-    bpy.utils.unregister_class(op_rectangle_3_points.VIEW3D_OT_rectangle_3_points) # <--- UNREGISTER
-    bpy.utils.unregister_class(op_rectangle_cor_cor.VIEW3D_OT_rectangle_cor_cor)
-    bpy.utils.unregister_class(op_rectangle_cen_cor.VIEW3D_OT_rectangle_cen_cor) 
-    bpy.utils.unregister_class(op_polygon_edge.VIEW3D_OT_polygon_edge)
-    bpy.utils.unregister_class(op_polygon_cor_cor.VIEW3D_OT_polygon_cor_cor)
-    bpy.utils.unregister_class(op_polygon_cen_tan.VIEW3D_OT_polygon_cen_tan)
-    bpy.utils.unregister_class(op_polygon_cen_cor.VIEW3D_OT_polygon_cen_cor)
-    bpy.utils.unregister_class(op_ellipse_corners.VIEW3D_OT_ellipse_corners)
-    bpy.utils.unregister_class(op_ellipse_foci.VIEW3D_OT_ellipse_foci)
-    bpy.utils.unregister_class(op_ellipse_endpoints.VIEW3D_OT_ellipse_endpoints)
-    bpy.utils.unregister_class(op_ellipse_radius.VIEW3D_OT_ellipse_radius)
-    bpy.utils.unregister_class(op_circle_tan_tan.VIEW3D_OT_circle_tan_tan)
-    bpy.utils.unregister_class(op_circle_tan_tan_tan.VIEW3D_OT_circle_tan_tan_tan) 
-    bpy.utils.unregister_class(op_circle_3pt.VIEW3D_OT_circle_3pt) 
-    bpy.utils.unregister_class(op_circle_2pt.VIEW3D_OT_circle_2pt)
-    bpy.utils.unregister_class(op_circle_1pt.VIEW3D_OT_circle_1pt)
-    bpy.utils.unregister_class(op_3pt.VIEW3D_OT_arc_3pt)
-    bpy.utils.unregister_class(op_2pt.VIEW3D_OT_arc_2pt)
-    bpy.utils.unregister_class(op_1pt.VIEW3D_OT_arc_overlay_preview)
+    safe_unregister_class(op_rotate.VIEW3D_OT_radcad_rotate)
+    safe_unregister_class(op_point_edge_center.VIEW3D_OT_point_edge_center)
+    safe_unregister_class(op_point_center.VIEW3D_OT_point_center)
+    safe_unregister_class(op_point_by_arcs.VIEW3D_OT_point_by_arcs)
+    safe_unregister_class(op_curve_freehand.VIEW3D_OT_curve_freehand)
+    safe_unregister_class(op_curve_interpolate.VIEW3D_OT_curve_interpolate)
+    safe_unregister_class(op_line_tangent_from_curve.VIEW3D_OT_line_tangent_from_curve)
+    safe_unregister_class(op_line_perp_to_two_curves.VIEW3D_OT_line_perp_to_two_curves)
+    safe_unregister_class(op_line_tan_tan.VIEW3D_OT_line_tan_tan)
+    safe_unregister_class(op_line_perp_from_edge.VIEW3D_OT_line_perp_from_edge)
+    safe_unregister_class(op_line_perp_from_curve.VIEW3D_OT_line_perp_from_curve)
+    safe_unregister_class(op_line_polyline.VIEW3D_OT_line_polyline)
+    safe_unregister_class(op_rectangle_3_points.VIEW3D_OT_rectangle_3_points)
+    safe_unregister_class(op_rectangle_cor_cor.VIEW3D_OT_rectangle_cor_cor)
+    safe_unregister_class(op_rectangle_cen_cor.VIEW3D_OT_rectangle_cen_cor)
+    safe_unregister_class(op_polygon_edge.VIEW3D_OT_polygon_edge)
+    safe_unregister_class(op_polygon_cor_cor.VIEW3D_OT_polygon_cor_cor)
+    safe_unregister_class(op_polygon_cen_tan.VIEW3D_OT_polygon_cen_tan)
+    safe_unregister_class(op_polygon_cen_cor.VIEW3D_OT_polygon_cen_cor)
+    safe_unregister_class(op_ellipse_corners.VIEW3D_OT_ellipse_corners)
+    safe_unregister_class(op_ellipse_foci.VIEW3D_OT_ellipse_foci)
+    safe_unregister_class(op_ellipse_endpoints.VIEW3D_OT_ellipse_endpoints)
+    safe_unregister_class(op_ellipse_radius.VIEW3D_OT_ellipse_radius)
+    safe_unregister_class(op_circle_tan_tan.VIEW3D_OT_circle_tan_tan)
+    safe_unregister_class(op_circle_tan_tan_tan.VIEW3D_OT_circle_tan_tan_tan)
+    safe_unregister_class(op_circle_3pt.VIEW3D_OT_circle_3pt)
+    safe_unregister_class(op_circle_2pt.VIEW3D_OT_circle_2pt)
+    safe_unregister_class(op_circle_1pt.VIEW3D_OT_circle_1pt)
+    safe_unregister_class(op_3pt.VIEW3D_OT_arc_3pt)
+    safe_unregister_class(op_2pt.VIEW3D_OT_arc_2pt)
+    safe_unregister_class(op_1pt.VIEW3D_OT_arc_overlay_preview)
 
     for cls in reversed(op_dimension_edit.CLASSES):
-        bpy.utils.unregister_class(cls)
-    bpy.utils.unregister_class(op_dimension_angle.VIEW3D_OT_radcad_dimension_angle)
-    bpy.utils.unregister_class(op_dimension_linear.VIEW3D_OT_radcad_dimension_linear)
+        safe_unregister_class(cls)
+    safe_unregister_class(op_dimension_angle.VIEW3D_OT_radcad_dimension_angle)
+    safe_unregister_class(op_dimension_linear.VIEW3D_OT_radcad_dimension_linear)
     dimension_tool.unregister()
     
     # Unregister modal
-    bpy.utils.unregister_class(modal_core.VIEW3D_OT_radcad_modal)
+    safe_unregister_class(modal_core.VIEW3D_OT_radcad_modal)
 
     if hasattr(bpy.types.Scene, "active_cad_tool_id"):
         del bpy.types.Scene.active_cad_tool_id
 
-    bpy.utils.unregister_class(prefs.RADCAD_Preferences)
+    safe_unregister_class(prefs.RADCAD_Preferences)

@@ -12,6 +12,7 @@ import sys
 import traceback
 from .modal_state import state 
 from .modal_core import DrawManager
+from .registration_utils import safe_delete_property, safe_unregister_class
 
 
 _reload_pending = False
@@ -21,6 +22,12 @@ def _reload_radCAD_timer():
     """Reload the complete rCAD package after the button operation returns."""
     global _reload_pending
     _reload_pending = False
+
+    from .dimension_tool import debug as dimension_debug
+    dimension_debug.log(
+        "addon_reload_begin",
+        handlers=dimension_debug.handler_snapshot(),
+    )
 
     package_name = __package__.split('.')[0]
     old_package = sys.modules.get(package_name)
@@ -49,8 +56,13 @@ def _reload_radCAD_timer():
         new_package.register()
         new_package.__addon_enabled__ = addon_enabled
         new_package.__addon_persistent__ = addon_persistent
+        dimension_debug.log(
+            "addon_reload_end",
+            handlers=dimension_debug.handler_snapshot(),
+        )
         print("rCAD reloaded")
     except Exception:
+        dimension_debug.log("addon_reload_error", error=traceback.format_exc())
         traceback.print_exc()
 
     return None
@@ -231,8 +243,15 @@ class RADCAD_OT_reset_overlays(bpy.types.Operator):
     bl_label = "Clear Stuck Overlays"
     
     def execute(self, context):
+        from .dimension_tool import debug as dimension_debug
+
         state["active"] = False
+        dimension_debug.invalidate_active_preview("reset_overlays")
         DrawManager.clear_all()
+        dimension_debug.log(
+            "reset_overlays",
+            handlers=dimension_debug.handler_snapshot(),
+        )
 
         # Dimension and construction overlays have their own persistent
         # registries. Rebuild them here so a reload or interrupted modal tool
@@ -246,12 +265,9 @@ class RADCAD_OT_reset_overlays(bpy.types.Operator):
         dimension_updater._register_overlay_handlers()
         construction_overlay.register()
         
-        # Clear legacy/driver based handles if any persist
-        if "radcad_handles" in bpy.app.driver_namespace:
-            for h, region_type in bpy.app.driver_namespace["radcad_handles"]:
-                try: bpy.types.SpaceView3D.draw_handler_remove(h, region_type)
-                except Exception: pass
-            bpy.app.driver_namespace["radcad_handles"] = []
+        # Clear legacy/driver-based handles with the same defensive cleanup
+        # used during dimension registration.
+        dimension_updater._remove_legacy_overlay_handlers()
             
         context.area.tag_redraw()
         return {'FINISHED'}
@@ -652,16 +668,19 @@ def register():
 
 def unregister():
     for cls in reversed(classes):
-        bpy.utils.unregister_class(cls)
-    del bpy.types.Scene.radcad_line_icon
-    del bpy.types.Scene.radcad_arc_icon
-    del bpy.types.Scene.radcad_circle_icon
-    del bpy.types.Scene.radcad_ellipse_icon
-    del bpy.types.Scene.radcad_polygon_icon
-    del bpy.types.Scene.radcad_curve_icon
-    del bpy.types.Scene.radcad_rectangle_icon
-    del bpy.types.Scene.radcad_point_icon
-    del bpy.types.Scene.radcad_dimension_icon
+        safe_unregister_class(cls)
+    for property_name in (
+        "radcad_line_icon",
+        "radcad_arc_icon",
+        "radcad_circle_icon",
+        "radcad_ellipse_icon",
+        "radcad_polygon_icon",
+        "radcad_curve_icon",
+        "radcad_rectangle_icon",
+        "radcad_point_icon",
+        "radcad_dimension_icon",
+    ):
+        safe_delete_property(bpy.types.Scene, property_name)
 
     if preview_collection:
         bpy.utils.previews.remove(preview_collection)

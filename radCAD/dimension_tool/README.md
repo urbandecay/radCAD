@@ -14,6 +14,10 @@ selected for editing from the Dimension panel. Vertex, edge, and face-surface
 picks retain mesh element weights, so endpoints follow edits and transforms
 whenever the source topology remains compatible.
 
+Creating a new linear dimension replaces all prior linear annotations, leaving
+one visible linear dimension. Existing duplicate linear annotations are also
+collapsed during add-on registration and file updates.
+
 Module responsibilities:
 
 - `../operators/op_dimension_linear.py`: linear-dimension creation entry point.
@@ -29,3 +33,19 @@ Module responsibilities:
 - `properties.py`: saved dimension/style properties.
 - `formatting.py`: scene-unit label formatting.
 - `updater.py`: dependency-graph and file-load refresh handlers.
+
+Diagnostics:
+
+Dimension lifecycle logging is enabled by default while overlay issues are
+being diagnosed. Messages use the `[radCAD Dimension DEBUG]` prefix and are
+also retained in `bpy.app.driver_namespace["radcad_dimension_debug_log"]` and
+appended to `/tmp/radcad_dimension_debug.log`.
+The log records modal stages, preview generations, draw-handler ownership, the
+complete persistent dimension list before and after each commit, and the
+source/geometry of each 2D dimension draw. During a hot reload, callbacks from
+older drawing-module copies are quarantined so they cannot continue painting a
+second annotation. Disable diagnostics from Blender's Python Console with:
+
+```python
+bpy.app.driver_namespace["radcad_dimension_debug_enabled"] = False
+```

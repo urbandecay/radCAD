@@ -9,12 +9,29 @@ from gpu_extras.batch import batch_for_shader
 from mathutils import Vector
 
 from ..modal_state import state
+from . import debug
 from .angular.geometry import build_angle_layout
 from .linear.geometry import dimension_basis
 
 
 DIMENSION_HIT_RADIUS = 9.0
 SELECTION_COLOR = (1.0, 121.0 / 255.0, 0.0, 1.0)  # #FF7900
+
+
+def _preview_is_drawable(operator):
+    """Reject callbacks belonging to a finished or reloaded modal session."""
+    if not getattr(operator, "running", False):
+        return False
+    if debug.preview_is_current(operator):
+        return True
+    debug.log_change(
+        f"stale_preview_{id(operator)}",
+        "preview_skip_stale",
+        running=operator.running,
+        generation=getattr(operator, "_radcad_dimension_preview_generation", None),
+        handlers=debug.handler_snapshot(),
+    )
+    return False
 
 
 def _shader():
@@ -167,6 +184,8 @@ def _screen_dimension_geometry(
     text_position = midpoint - text_direction * (text_width * 0.5) + text_up * (4.0 - text_height * 0.2)
     return {
         "segments": segments,
+        "dimension_start": d1_2d,
+        "dimension_end": d2_2d,
         "midpoint": midpoint,
         "text_direction": text_direction,
         "text_up": text_up,
@@ -258,6 +277,8 @@ def draw_screen_dimension(
     extension_gap,
     extension_overshoot,
     dimension_direction=None,
+    draw_source="unknown",
+    draw_root=None,
 ):
     """Draw one complete dimension in POST_PIXEL; no scene geometry is used."""
     geometry = _screen_dimension_geometry(
@@ -276,6 +297,19 @@ def draw_screen_dimension(
     )
     if geometry is None:
         return
+
+    debug.trace_draw_call(
+        draw_source,
+        context,
+        root=draw_root,
+        label=label,
+        p1=p1,
+        p2=p2,
+        plane=plane_normal,
+        direction=dimension_direction,
+        dimension_start=geometry["dimension_start"],
+        dimension_end=geometry["dimension_end"],
+    )
 
     _draw_segments_2d(geometry["segments"], tuple(color), line_width)
     font_size = geometry["font_size"]
@@ -636,7 +670,7 @@ def _draw_angle_preview_3d(operator):
 
 
 def draw_preview_3d(operator):
-    if not operator.running:
+    if not _preview_is_drawable(operator):
         return
     if getattr(operator, "dimension_type", "LINEAR") == "ANGLE":
         _draw_angle_preview_3d(operator)
@@ -668,8 +702,16 @@ def _draw_box(x, y, text):
 
 
 def draw_preview_2d(operator):
-    if not operator.running:
+    if not _preview_is_drawable(operator):
         return
+    debug.log_change(
+        f"preview_draw_{id(operator)}",
+        "preview_draw",
+        instance=getattr(operator, "tool_instance_id", ""),
+        stage=getattr(operator, "stage", None),
+        direction=getattr(operator, "linear_direction", None),
+        label=getattr(operator, "preview_label", ""),
+    )
     if getattr(operator, "dimension_type", "LINEAR") == "ANGLE":
         prompts = (
             "Angle Dimension — click vertex",
@@ -729,10 +771,19 @@ def draw_preview_2d(operator):
             scene.radcad_dimension_extension_gap,
             scene.radcad_dimension_extension_overshoot,
             getattr(operator, "linear_direction", None),
+            draw_source="preview",
+            draw_root=getattr(operator, "tool_instance_id", ""),
         )
 
 
 def draw_persistent_dimensions_2d():
+    if not debug.persistent_renderer_is_current(draw_persistent_dimensions_2d):
+        debug.log_change(
+            f"stale_persistent_renderer_{id(draw_persistent_dimensions_2d)}",
+            "persistent_draw_skip_stale",
+            callback=f"{draw_persistent_dimensions_2d.__module__}.{draw_persistent_dimensions_2d.__name__}",
+        )
+        return
     context = bpy.context
     if (
         context.area is None
@@ -745,7 +796,15 @@ def draw_persistent_dimensions_2d():
     from .model import dimension_layout, iter_dimensions
 
     active = getattr(context.scene, "radcad_active_dimension", None)
-    for root in iter_dimensions(context.scene):
+    roots = iter_dimensions(context.scene)
+    debug.log_change(
+        "persistent_draw",
+        "persistent_draw",
+        count=len(roots),
+        dimensions=debug.dimension_snapshot(context.scene),
+        handlers=debug.handler_snapshot(),
+    )
+    for root in roots:
         layout, label = dimension_layout(root)
         if layout is None:
             continue
@@ -786,4 +845,6 @@ def draw_persistent_dimensions_2d():
                 data.extension_gap,
                 data.extension_overshoot,
                 data.linear_direction,
+                draw_source="persistent",
+                draw_root=f"{root.name}:{root.as_pointer()}",
             )

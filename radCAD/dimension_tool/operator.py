@@ -20,6 +20,7 @@ from .drawing import (
 )
 from .angular.formatting import format_dimension_angle
 from .angular.geometry import build_angle_layout
+from . import debug
 from .linear.formatting import format_dimension_length
 from .linear.geometry import dimension_basis
 from .model import (
@@ -422,6 +423,13 @@ class VIEW3D_OT_radcad_dimension_angle(bpy.types.Operator):
         self.tool_instance_id = f"DIMENSION_ANGLE_{time.time()}"
         context.scene.active_cad_tool_id = self.tool_instance_id
         context.scene.radcad_dimension_icon = "dimension_linear"
+        debug.start_preview(self, "ANGLE")
+        debug.log_dimension_snapshot(
+            context.scene,
+            "angle_invoke",
+            instance=self.tool_instance_id,
+            handlers=debug.handler_snapshot(),
+        )
         context.window.cursor_modal_set("DEFAULT")
         DrawManager.add_handler(DRAW_HANDLER_3D, draw_preview_3d, (self,), "WINDOW", "POST_VIEW")
         DrawManager.add_handler(DRAW_HANDLER_2D, draw_preview_2d, (self,), "WINDOW", "POST_PIXEL")
@@ -713,7 +721,14 @@ class VIEW3D_OT_radcad_dimension_angle(bpy.types.Operator):
     def finish(self, context):
         if not self.running:
             return
+        debug.log(
+            "angle_finish_begin",
+            instance=getattr(self, "tool_instance_id", ""),
+            stage=getattr(self, "stage", None),
+            handlers=debug.handler_snapshot(),
+        )
         self.running = False
+        debug.stop_preview(self, "angle_finish")
         state["current_axis_vector"] = None
         state["active"] = False
         state["snap_point"] = None
@@ -729,6 +744,11 @@ class VIEW3D_OT_radcad_dimension_angle(bpy.types.Operator):
             context.window.cursor_modal_restore()
         except RuntimeError:
             pass
+        debug.log(
+            "angle_finish_end",
+            instance=getattr(self, "tool_instance_id", ""),
+            handlers=debug.handler_snapshot(),
+        )
         context.area.tag_redraw()
 
 
@@ -770,6 +790,13 @@ class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
         self.tool_instance_id = f"DIMENSION_LINEAR_{time.time()}"
         context.scene.active_cad_tool_id = self.tool_instance_id
         context.scene.radcad_dimension_icon = "dimension_linear"
+        debug.start_preview(self, "LINEAR")
+        debug.log_dimension_snapshot(
+            context.scene,
+            "linear_invoke",
+            instance=self.tool_instance_id,
+            handlers=debug.handler_snapshot(),
+        )
         context.window.cursor_modal_set("DEFAULT")
         DrawManager.add_handler(DRAW_HANDLER_3D, draw_preview_3d, (self,), "WINDOW", "POST_VIEW")
         DrawManager.add_handler(DRAW_HANDLER_2D, draw_preview_2d, (self,), "WINDOW", "POST_PIXEL")
@@ -833,9 +860,31 @@ class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
                 ),
                 context.scene,
             )
+        debug.log_change(
+            f"linear_update_{id(self)}",
+            "linear_update",
+            instance=getattr(self, "tool_instance_id", ""),
+            stage=self.stage,
+            mode=("projected" if self.linear_direction is not None else "aligned"),
+            axis=state.get("current_axis_vector"),
+            direction=self.linear_direction,
+            plane=self.plane_normal,
+            label=self.preview_label,
+        )
         context.area.tag_redraw()
 
     def _click(self, context, event):
+        debug.log(
+            "linear_click",
+            instance=getattr(self, "tool_instance_id", ""),
+            stage=self.stage,
+            p1=self.p1,
+            p2=self.p2,
+            current=self.current,
+            direction=self.linear_direction,
+            plane=self.plane_normal,
+            offset=self.offset_distance,
+        )
         if self.stage == 0:
             self.p1 = self.current.copy()
             self.pick_1 = self.current_pick.snap_result
@@ -861,7 +910,16 @@ class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
             self._update(context, event)
             return {"RUNNING_MODAL"}
 
-        create_dimension(
+        debug.log_dimension_snapshot(
+            context.scene,
+            "linear_commit_before",
+            instance=getattr(self, "tool_instance_id", ""),
+            direction=self.linear_direction,
+            plane=self.plane_normal,
+            offset=self.offset_distance,
+            handlers=debug.handler_snapshot(),
+        )
+        root = create_dimension(
             context,
             self.p1,
             self.p2,
@@ -870,6 +928,13 @@ class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
             self.pick_1,
             self.pick_2,
             linear_direction=self.linear_direction,
+        )
+        debug.log_dimension_snapshot(
+            context.scene,
+            "linear_commit_after",
+            instance=getattr(self, "tool_instance_id", ""),
+            created=getattr(root, "name", "<none>"),
+            handlers=debug.handler_snapshot(),
         )
         self.finish(context)
         return {"FINISHED"}
@@ -913,7 +978,14 @@ class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
     def finish(self, context):
         if not self.running:
             return
+        debug.log(
+            "linear_finish_begin",
+            instance=getattr(self, "tool_instance_id", ""),
+            stage=getattr(self, "stage", None),
+            handlers=debug.handler_snapshot(),
+        )
         self.running = False
+        debug.stop_preview(self, "linear_finish")
         state["current_axis_vector"] = None
         DrawManager.remove_handler(DRAW_HANDLER_3D)
         DrawManager.remove_handler(DRAW_HANDLER_2D)
@@ -924,6 +996,11 @@ class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
             context.window.cursor_modal_restore()
         except RuntimeError:
             pass
+        debug.log(
+            "linear_finish_end",
+            instance=getattr(self, "tool_instance_id", ""),
+            handlers=debug.handler_snapshot(),
+        )
         context.area.tag_redraw()
 
 
@@ -990,6 +1067,14 @@ class VIEW3D_OT_radcad_dimension_reposition(bpy.types.Operator):
         DrawManager.clear_all()
         self.tool_instance_id = f"DIMENSION_REPOSITION_{time.time()}"
         context.scene.active_cad_tool_id = self.tool_instance_id
+        debug.start_preview(self, "REPOSITION")
+        debug.log_dimension_snapshot(
+            context.scene,
+            "reposition_invoke",
+            instance=self.tool_instance_id,
+            root=getattr(self.root, "name", "<none>"),
+            handlers=debug.handler_snapshot(),
+        )
         context.window.cursor_modal_set("DEFAULT")
         DrawManager.add_handler(DRAW_HANDLER_3D, draw_preview_3d, (self,), "WINDOW", "POST_VIEW")
         DrawManager.add_handler(DRAW_HANDLER_2D, draw_preview_2d, (self,), "WINDOW", "POST_PIXEL")
@@ -1071,7 +1156,14 @@ class VIEW3D_OT_radcad_dimension_reposition(bpy.types.Operator):
     def finish(self, context):
         if not self.running:
             return
+        debug.log(
+            "reposition_finish_begin",
+            instance=getattr(self, "tool_instance_id", ""),
+            root=getattr(getattr(self, "root", None), "name", "<none>"),
+            handlers=debug.handler_snapshot(),
+        )
         self.running = False
+        debug.stop_preview(self, "reposition_finish")
         state["current_axis_vector"] = None
         DrawManager.remove_handler(DRAW_HANDLER_3D)
         DrawManager.remove_handler(DRAW_HANDLER_2D)
@@ -1081,6 +1173,11 @@ class VIEW3D_OT_radcad_dimension_reposition(bpy.types.Operator):
             context.window.cursor_modal_restore()
         except RuntimeError:
             pass
+        debug.log(
+            "reposition_finish_end",
+            instance=getattr(self, "tool_instance_id", ""),
+            handlers=debug.handler_snapshot(),
+        )
         context.area.tag_redraw()
 
 

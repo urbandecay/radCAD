@@ -2,6 +2,8 @@
 
 import bpy
 
+from ..registration_utils import safe_delete_property, safe_unregister_class
+
 
 def _update_dimension(self, _context):
     root = getattr(self, "id_data", None)
@@ -129,9 +131,7 @@ def unregister():
         "radcad_dimension_text_thickness",
         "radcad_dimension_text_size",
     ):
-        if hasattr(bpy.types.Scene, name):
-            delattr(bpy.types.Scene, name)
-    if hasattr(bpy.types.Object, "radcad_dimension"):
-        del bpy.types.Object.radcad_dimension
+        safe_delete_property(bpy.types.Scene, name)
+    safe_delete_property(bpy.types.Object, "radcad_dimension")
     for cls in reversed(CLASSES):
-        bpy.utils.unregister_class(cls)
+        safe_unregister_class(cls)

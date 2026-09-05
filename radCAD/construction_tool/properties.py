@@ -2,6 +2,8 @@
 
 import bpy
 
+from ..registration_utils import safe_delete_property, safe_unregister_class
+
 
 def tag_redraw_all_view3d():
     window_manager = getattr(bpy.context, "window_manager", None)
@@ -116,8 +118,7 @@ def unregister():
         "radcad_active_construction_line",
         "radcad_construction_lines",
     ):
-        if hasattr(bpy.types.Scene, property_name):
-            delattr(bpy.types.Scene, property_name)
+        safe_delete_property(bpy.types.Scene, property_name)
 
     for cls in reversed(_CLASSES):
-        bpy.utils.unregister_class(cls)
+        safe_unregister_class(cls)

@@ -17,32 +17,94 @@ if "radcad_draw_handler_registry" not in bpy.app.driver_namespace:
     bpy.app.driver_namespace["radcad_draw_handler_registry"] = {}
 
 _DRAW_HANDLER_REGISTRY = bpy.app.driver_namespace["radcad_draw_handler_registry"]
+if "radcad_draw_handler_metadata" not in bpy.app.driver_namespace:
+    bpy.app.driver_namespace["radcad_draw_handler_metadata"] = {}
+_DRAW_HANDLER_METADATA = bpy.app.driver_namespace["radcad_draw_handler_metadata"]
 # -------------------------------
+
+
+def _log_dimension_handler(log_event, **fields):
+    """Send dimension-handler lifecycle events to the optional diagnostics."""
+    source_id = fields.get("source")
+    if not isinstance(source_id, str) or not source_id.startswith("RADCADDIM_"):
+        return
+    try:
+        from .dimension_tool import debug
+
+        debug.log(log_event, **fields)
+    except (ImportError, AttributeError, RuntimeError):
+        pass
+
 
 class DrawManager:
     @staticmethod
     def add_handler(source_id, draw_func, args, region_type='WINDOW', draw_event='POST_VIEW'):
+        _log_dimension_handler(
+            "modal_handler_add_begin",
+            source=source_id,
+            callback=f"{draw_func.__module__}.{draw_func.__name__}",
+            region=region_type,
+            draw_event=draw_event,
+            existing=source_id in _DRAW_HANDLER_REGISTRY,
+        )
         if source_id in _DRAW_HANDLER_REGISTRY:
             DrawManager.remove_handler(source_id)
         try:
             handle = bpy.types.SpaceView3D.draw_handler_add(draw_func, args, region_type, draw_event)
             _DRAW_HANDLER_REGISTRY[source_id] = (handle, region_type)
+            _DRAW_HANDLER_METADATA[source_id] = {
+                "callback": draw_func,
+                "args": args,
+                "region": region_type,
+                "event": draw_event,
+            }
+            _log_dimension_handler(
+                "modal_handler_add_end",
+                source=source_id,
+                handle=repr(handle),
+                registry=dict(_DRAW_HANDLER_REGISTRY),
+            )
         except Exception as e:
             print(f"[DrawManager] Failed to register {source_id}: {e}")
+            _log_dimension_handler(
+                "modal_handler_add_error",
+                source=source_id,
+                error=e,
+                registry=dict(_DRAW_HANDLER_REGISTRY),
+            )
 
     @staticmethod
     def remove_handler(source_id):
+        _log_dimension_handler(
+            "modal_handler_remove_begin",
+            source=source_id,
+            registry=dict(_DRAW_HANDLER_REGISTRY),
+        )
         if source_id not in _DRAW_HANDLER_REGISTRY:
+            _DRAW_HANDLER_METADATA.pop(source_id, None)
             return
         handle, region_type = _DRAW_HANDLER_REGISTRY[source_id]
         try:
             bpy.types.SpaceView3D.draw_handler_remove(handle, region_type)
-        except: pass
+        except Exception as error:
+            _log_dimension_handler(
+                "modal_handler_remove_error",
+                source=source_id,
+                handle=repr(handle),
+                error=error,
+            )
         del _DRAW_HANDLER_REGISTRY[source_id]
+        _DRAW_HANDLER_METADATA.pop(source_id, None)
+        _log_dimension_handler(
+            "modal_handler_remove_end",
+            source=source_id,
+            handle=repr(handle),
+            registry=dict(_DRAW_HANDLER_REGISTRY),
+        )
 
     @staticmethod
     def clear_all():
-        for source_id in list(_DRAW_HANDLER_REGISTRY.keys()):
+        for source_id in set(_DRAW_HANDLER_REGISTRY) | set(_DRAW_HANDLER_METADATA):
             DrawManager.remove_handler(source_id)
 
 def is_event_over_ui(context, event):

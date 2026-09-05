@@ -1119,4 +1119,6 @@ def register():
     bpy.utils.register_class(RADCAD_Preferences)
 
 def unregister():
-    bpy.utils.unregister_class(RADCAD_Preferences)
+    from .registration_utils import safe_unregister_class
+
+    safe_unregister_class(RADCAD_Preferences)

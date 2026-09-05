@@ -4,6 +4,7 @@ import bpy
 
 from . import native_snap, overlay, properties
 from .operator import CLASSES, register_translate_keymap, unregister_translate_keymap
+from ..registration_utils import safe_unregister_class
 
 
 def _draw_construction_delete_entry(menu, context):
@@ -26,7 +27,10 @@ def _register_delete_menu():
 
 
 def _unregister_delete_menu():
-    bpy.types.VIEW3D_MT_edit_mesh_delete.remove(_draw_construction_delete_entry)
+    try:
+        bpy.types.VIEW3D_MT_edit_mesh_delete.remove(_draw_construction_delete_entry)
+    except (ReferenceError, RuntimeError, ValueError):
+        pass
 
 
 def register():
@@ -44,6 +48,6 @@ def unregister():
     _unregister_delete_menu()
     unregister_translate_keymap()
     for cls in reversed(CLASSES):
-        bpy.utils.unregister_class(cls)
+        safe_unregister_class(cls)
     native_snap.unregister()
     properties.unregister()

@@ -16,6 +16,7 @@ from .hud_overlay import draw_ui_button, get_mixed_text_metrics
 from .modal_core import DrawManager, is_event_over_ui
 from .modal_state import style
 from .preferences import get_prefs
+from .registration_utils import safe_unregister_class
 from .snapping_utils import free_snap_context, invalidate_snap_cache, snap_mesh
 
 
@@ -668,4 +669,4 @@ def unregister():
     _cursor_texture = None
     _cursor_texture_source = None
     for cls in reversed(CLASSES):
-        bpy.utils.unregister_class(cls)
+        safe_unregister_class(cls)
