@@ -34,6 +34,14 @@ class RADCAD_PG_dimension_data(bpy.types.PropertyGroup):
     anchor_1: bpy.props.PointerProperty(type=RADCAD_PG_dimension_anchor)
     anchor_2: bpy.props.PointerProperty(type=RADCAD_PG_dimension_anchor)
     anchor_3: bpy.props.PointerProperty(type=RADCAD_PG_dimension_anchor)
+    # Linear dimensions use this as the third point in the three-click
+    # workflow.  Angle dimensions continue to use anchor_3 for their second
+    # ray, so keep the placement anchor separate.
+    placement_anchor: bpy.props.PointerProperty(type=RADCAD_PG_dimension_anchor)
+    placement_initialized: bpy.props.BoolProperty(default=False, options={"HIDDEN"})
+    # FACE keeps a linear annotation on its supporting face; NORMAL stores
+    # the perpendicular annotation plane selected during placement.
+    placement_mode: bpy.props.StringProperty(default="FACE", options={"HIDDEN"})
     plane_normal: bpy.props.FloatVectorProperty(size=3, subtype="XYZ", default=(0.0, 0.0, 1.0))
     orientation_initialized: bpy.props.BoolProperty(default=False, options={"HIDDEN"})
     orientation_target: bpy.props.PointerProperty(type=bpy.types.Object, options={"HIDDEN"})

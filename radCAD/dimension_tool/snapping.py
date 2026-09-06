@@ -16,6 +16,10 @@ class PickResult:
     point: Vector
     normal: Vector
     snap_result: object = None
+    # ``normal`` can be a drawing-plane fallback when the cursor is free.
+    # Keep the actual surface/face normal separate so dimension placement can
+    # prefer a face without mistaking the viewport plane for one.
+    face_normal: Vector = None
 
 
 def project_to_plane(context, x, y, plane_point, plane_normal):
@@ -53,14 +57,17 @@ def pick_point(context, event, plane_point=None, plane_normal=None):
     )
     if result is not None:
         normal = result.normal
+        face_normal = Vector(normal) if normal is not None else None
         if normal is None:
             _location, normal, _obj = raycast_under_mouse(context, event.mouse_region_x, event.mouse_region_y)
+            if normal is not None:
+                face_normal = Vector(normal)
         if normal is None:
             normal = plane_normal or _view_plane_normal(context)
         is_geometry_snap = result.kind != "SURFACE"
         state["snap_point"] = result.location.copy() if is_geometry_snap else None
         state["geometry_snap"] = is_geometry_snap
-        return PickResult(result.location.copy(), Vector(normal), result)
+        return PickResult(result.location.copy(), Vector(normal), result, face_normal)
 
     state["snap_point"] = None
     state["geometry_snap"] = False
@@ -69,4 +76,4 @@ def pick_point(context, event, plane_point=None, plane_normal=None):
     point = project_to_plane(context, event.mouse_region_x, event.mouse_region_y, point_on_plane, normal)
     if point is None:
         point = point_on_plane.copy()
-    return PickResult(point, normal, None)
+    return PickResult(point, normal, None, None)

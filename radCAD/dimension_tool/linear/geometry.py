@@ -75,6 +75,74 @@ def dimension_basis(p1, p2, preferred_normal, dimension_direction=None):
     return line_direction, offset_direction, normal
 
 
+def _stable_face_tangent(line_direction, face_normal, reference=None):
+    """Find a deterministic tangent when the measured line is face-normal."""
+    candidates = []
+    if reference is not None:
+        candidates.append(Vector(reference))
+    candidates.extend(
+        (
+            Vector((1.0, 0.0, 0.0)),
+            Vector((0.0, 1.0, 0.0)),
+            Vector((0.0, 0.0, 1.0)),
+        )
+    )
+
+    for candidate in candidates:
+        candidate -= face_normal * candidate.dot(face_normal)
+        candidate -= line_direction * candidate.dot(line_direction)
+        if candidate.length_squared > EPSILON:
+            return candidate.normalized()
+    return None
+
+
+def dimension_plane_from_face(
+    p1,
+    p2,
+    face_normal,
+    mode="FACE",
+    reference=None,
+):
+    """Return the annotation-plane normal derived from a supporting face.
+
+    ``FACE`` keeps a dimension on the supporting face.  ``NORMAL`` selects
+    the plane through the measured span that is perpendicular to that face;
+    for an edge lying on the face this makes the extension direction equal to
+    the face normal.  A measured span parallel to the face normal has
+    infinitely many perpendicular annotation planes, so ``reference`` (then
+    a global axis) supplies a stable in-face tangent.
+
+    The returned vector is only a plane normal.  ``dimension_basis`` still
+    performs the final orthogonalization required when the measured points
+    are not exactly coplanar with the face.
+    """
+    line = Vector(p2) - Vector(p1)
+    normal = Vector(face_normal) if face_normal is not None else Vector((0.0, 0.0, 1.0))
+    if line.length_squared <= EPSILON or normal.length_squared <= EPSILON:
+        return None
+    line.normalize()
+    normal.normalize()
+
+    if str(mode).upper() != "NORMAL":
+        # If the measured span itself is normal to the face, the face plane
+        # cannot contain both endpoints. Use the well-defined perpendicular
+        # placement plane instead of allowing dimension_basis to choose an
+        # unrelated global fallback.
+        if abs(line.dot(normal)) < 1.0 - 1.0e-6:
+            return normal
+        mode = "NORMAL"
+
+    plane_normal = line.cross(normal)
+    if plane_normal.length_squared <= EPSILON:
+        tangent = _stable_face_tangent(line, normal, reference)
+        if tangent is None:
+            return None
+        plane_normal = line.cross(tangent)
+    if plane_normal.length_squared <= EPSILON:
+        return None
+    return plane_normal.normalized()
+
+
 def signed_offset_from_point(p1, p2, preferred_normal, placement):
     basis = dimension_basis(p1, p2, preferred_normal)
     if basis is None:

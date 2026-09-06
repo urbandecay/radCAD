@@ -5,12 +5,19 @@ Linear dimensions use a three-click workflow:
 
 1. Pick the first measured point.
 2. Pick the second measured point.
-3. Place the dimension line.
+3. Pick the placement point.
 
-During the third step, the mouse position controls the placement: nearby
-global axes can infer projected horizontal or vertical measurements, while
-moving away from those axes returns to a normal/aligned dimension parallel to
-the measured span. `Alt` can still be held to bypass axis inference entirely.
+When either measured point is attached to a mesh face, that face normal fixes
+the dimension plane. The third point only chooses the offset on that plane, so
+the dimension and label stay flush with the face. If the placement cursor is
+over a perpendicular side face, the tool uses the plane normal to the source
+face instead; press `N` during placement to toggle between the face and
+perpendicular modes, or hold `Alt` while placing to force the perpendicular
+mode. When both directions are visible in the viewport, moving the placement
+cursor toward the face normal selects the perpendicular mode automatically.
+With no supporting face, the existing free-space axis inference remains
+available. The placement point is saved with the dimension, and linear
+dimensions remain aligned to the two measured points.
 
 The resulting annotation is drawn entirely as a persistent GPU/HUD overlay.
 It creates no visible Empty, Curve, Font, or renderable geometry. A hidden data

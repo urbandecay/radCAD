@@ -681,7 +681,10 @@ def draw_preview_3d(operator):
         _draw_segments([(operator.p1, operator.current)], (0.02, 0.02, 0.02, 1.0), 2.0)
         _draw_points([operator.p1, operator.current], (1.0, 0.75, 0.0, 1.0))
     else:
-        _draw_points([operator.p1, operator.p2], (1.0, 0.75, 0.0, 1.0))
+        points = [operator.p1, operator.p2]
+        if getattr(operator, "placement_point", None) is not None:
+            points.append(operator.placement_point)
+        _draw_points(points, (1.0, 0.75, 0.0, 1.0))
 
 
 def _draw_box(x, y, text):
@@ -755,7 +758,12 @@ def draw_preview_2d(operator):
     _draw_box(
         20,
         20,
-        "F1–F5 snapping   •   Alt: aligned dimension   •   Backspace previous   •   Esc cancel",
+        (
+            f"F1–F5 snapping   •   N/Alt: face/normal plane ({getattr(operator, 'face_plane_mode', 'FACE')})   •   "
+            "Backspace previous   •   Esc cancel"
+            if operator.stage >= 2 and getattr(operator, "face_normal", None) is not None
+            else "F1–F5 snapping   •   Backspace previous   •   Esc cancel"
+        ),
     )
 
     if operator.stage >= 2 and operator.p1 is not None and operator.p2 is not None:

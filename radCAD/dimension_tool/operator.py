@@ -4,6 +4,7 @@ import math
 import time
 
 import bpy
+from bpy_extras.view3d_utils import location_3d_to_region_2d
 from mathutils import Vector
 
 from ..inference_utils import get_axis_snapped_location, get_direction_snapped_location
@@ -22,7 +23,7 @@ from .angular.formatting import format_dimension_angle
 from .angular.geometry import build_angle_layout
 from . import debug
 from .linear.formatting import format_dimension_length
-from .linear.geometry import dimension_basis
+from .linear.geometry import dimension_basis, dimension_plane_from_face
 from .model import (
     create_angle_dimension,
     create_dimension,
@@ -32,6 +33,7 @@ from .model import (
     resolve_anchor,
     resolve_dimension_plane,
     selected_dimension,
+    set_anchor,
     set_dimension_plane,
     update_dimension,
 )
@@ -112,6 +114,242 @@ def _plane_axes(plane_normal):
     return candidates
 
 
+def _picked_face_normal(pick):
+    """Return a real supporting-surface normal, not a free-cursor fallback."""
+    if pick is None:
+        return None
+    if hasattr(pick, "face_normal"):
+        # A PickResult explicitly reports ``None`` when a component snap had
+        # no face/raycast normal. Do not reinterpret its drawing-plane normal
+        # as a supporting face.
+        normal = pick.face_normal
+    else:
+        # PickResult gained face_normal after dimensions already existed. Keep
+        # test doubles and reloaded operator instances compatible with the old
+        # shape while still requiring an actual snap result.
+        if getattr(pick, "snap_result", None) is None:
+            return None
+        normal = getattr(pick, "normal", None)
+    if normal is None:
+        return None
+    normal = Vector(normal)
+    if normal.length_squared <= 1.0e-12:
+        return None
+    return normal.normalized()
+
+
+def _snap_face_normals(snap_result):
+    """Return world normals of faces attached to a snapped mesh component."""
+    if snap_result is None:
+        return []
+    obj = getattr(snap_result, "target_object", None)
+    indices = getattr(snap_result, "element_indices", ())
+    if obj is None or getattr(obj, "type", None) != "MESH" or not indices:
+        return []
+
+    wanted = {int(index) for index in indices}
+    try:
+        target_matrix = getattr(snap_result, "target_matrix", None) or obj.matrix_world
+        normal_matrix = target_matrix.to_3x3().inverted().transposed()
+    except (AttributeError, ValueError):
+        normal_matrix = obj.matrix_world.to_3x3()
+
+    normals = []
+    for polygon in getattr(obj.data, "polygons", ()):
+        if not wanted.issubset({int(index) for index in polygon.vertices}):
+            continue
+        normal = normal_matrix @ Vector(polygon.normal)
+        if normal.length_squared <= 1.0e-12:
+            continue
+        normal.normalize()
+        if not any(abs(normal.dot(existing)) > 1.0 - 1.0e-6 for existing in normals):
+            normals.append(normal)
+    return normals
+
+
+def _supporting_face_normal(snap_1, snap_2, preferred=None):
+    """Choose the face normal attached to the measured component.
+
+    Vertex and edge snaps do not carry a face normal themselves. Looking up
+    the faces sharing both measured components prevents viewport orientation
+    or a missed raycast from turning a face-backed dimension into a free 3D
+    plane.
+    """
+    normals_1 = _snap_face_normals(snap_1)
+    normals_2 = _snap_face_normals(snap_2)
+    candidates = []
+    if normals_1 and normals_2:
+        for normal_1 in normals_1:
+            for normal_2 in normals_2:
+                if abs(normal_1.dot(normal_2)) > 1.0 - 1.0e-6:
+                    candidates.append(normal_1.copy())
+                    break
+    candidates.extend(normals_1)
+    candidates.extend(normals_2)
+    if not candidates:
+        return None
+
+    preferred = Vector(preferred) if preferred is not None else None
+    if preferred is not None and preferred.length_squared > 1.0e-12:
+        preferred.normalize()
+        return min(
+            candidates,
+            key=lambda normal: 1.0 - abs(normal.dot(preferred)),
+        ).normalized()
+    return candidates[0].normalized()
+
+
+def _screen_direction(context, origin, direction):
+    """Project a world direction into the current viewport."""
+    origin = Vector(origin)
+    direction = Vector(direction)
+    if direction.length_squared <= 1.0e-12:
+        return None
+    start = location_3d_to_region_2d(context.region, context.region_data, origin)
+    end = location_3d_to_region_2d(
+        context.region,
+        context.region_data,
+        origin + direction.normalized(),
+    )
+    if start is None or end is None:
+        return None
+    projected = Vector(end) - Vector(start)
+    if projected.length_squared <= 1.0e-12:
+        return None
+    return projected.normalized()
+
+
+def _cursor_face_plane_mode(
+    context,
+    event,
+    p1,
+    p2,
+    face_normal,
+    picked_face_normal=None,
+):
+    """Choose FACE or NORMAL from the placement cursor, never an arbitrary plane.
+
+    A free third point has no depth information by itself. Its screen-space
+    movement does, however, tell us which of the two allowed offset axes the
+    user is indicating whenever both axes are visible. A cursor on the source
+    face stays FACE; a cursor on a perpendicular face becomes NORMAL. If the
+    normal axis is edge-on, the explicit N/Alt controls remain available.
+    """
+    if picked_face_normal is not None:
+        return (
+            "NORMAL"
+            if abs(Vector(picked_face_normal).normalized().dot(Vector(face_normal).normalized())) < 0.95
+            else "FACE"
+        )
+
+    midpoint = (Vector(p1) + Vector(p2)) * 0.5
+    face_plane = dimension_plane_from_face(p1, p2, face_normal, "FACE")
+    normal_plane = dimension_plane_from_face(p1, p2, face_normal, "NORMAL")
+    if face_plane is None or normal_plane is None:
+        return "FACE"
+    face_basis = dimension_basis(p1, p2, face_plane)
+    normal_basis = dimension_basis(p1, p2, normal_plane)
+    if face_basis is None or normal_basis is None:
+        return "FACE"
+
+    cursor = Vector((event.mouse_region_x, event.mouse_region_y))
+    screen_midpoint = location_3d_to_region_2d(
+        context.region,
+        context.region_data,
+        midpoint,
+    )
+    if screen_midpoint is None:
+        return "FACE"
+    cursor_delta = cursor - Vector(screen_midpoint)
+    if cursor_delta.length_squared <= 36.0:
+        return "FACE"
+    cursor_delta.normalize()
+
+    face_direction = _screen_direction(context, midpoint, face_basis[1])
+    normal_direction = _screen_direction(context, midpoint, normal_basis[1])
+    if normal_direction is None:
+        return "FACE"
+    if face_direction is None:
+        # When the source face is edge-on, its in-face offset axis is
+        # invisible in the viewport. Any visible placement movement is then
+        # the normal-to-face option; falling back to FACE here made that
+        # option impossible in exactly that view.
+        return "NORMAL"
+    face_score = abs(cursor_delta.dot(face_direction))
+    normal_score = abs(cursor_delta.dot(normal_direction))
+    if normal_score > face_score + 0.08:
+        return "NORMAL"
+    return "FACE"
+
+
+def _cursor_placement_point(
+    context,
+    event,
+    plane_point,
+    plane_normal,
+    pick=None,
+):
+    """Return the third point projected onto the already selected plane.
+
+    The third click positions the annotation. It must never be allowed to
+    twist the annotation plane. A geometry snap is projected back onto that
+    plane as well; this prevents a nearby side face from pulling a face-flush
+    dimension out of the source plane.
+    """
+    pick = pick if pick is not None else pick_point(context, event)
+    if pick.snap_result is None:
+        projected = project_to_plane(
+            context,
+            event.mouse_region_x,
+            event.mouse_region_y,
+            plane_point,
+            plane_normal,
+        )
+        if projected is None:
+            projected = pick.point.copy()
+    else:
+        projected = _project_point_to_plane(pick.point, plane_point, plane_normal)
+    if (projected - pick.point).length_squared > 1.0e-12:
+        pick.snap_result = None
+        state["snap_point"] = None
+        state["geometry_snap"] = False
+    pick.point = projected
+    return pick
+
+
+def _fixed_plane_offset(
+    context,
+    event,
+    p1,
+    p2,
+    plane_normal,
+    fallback_distance,
+    dimension_direction=None,
+):
+    """Resolve a reposition offset while keeping an established plane fixed."""
+    basis = dimension_basis(p1, p2, plane_normal, dimension_direction)
+    if basis is None:
+        return None
+
+    midpoint = (Vector(p1) + Vector(p2)) * 0.5
+    placement = project_to_plane(
+        context,
+        event.mouse_region_x,
+        event.mouse_region_y,
+        midpoint,
+        plane_normal,
+    )
+    if placement is None:
+        return None
+
+    raw_offset = placement - midpoint
+    distance = raw_offset.dot(basis[1])
+    if abs(distance) <= 1.0e-10:
+        distance = float(fallback_distance)
+    dimension_point = midpoint + basis[1] * distance
+    return placement, dimension_point, Vector(plane_normal).normalized(), distance, basis[0]
+
+
 def _cursor_driven_offset(
     context,
     event,
@@ -122,13 +360,11 @@ def _cursor_driven_offset(
     dimension_direction=None,
     allow_projected=False,
 ):
-    """Resolve a linear dimension's placement and optional direction.
+    """Resolve free-space linear placement and optional direction.
 
-    During creation, a cursor direction that is close to a global axis can
-    choose the dimension direction itself.  This allows a diagonal pair of
-    points to produce a horizontal or vertical projected dimension.  Existing
-    dimensions pass their saved direction so repositioning only changes the
-    offset and does not change what they measure.
+    Face-backed dimensions use the fixed-plane path in the creation operator;
+    this path remains for dimensions without a supporting face and for legacy
+    records so their existing axis inference continues to work.
     """
     aligned_basis = dimension_basis(p1, p2, fallback_normal)
     if aligned_basis is None:
@@ -766,7 +1002,7 @@ class VIEW3D_OT_radcad_dimension_angle(bpy.types.Operator):
 class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
     bl_idname = "view3d.radcad_dimension_linear"
     bl_label = "Linear Dimension"
-    bl_description = "Create an aligned or projected linear dimension from two points"
+    bl_description = "Create a face-aligned linear dimension from two points and a placement point"
     bl_options = {"REGISTER", "UNDO", "BLOCKING"}
 
     running = False
@@ -793,7 +1029,12 @@ class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
         self.current = None
         self.pick_1 = None
         self.pick_2 = None
+        self.placement_point = None
+        self.pick_placement = None
         self.plane_normal = None
+        self.face_normal = None
+        self.face_plane_mode = "FACE"
+        self.face_plane_mode_override = None
         self.linear_direction = None
         self.offset_distance = 0.0
         self.preview_label = ""
@@ -828,7 +1069,14 @@ class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
             # Match the line tool's mouse-driven global X/Y/Z inference. Exact
             # geometry snaps retain priority; free and surface picks may infer
             # an axis even when it leaves the first point's drawing plane.
-            if not state.get("geometry_snap", False):
+            # A supporting face is authoritative for a dimension. Once one is
+            # present, keep the second point on that face-based workflow plane
+            # instead of letting global-axis inference pull it away.
+            if (
+                not state.get("geometry_snap", False)
+                and self.face_normal is None
+                and _picked_face_normal(pick) is None
+            ):
                 strength = max(0.1, min(89.0, state.get("snap_strength", 6.0)))
                 inferred, axis, _axis_name = get_axis_snapped_location(
                     self.p1,
@@ -844,33 +1092,110 @@ class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
                     self.current_pick.snap_result = None
             self.preview_label = format_dimension_length((self.current - self.p1).length, context.scene)
         else:
-            resolved = _cursor_driven_offset(
-                context,
-                event,
-                self.p1,
-                self.p2,
-                self.plane_normal,
-                self.offset_distance,
-                dimension_direction=self.linear_direction,
-                allow_projected=True,
-            )
-            if resolved is not None:
-                (
-                    self.current,
-                    self.plane_normal,
-                    self.offset_distance,
-                    axis,
-                    self.linear_direction,
-                ) = resolved
-                state["current_axis_vector"] = axis
-            self.preview_label = format_dimension_length(
-                _linear_measure_length(
+            midpoint = (self.p1 + self.p2) * 0.5
+            if self.face_normal is None:
+                # Preserve the existing free-space behavior when no source
+                # face is available. The face-backed path below is the one
+                # that must not infer a new plane from the placement cursor.
+                resolved = _cursor_driven_offset(
+                    context,
+                    event,
                     self.p1,
                     self.p2,
-                    self.linear_direction,
-                ),
-                context.scene,
-            )
+                    self.plane_normal,
+                    self.offset_distance,
+                    dimension_direction=self.linear_direction,
+                    allow_projected=True,
+                )
+                if resolved is not None:
+                    (
+                        self.current,
+                        self.plane_normal,
+                        self.offset_distance,
+                        axis,
+                        self.linear_direction,
+                    ) = resolved
+                    state["current_axis_vector"] = axis
+                    self.face_plane_mode = "PROJECTED"
+                self.placement_point = self.current.copy()
+                self.pick_placement = None
+                self.preview_label = format_dimension_length(
+                    _linear_measure_length(
+                        self.p1,
+                        self.p2,
+                        self.linear_direction,
+                    ),
+                    context.scene,
+                )
+            else:
+                probe = pick_point(context, event)
+                picked_face_normal = _picked_face_normal(probe)
+                if self.face_plane_mode_override is not None:
+                    mode = self.face_plane_mode_override
+                elif getattr(event, "alt", False):
+                    # Alt is an explicit placement modifier for face-backed
+                    # dimensions: hold it while placing to put the
+                    # annotation in the plane normal to the source face.
+                    mode = "NORMAL"
+                else:
+                    mode = _cursor_face_plane_mode(
+                        context,
+                        event,
+                        self.p1,
+                        self.p2,
+                        self.face_normal,
+                        picked_face_normal,
+                    )
+                self.face_plane_mode = mode
+                placement_plane = dimension_plane_from_face(
+                    self.p1,
+                    self.p2,
+                    self.face_normal,
+                    mode,
+                    reference=probe.point - midpoint,
+                )
+                if placement_plane is None:
+                    placement_plane = self.plane_normal
+
+                pick = _cursor_placement_point(
+                    context,
+                    event,
+                    midpoint,
+                    placement_plane,
+                    pick=probe,
+                )
+                basis = dimension_basis(
+                    self.p1,
+                    self.p2,
+                    placement_plane,
+                )
+                if basis is not None:
+                    self.plane_normal = basis[2]
+                    raw_offset = pick.point - midpoint
+                    distance = raw_offset.dot(basis[1])
+                    if abs(distance) <= 1.0e-10:
+                        distance = float(self.offset_distance)
+                    self.offset_distance = distance
+                    self.placement_point = midpoint + basis[1] * distance
+                    self.current = self.placement_point.copy()
+                    # The persisted placement anchor is the actual
+                    # dimension-line point. Keep associative snapping only
+                    # when projection did not move the snapped point onto the
+                    # selected plane.
+                    self.pick_placement = (
+                        pick.snap_result
+                        if (self.placement_point - pick.point).length_squared <= 1.0e-12
+                        else None
+                    )
+                else:
+                    self.placement_point = pick.point.copy()
+                    self.current = self.placement_point.copy()
+                    self.pick_placement = None
+                self.linear_direction = None
+                self.preview_label = format_dimension_length(
+                    (self.p2 - self.p1).length,
+                    context.scene,
+                )
         debug.log_change(
             f"linear_update_{id(self)}",
             "linear_update",
@@ -880,6 +1205,8 @@ class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
             axis=state.get("current_axis_vector"),
             direction=self.linear_direction,
             plane=self.plane_normal,
+            placement=self.placement_point,
+            placement_mode=self.face_plane_mode,
             label=self.preview_label,
         )
         context.area.tag_redraw()
@@ -895,13 +1222,21 @@ class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
             direction=self.linear_direction,
             plane=self.plane_normal,
             offset=self.offset_distance,
+            placement=self.placement_point,
         )
         if self.stage == 0:
             self.p1 = self.current.copy()
             self.pick_1 = self.current_pick.snap_result
-            self.plane_normal = _projected_dimension_plane(
-                context,
-                self.current_pick.normal,
+            picked_face = _picked_face_normal(self.current_pick)
+            self.face_normal = _supporting_face_normal(
+                self.pick_1,
+                None,
+                preferred=picked_face,
+            ) or picked_face
+            self.plane_normal = (
+                self.face_normal.copy()
+                if self.face_normal is not None
+                else _projected_dimension_plane(context, self.current_pick.normal)
             )
             self.stage = 1
             return {"RUNNING_MODAL"}
@@ -911,22 +1246,43 @@ class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
                 return {"RUNNING_MODAL"}
             self.p2 = self.current.copy()
             self.pick_2 = self.current_pick.snap_result
+            picked_face = _picked_face_normal(self.current_pick)
+            topology_face = _supporting_face_normal(
+                self.pick_1,
+                self.pick_2,
+                preferred=self.face_normal or picked_face,
+            )
+            self.face_normal = topology_face or self.face_normal or picked_face
             self.linear_direction = None
-            basis = dimension_basis(self.p1, self.p2, self.plane_normal)
+            preferred_plane = (
+                dimension_plane_from_face(
+                    self.p1,
+                    self.p2,
+                    self.face_normal,
+                    "FACE",
+                )
+                if self.face_normal is not None
+                else self.plane_normal
+            )
+            basis = dimension_basis(self.p1, self.p2, preferred_plane)
+            if basis is None:
+                self.report({"WARNING"}, "Could not establish a dimension plane")
+                return {"RUNNING_MODAL"}
             self.plane_normal = basis[2]
             default_offset = max((self.p2 - self.p1).length * 0.25, context.scene.radcad_dimension_text_size * 2.0)
             self.offset_distance = default_offset
             self.current = (self.p1 + self.p2) * 0.5 + basis[1] * default_offset
+            self.placement_point = self.current.copy()
+            self.pick_placement = None
+            self.face_plane_mode = "FACE" if self.face_normal is not None else "FIXED"
+            self.face_plane_mode_override = None
             self.stage = 2
             self._update(context, event)
             return {"RUNNING_MODAL"}
 
-        # A modifier press does not necessarily generate a mouse-move event.
-        # Refresh once on Alt-click so the aligned override is applied to the
-        # committed state even when the cursor has not moved after Alt was
-        # pressed.
-        if getattr(event, "alt", False):
-            self._update(context, event)
+        # A click does not necessarily follow a mouse-move event. Refresh once
+        # so the placement anchor is exactly where the user clicked.
+        self._update(context, event)
         debug.log_dimension_snapshot(
             context.scene,
             "linear_commit_before",
@@ -945,6 +1301,13 @@ class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
             self.pick_1,
             self.pick_2,
             linear_direction=self.linear_direction,
+            placement_point=self.placement_point,
+            snap_placement=self.pick_placement,
+            placement_mode=(
+                self.face_plane_mode
+                if self.face_normal is not None
+                else "PROJECTED"
+            ),
         )
         debug.log_dimension_snapshot(
             context.scene,
@@ -976,10 +1339,24 @@ class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
             if self.stage == 2:
                 self.stage = 1
                 self.linear_direction = None
+                self.placement_point = None
+                self.pick_placement = None
+                self.face_plane_mode_override = None
             elif self.stage == 1:
                 self.stage = 0
                 self.p1 = None
             self._update(context, event)
+            return {"RUNNING_MODAL"}
+        if event.type == "N" and event.value in {"PRESS", "REPEAT"} and self.stage == 2:
+            if self.face_normal is None:
+                self.report({"INFO"}, "No supporting face; dimension plane is fixed to the view")
+            else:
+                self.face_plane_mode_override = (
+                    "NORMAL"
+                    if self.face_plane_mode != "NORMAL"
+                    else "FACE"
+                )
+                self._update(context, event)
             return {"RUNNING_MODAL"}
         if event.type == "ESC" and event.value == "PRESS":
             self.finish(context)
@@ -1046,6 +1423,11 @@ class VIEW3D_OT_radcad_dimension_reposition(bpy.types.Operator):
         self.stage = 2
         self.dimension_type = getattr(data, "dimension_type", "LINEAR")
         self.offset_distance = data.offset_distance
+        self.placement_initialized = bool(
+            getattr(data, "placement_initialized", False)
+            and getattr(data, "placement_mode", "FACE") != "PROJECTED"
+        )
+        self.placement_point = None
         if self.dimension_type == "ANGLE":
             self.vertex = resolve_anchor(data.anchor_1)
             self.ray_1 = resolve_anchor(data.anchor_2)
@@ -1065,6 +1447,10 @@ class VIEW3D_OT_radcad_dimension_reposition(bpy.types.Operator):
             self.linear_direction = Vector(data.linear_direction)
             if self.linear_direction.length_squared <= 1.0e-18:
                 self.linear_direction = None
+            if self.placement_initialized:
+                placement_anchor = getattr(data, "placement_anchor", None)
+                if placement_anchor is not None:
+                    self.placement_point = resolve_anchor(placement_anchor)
             basis = dimension_basis(
                 self.p1,
                 self.p2,
@@ -1113,24 +1499,45 @@ class VIEW3D_OT_radcad_dimension_reposition(bpy.types.Operator):
                 self.current, self.offset_distance = resolved
             context.area.tag_redraw()
             return
-        resolved = _cursor_driven_offset(
-            context,
-            event,
-            self.p1,
-            self.p2,
-            self.plane_normal,
-            self.offset_distance,
-            dimension_direction=self.linear_direction,
-        )
-        if resolved is not None:
-            (
-                self.current,
+        if self.placement_initialized:
+            resolved = _fixed_plane_offset(
+                context,
+                event,
+                self.p1,
+                self.p2,
                 self.plane_normal,
                 self.offset_distance,
-                axis,
-                self.linear_direction,
-            ) = resolved
-            state["current_axis_vector"] = axis
+                dimension_direction=self.linear_direction,
+            )
+        else:
+            resolved = _cursor_driven_offset(
+                context,
+                event,
+                self.p1,
+                self.p2,
+                self.plane_normal,
+                self.offset_distance,
+                dimension_direction=self.linear_direction,
+            )
+        if resolved is not None:
+            if self.placement_initialized:
+                (
+                    self.placement_point,
+                    self.current,
+                    _plane_normal,
+                    self.offset_distance,
+                    _line_direction,
+                ) = resolved
+                state["current_axis_vector"] = None
+            else:
+                (
+                    self.current,
+                    self.plane_normal,
+                    self.offset_distance,
+                    axis,
+                    self.linear_direction,
+                ) = resolved
+                state["current_axis_vector"] = axis
         context.area.tag_redraw()
 
     def modal(self, context, event):
@@ -1143,6 +1550,8 @@ class VIEW3D_OT_radcad_dimension_reposition(bpy.types.Operator):
             self._update(context, event)
             return {"RUNNING_MODAL"}
         if event.type == "LEFTMOUSE" and event.value == "PRESS":
+            if self.dimension_type == "LINEAR":
+                self._update(context, event)
             data = self.root.radcad_dimension
             data.offset_distance = self.offset_distance
             data.linear_direction = (
@@ -1152,6 +1561,9 @@ class VIEW3D_OT_radcad_dimension_reposition(bpy.types.Operator):
                 and self.linear_direction.length_squared > 1.0e-18
                 else (0.0, 0.0, 0.0)
             )
+            if self.placement_initialized and self.placement_point is not None:
+                set_anchor(data.placement_anchor, self.placement_point)
+                data.placement_initialized = True
             set_dimension_plane(data, self.plane_normal)
             update_dimension(self.root)
             self.finish(context)
@@ -1371,6 +1783,11 @@ class VIEW3D_OT_radcad_dimension_pick(bpy.types.Operator):
         self._drag_original_linear_direction = Vector(data.linear_direction)
         if self._drag_original_linear_direction.length_squared <= 1.0e-18:
             self._drag_original_linear_direction = None
+        self._drag_has_placement = bool(
+            getattr(data, "placement_initialized", False)
+            and getattr(data, "placement_mode", "FACE") != "PROJECTED"
+        )
+        self._drag_current_placement = None
         self._drag_plane_normal = self._drag_original_plane_normal.copy()
         self._drag_start_mouse = Vector(
             (event.mouse_region_x, event.mouse_region_y)
@@ -1397,27 +1814,48 @@ class VIEW3D_OT_radcad_dimension_pick(bpy.types.Operator):
             p2 = resolve_anchor(data.anchor_2)
             if p1 is None or p2 is None:
                 return
-            resolved = _cursor_driven_offset(
-                context,
-                event,
-                p1,
-                p2,
-                self._drag_plane_normal,
-                self._drag_original_offset,
-                dimension_direction=(
-                    Vector(data.linear_direction)
-                    if Vector(data.linear_direction).length_squared > 1.0e-18
-                    else None
-                ),
+            dimension_direction = (
+                Vector(data.linear_direction)
+                if Vector(data.linear_direction).length_squared > 1.0e-18
+                else None
             )
+            if self._drag_has_placement:
+                resolved = _fixed_plane_offset(
+                    context,
+                    event,
+                    p1,
+                    p2,
+                    self._drag_plane_normal,
+                    self._drag_original_offset,
+                    dimension_direction=dimension_direction,
+                )
+            else:
+                resolved = _cursor_driven_offset(
+                    context,
+                    event,
+                    p1,
+                    p2,
+                    self._drag_plane_normal,
+                    self._drag_original_offset,
+                    dimension_direction=dimension_direction,
+                )
         if resolved is None:
             return
         if self._drag_dimension_type == "ANGLE":
             _point, offset_distance = resolved
         else:
-            _point, plane_normal, offset_distance, _axis, _direction = resolved
-            self._drag_plane_normal = plane_normal
-            set_dimension_plane(data, plane_normal)
+            if self._drag_has_placement:
+                (
+                    self._drag_current_placement,
+                    _point,
+                    _plane_normal,
+                    offset_distance,
+                    _line_direction,
+                ) = resolved
+            else:
+                _point, plane_normal, offset_distance, _axis, _direction = resolved
+                self._drag_plane_normal = plane_normal
+                set_dimension_plane(data, plane_normal)
         data.offset_distance = offset_distance
         update_dimension(self._drag_root)
         context.area.tag_redraw()
@@ -1440,6 +1878,17 @@ class VIEW3D_OT_radcad_dimension_pick(bpy.types.Operator):
         if event.type == "LEFTMOUSE" and event.value == "RELEASE":
             if self._dragging:
                 self._update_dimension_drag(context, event)
+                if (
+                    self._drag_dimension_type == "LINEAR"
+                    and self._drag_has_placement
+                    and self._drag_current_placement is not None
+                ):
+                    set_anchor(
+                        self._drag_root.radcad_dimension.placement_anchor,
+                        self._drag_current_placement,
+                    )
+                    self._drag_root.radcad_dimension.placement_initialized = True
+                    update_dimension(self._drag_root)
             return {"FINISHED"}
 
         if event.type == "ESC" and event.value == "PRESS":

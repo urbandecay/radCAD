@@ -443,7 +443,11 @@ def dimension_snapshot(scene):
         anchor_names = (
             ("anchor_1", "anchor_2", "anchor_3")
             if getattr(data, "dimension_type", "LINEAR") == "ANGLE"
-            else ("anchor_1", "anchor_2")
+            else (
+                ("anchor_1", "anchor_2", "placement_anchor")
+                if getattr(data, "placement_initialized", False)
+                else ("anchor_1", "anchor_2")
+            )
         )
         for name in anchor_names:
             anchor = getattr(data, name, None)
@@ -460,6 +464,7 @@ def dimension_snapshot(scene):
                 "plane": _format_value(getattr(data, "plane_normal", None)),
                 "direction": _format_value(direction),
                 "offset": float(getattr(data, "offset_distance", 0.0)),
+                "placement_mode": getattr(data, "placement_mode", "FACE"),
                 "label": getattr(data, "text_override", "") or "<live>",
             }
         )

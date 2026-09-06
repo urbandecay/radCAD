@@ -336,6 +336,17 @@ def _common_anchor_target(data):
     anchors = [data.anchor_1, data.anchor_2]
     if getattr(data, "dimension_type", "LINEAR") == "ANGLE":
         anchors.append(data.anchor_3)
+    elif getattr(data, "placement_initialized", False):
+        placement_anchor = getattr(data, "placement_anchor", None)
+        # A free placement point should not prevent an endpoint-attached
+        # dimension plane from following its measured object.  If the third
+        # point is associated, however, it must belong to that same object.
+        if (
+            placement_anchor is not None
+            and placement_anchor.kind != "FREE"
+            and placement_anchor.target is not None
+        ):
+            anchors.append(placement_anchor)
     if all(anchor.kind != "FREE" and anchor.target is not None for anchor in anchors):
         target = anchors[0].target
         if all(anchor.target == target for anchor in anchors[1:]):
@@ -398,6 +409,32 @@ def _migrate_dimension_orientation(data, p1, p2):
     )
 
 
+def _migrate_linear_placement(data, p1, p2, plane_normal):
+    """Give legacy dimensions a stable equivalent placement anchor."""
+    if getattr(data, "placement_initialized", False):
+        return
+    placement_anchor = getattr(data, "placement_anchor", None)
+    if placement_anchor is None:
+        return
+
+    direction = Vector(data.linear_direction)
+    basis = dimension_basis(
+        p1,
+        p2,
+        plane_normal,
+        direction if direction.length_squared > 1.0e-18 else None,
+    )
+    if basis is None:
+        return
+    midpoint = (Vector(p1) + Vector(p2)) * 0.5
+    placement = midpoint + basis[1] * float(data.offset_distance)
+    set_anchor(placement_anchor, placement)
+    data.placement_initialized = True
+    data.placement_mode = (
+        "PROJECTED" if direction.length_squared > 1.0e-18 else "FIXED"
+    )
+
+
 def dimension_anchors_valid(root):
     data = getattr(root, "radcad_dimension", None)
     if data is None or not data.is_dimension:
@@ -405,6 +442,14 @@ def dimension_anchors_valid(root):
     anchors = (data.anchor_1, data.anchor_2)
     if getattr(data, "dimension_type", "LINEAR") == "ANGLE":
         anchors += (data.anchor_3,)
+    elif getattr(data, "placement_initialized", False):
+        placement_anchor = getattr(data, "placement_anchor", None)
+        if (
+            placement_anchor is not None
+            and placement_anchor.kind != "FREE"
+            and _resolve_associated_anchor(placement_anchor) is None
+        ):
+            return False
     for anchor in anchors:
         if anchor.kind != "FREE" and _resolve_associated_anchor(anchor) is None:
             return False
@@ -462,6 +507,9 @@ def create_dimension(
     snap_1=None,
     snap_2=None,
     linear_direction=None,
+    placement_point=None,
+    snap_placement=None,
+    placement_mode="FACE",
 ):
     debug.log_dimension_snapshot(
         context.scene,
@@ -471,6 +519,8 @@ def create_dimension(
         plane=plane_normal,
         offset=offset_distance,
         direction=linear_direction,
+        placement=placement_point,
+        placement_mode=placement_mode,
     )
     debug.log(
         "linear_existing_dimensions",
@@ -497,6 +547,10 @@ def create_dimension(
     data.dimension_type = "LINEAR"
     set_anchor(data.anchor_1, p1, snap_1)
     set_anchor(data.anchor_2, p2, snap_2)
+    if placement_point is not None:
+        set_anchor(data.placement_anchor, placement_point, snap_placement)
+        data.placement_initialized = True
+    data.placement_mode = str(placement_mode).upper()
     set_dimension_plane(data, plane_normal, _common_anchor_target(data))
     direction = (
         Vector(linear_direction)
@@ -604,10 +658,12 @@ def dimension_layout(root):
     linear_direction = Vector(data.linear_direction)
     if linear_direction.length_squared <= 1.0e-18:
         linear_direction = None
+    plane_normal = resolve_dimension_plane(data)
+    _migrate_linear_placement(data, p1, p2, plane_normal)
     layout = build_layout(
         p1,
         p2,
-        resolve_dimension_plane(data),
+        plane_normal,
         data.offset_distance,
         0.001,
         0.001,
@@ -689,7 +745,7 @@ def update_dimension(root):
     elif abs(data.measured_length - measured_value) > 1.0e-12:
         data.measured_length = measured_value
     if (Vector(data.plane_normal) - layout.plane_normal).length_squared > 1.0e-18:
-        data.plane_normal = layout.plane_normal
+        set_dimension_plane(data, layout.plane_normal)
     return True
 
 
