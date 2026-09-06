@@ -881,6 +881,7 @@ class LineTool_PerpFromEdge(SurfaceDrawTool):
         self.mode = "LINE_PERP_FROM_EDGE"
         self.stage = 0
         self.edge_segments = []
+        self.edge_segments_world = []
         self.edge_segments_2d = []
         self.edge_idx = -1
         self.current = None
@@ -889,10 +890,16 @@ class LineTool_PerpFromEdge(SurfaceDrawTool):
         obj = bpy.context.edit_object
         if obj and obj.type == 'MESH':
             bm = bmesh.from_edit_mesh(obj.data)
+            selected_edges = [edge for edge in bm.edges if edge.select]
+            active = bm.select_history.active
+            # If Blender has an active selected edge, it is the edge the user
+            # explicitly picked.  Fall back to nearest-edge selection only
+            # when the selection is a face or there is no active edge.
+            if isinstance(active, bmesh.types.BMEdge) and active.select:
+                selected_edges = [active]
             self.edge_segments = [
                 (edge.verts[0].co.copy(), edge.verts[1].co.copy())
-                for edge in bm.edges
-                if edge.select
+                for edge in selected_edges
             ]
             if not self.edge_segments:
                 core.report({'WARNING'}, "Select at least one edge")
@@ -908,6 +915,17 @@ class LineTool_PerpFromEdge(SurfaceDrawTool):
         parameter = max(0.0, min(1.0, parameter))
         return start + edge * parameter
 
+    @staticmethod
+    def _segment_parameter(point, start, end):
+        edge = end - start
+        length_squared = edge.length_squared
+        if length_squared <= 1.0e-12:
+            return 0.0
+        return max(
+            0.0,
+            min(1.0, (point - start).dot(edge) / length_squared),
+        )
+
     def update(self, context, event, snap_point, snap_normal):
         if self.Xp is None:
             if not self.edge_segments:
@@ -919,12 +937,16 @@ class LineTool_PerpFromEdge(SurfaceDrawTool):
                 if context.edit_object
                 else Matrix.Identity(4)
             )
+            self.edge_segments_world = [
+                (mw @ start, mw @ end)
+                for start, end in self.edge_segments
+            ]
             self.edge_segments_2d = [
                 (
-                    world_to_plane(mw @ start, self.Xp, self.Yp),
-                    world_to_plane(mw @ end, self.Xp, self.Yp),
+                    world_to_plane(start, self.Xp, self.Yp),
+                    world_to_plane(end, self.Xp, self.Yp),
                 )
-                for start, end in self.edge_segments
+                for start, end in self.edge_segments_world
             ]
 
         if not self.edge_segments_2d:
@@ -1015,16 +1037,23 @@ class LineTool_PerpFromEdge(SurfaceDrawTool):
 
         edge_direction = edge_vector.normalized()
         perpendicular = Vector((-edge_direction.y, edge_direction.x))
-        tail_2d = best_point + perpendicular * (
-            mouse_2d - best_point
-        ).dot(perpendicular)
+        edge_parameter = self._segment_parameter(mouse_2d, start, end)
+        source_start, source_end = self.edge_segments_world[best_idx]
+        self.head_3d = source_start + (source_end - source_start) * edge_parameter
 
-        self.head_3d = plane_to_world(best_point, self.Xp, self.Yp)
-        self.tail_3d = (
-            geometry_target.copy()
-            if geometry_target is not None
-            else plane_to_world(tail_2d, self.Xp, self.Yp)
+        # Build the perpendicular direction in 3D from the drawing-plane
+        # basis.  This keeps the line anchored to the real edge point instead
+        # of projecting that point onto a parallel plane through the origin.
+        perpendicular_3d = (
+            self.Xp * perpendicular.x + self.Yp * perpendicular.y
         )
+        target_2d = (
+            world_to_plane(geometry_target, self.Xp, self.Yp)
+            if geometry_target is not None
+            else mouse_2d
+        )
+        distance = (target_2d - best_point).dot(perpendicular)
+        self.tail_3d = self.head_3d + perpendicular_3d * distance
         self.preview_pts = [self.head_3d, self.tail_3d]
         self.current = self.tail_3d
 
