@@ -156,6 +156,20 @@ def projected_line_direction(p1, p2, plane_normal):
     return projected.normalized()
 
 
+def dimension_basis_from_extension(p1, p2, extension_direction):
+    """Measure the shortest distance between parallel extension lines."""
+    span = Vector(p2) - Vector(p1)
+    extension = Vector(extension_direction)
+    if span.length_squared <= EPSILON or extension.length_squared <= EPSILON:
+        return None
+    extension.normalize()
+    measured = span - extension * span.dot(extension)
+    if measured.length_squared <= EPSILON:
+        return None
+    measured.normalize()
+    return measured, extension, measured.cross(extension).normalized()
+
+
 def signed_offset_from_point(p1, p2, preferred_normal, placement):
     basis = dimension_basis(p1, p2, preferred_normal)
     if basis is None:

@@ -25,6 +25,7 @@ from . import debug
 from .linear.formatting import format_dimension_length
 from .linear.geometry import (
     dimension_basis,
+    dimension_basis_from_extension,
     dimension_plane_from_face,
     projected_line_direction,
 )
@@ -229,6 +230,20 @@ def _span_face_normals(snap_1, snap_2, p1, p2, fallback):
     span = (Vector(p2) - Vector(p1)).normalized()
     candidates = [normal for normal in candidates if abs(normal.dot(span)) < 1.0e-5]
     return candidates or ([fallback.copy()] if fallback is not None else [])
+
+
+def _linear_face_modes(p1, p2, face_normals):
+    """Offer axis extensions within a supporting face, skipping true-length duplicates."""
+    modes = ["NORMAL", "FACE"]
+    span = (Vector(p2) - Vector(p1)).normalized()
+    for name, axis in _GLOBAL_AXES.items():
+        if not any(abs(axis.dot(normal)) < 1.0e-5 for normal in face_normals):
+            continue
+        if abs(span.dot(axis)) < 1.0e-5:
+            continue
+        if dimension_basis_from_extension(p1, p2, axis) is not None:
+            modes.append("AXIS_" + name)
+    return modes
 
 
 def _screen_direction(context, origin, direction):
@@ -1310,6 +1325,13 @@ class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
                     placement_plane,
                     projected_direction,
                 )
+                if mode.startswith("AXIS_"):
+                    basis = dimension_basis_from_extension(
+                        self.p1, self.p2, _GLOBAL_AXES[mode[5:]],
+                    )
+                    if basis is not None:
+                        projected_direction = basis[0]
+                        placement_plane = basis[2]
                 pick = _cursor_placement_point(
                     context,
                     event,
@@ -1347,7 +1369,7 @@ class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
                     self.pick_placement = None
                 self.linear_direction = (
                     projected_direction
-                    if mode == "NORMAL"
+                    if mode == "NORMAL" or mode.startswith("AXIS_")
                     else None
                 )
                 self.preview_label = format_dimension_length(
@@ -1521,12 +1543,11 @@ class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
             if self.face_normal is None:
                 self.report({"INFO"}, "No supporting face; dimension plane is fixed to the view")
             else:
-                self.face_plane_mode_override = (
-                    "NORMAL"
-                    if self.face_plane_mode != "NORMAL"
-                    else "FACE"
-                )
+                modes = _linear_face_modes(self.p1, self.p2, self.face_normals)
+                index = modes.index(self.face_plane_mode) if self.face_plane_mode in modes else -1
+                self.face_plane_mode_override = modes[(index + 1) % len(modes)]
                 self._update(context, event)
+                self.report({"INFO"}, "Dimension placement: " + self.face_plane_mode.replace("AXIS_", "Extension along "))
             return {"RUNNING_MODAL"}
         if event.type == "ESC" and event.value == "PRESS":
             self.finish(context)

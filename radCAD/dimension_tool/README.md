@@ -14,6 +14,12 @@ to an offset within the face. When multiple faces support an edge, the cursor
 chooses the closest legal offset in the selected mode. Both modes retain the
 measured span and its true length, including on rotated or beveled meshes.
 On a right-angle cube edge the two modes offer the same set of planes.
+Continue pressing `N` to cycle through valid X/Y/Z extension directions within
+the supporting faces, then back to normal mode. These projected states measure
+the perpendicular distance between the parallel extension lines. For a sloped
+edge, vertical (Z) extensions therefore report the shorter horizontal span.
+Directions that collapse the measurement or merely repeat its true length are
+omitted. The HUD shows the active state.
 With no supporting face, the existing free-space axis inference remains
 available. The placement point is saved with the dimension, and linear
 dimensions remain aligned to the two measured points.

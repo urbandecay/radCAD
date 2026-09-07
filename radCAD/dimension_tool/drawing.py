@@ -775,7 +775,7 @@ def draw_preview_2d(operator):
         20,
         20,
         (
-            f"F1–F5 snapping   •   N/Alt: face/normal plane ({getattr(operator, 'face_plane_mode', 'FACE')})   •   "
+            f"F1–F5 snapping   •   N: cycle placement ({getattr(operator, 'face_plane_mode', 'FACE')})   •   "
             "Backspace previous   •   Esc cancel"
             if operator.stage >= 2 and getattr(operator, "face_normal", None) is not None
             else "F1–F5 snapping   •   Backspace previous   •   Esc cancel"
