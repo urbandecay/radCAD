@@ -7,14 +7,13 @@ Linear dimensions use a three-click workflow:
 2. Pick the second measured point.
 3. Pick the placement point.
 
-When either measured point is attached to a mesh face, that face normal fixes
-the dimension plane. The third point only chooses the offset on that plane, so
-the dimension and label stay flush with the face. If the placement cursor is
-over a perpendicular side face, the tool uses the plane normal to the source
-face instead; press `N` during placement to toggle between the face and
-perpendicular modes, or hold `Alt` while placing to force the perpendicular
-mode. When both directions are visible in the viewport, moving the placement
-cursor toward the face normal selects the perpendicular mode automatically.
+Faces shared by the measured mesh components define the available placement
+planes, including live Edit Mode geometry. Placement defaults to an offset
+along a supporting face's normal, like extruding that face. Press `N` to toggle
+to an offset within the face. When multiple faces support an edge, the cursor
+chooses the closest legal offset in the selected mode. Both modes retain the
+measured span and its true length, including on rotated or beveled meshes.
+On a right-angle cube edge the two modes offer the same set of planes.
 With no supporting face, the existing free-space axis inference remains
 available. The placement point is saved with the dimension, and linear
 dimensions remain aligned to the two measured points.

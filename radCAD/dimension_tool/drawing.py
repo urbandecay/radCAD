@@ -112,22 +112,38 @@ def _screen_dimension_geometry(
     )
     if basis is None:
         return None
-    _line_world, offset_world, _normal = basis
+    line_world, offset_world, _normal = basis
     p1 = Vector(p1)
     p2 = Vector(p2)
+    raw_p1 = p1.copy()
+    raw_p2 = p2.copy()
+    is_direction_selected = (
+        dimension_direction is not None
+        and Vector(dimension_direction).length_squared > 1.0e-12
+    )
     distance = float(offset_distance)
     side = 1.0 if distance >= 0.0 else -1.0
-    source_midpoint = (p1 + p2) * 0.5
-    p1_offset = (p1 - source_midpoint).dot(offset_world)
-    p2_offset = (p2 - source_midpoint).dot(offset_world)
-    d1 = p1 + offset_world * (distance - p1_offset)
-    d2 = p2 + offset_world * (distance - p2_offset)
+    source_midpoint = (raw_p1 + raw_p2) * 0.5
+    if is_direction_selected:
+        # A NORMAL dimension measures the source span after it is projected
+        # into its allowed perpendicular plane. Keep the real endpoints for
+        # witness lines, but place the dimension line on the projected span.
+        dimension_p1 = source_midpoint + line_world * (raw_p1 - source_midpoint).dot(line_world)
+        dimension_p2 = source_midpoint + line_world * (raw_p2 - source_midpoint).dot(line_world)
+    else:
+        dimension_p1 = raw_p1
+        dimension_p2 = raw_p2
+    dimension_midpoint = (dimension_p1 + dimension_p2) * 0.5
+    p1_offset = (dimension_p1 - dimension_midpoint).dot(offset_world)
+    p2_offset = (dimension_p2 - dimension_midpoint).dot(offset_world)
+    d1 = dimension_p1 + offset_world * (distance - p1_offset)
+    d2 = dimension_p2 + offset_world * (distance - p2_offset)
     gap = max(0.0, float(extension_gap))
     overshoot = max(0.0, float(extension_overshoot))
     world_points = (
-        p1 + offset_world * side * gap,
+        raw_p1 + offset_world * side * gap,
         d1 + offset_world * side * overshoot,
-        p2 + offset_world * side * gap,
+        raw_p2 + offset_world * side * gap,
         d2 + offset_world * side * overshoot,
         d1,
         d2,
@@ -856,7 +872,11 @@ def draw_persistent_dimensions_2d():
                 line_width,
                 data.extension_gap,
                 data.extension_overshoot,
-                data.linear_direction,
+                (
+                    layout.line_direction
+                    if getattr(data, "placement_mode", "FACE") == "NORMAL"
+                    else data.linear_direction
+                ),
                 draw_source="persistent",
                 draw_root=f"{root.name}:{root.as_pointer()}",
             )

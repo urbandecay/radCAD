@@ -105,12 +105,10 @@ def dimension_plane_from_face(
 ):
     """Return the annotation-plane normal derived from a supporting face.
 
-    ``FACE`` keeps a dimension on the supporting face.  ``NORMAL`` selects
-    the plane through the measured span that is perpendicular to that face;
-    for an edge lying on the face this makes the extension direction equal to
-    the face normal.  A measured span parallel to the face normal has
-    infinitely many perpendicular annotation planes, so ``reference`` (then
-    a global axis) supplies a stable in-face tangent.
+    ``FACE`` offsets within the supporting face. ``NORMAL`` offsets along
+    its normal. Both planes contain the measured span, so rotating the mesh
+    does not change the measurement or introduce a world-axis projection.
+    ``reference`` is used only for the degenerate face-normal span.
 
     The returned vector is only a plane normal.  ``dimension_basis`` still
     performs the final orthogonalization required when the measured points
@@ -133,14 +131,29 @@ def dimension_plane_from_face(
         mode = "NORMAL"
 
     plane_normal = line.cross(normal)
-    if plane_normal.length_squared <= EPSILON:
-        tangent = _stable_face_tangent(line, normal, reference)
-        if tangent is None:
-            return None
-        plane_normal = line.cross(tangent)
+    if plane_normal.length_squared > EPSILON:
+        return plane_normal.normalized()
+
+    tangent = _stable_face_tangent(line, normal, reference)
+    if tangent is None:
+        return None
+    plane_normal = line.cross(tangent)
     if plane_normal.length_squared <= EPSILON:
         return None
     return plane_normal.normalized()
+
+
+def projected_line_direction(p1, p2, plane_normal):
+    """Return the measured span projected onto a dimension plane."""
+    delta = Vector(p2) - Vector(p1)
+    normal = Vector(plane_normal)
+    if delta.length_squared <= EPSILON or normal.length_squared <= EPSILON:
+        return None
+    normal.normalize()
+    projected = delta - normal * delta.dot(normal)
+    if projected.length_squared <= EPSILON:
+        return None
+    return projected.normalized()
 
 
 def signed_offset_from_point(p1, p2, preferred_normal, placement):
@@ -176,7 +189,9 @@ def build_layout(
     p1 = Vector(p1)
     p2 = Vector(p2)
     line_direction, offset_direction, normal = basis
-    delta = p2 - p1
+    raw_p1 = p1.copy()
+    raw_p2 = p2.copy()
+    delta = raw_p2 - raw_p1
     is_direction_selected = (
         dimension_direction is not None
         and Vector(dimension_direction).length_squared > EPSILON
@@ -190,11 +205,22 @@ def build_layout(
         return None
     distance = float(offset_distance)
     side = 1.0 if distance >= 0.0 else -1.0
-    source_midpoint = (p1 + p2) * 0.5
-    p1_offset = (p1 - source_midpoint).dot(offset_direction)
-    p2_offset = (p2 - source_midpoint).dot(offset_direction)
-    d1 = p1 + offset_direction * (distance - p1_offset)
-    d2 = p2 + offset_direction * (distance - p2_offset)
+    source_midpoint = (raw_p1 + raw_p2) * 0.5
+    if is_direction_selected:
+        # Keep the real anchors for extension lines, but project the two
+        # dimension-line endpoints onto the requested measurement direction.
+        # This makes a face-normal projection show the shorter leg of a
+        # sloped edge instead of repeating the edge's hypotenuse.
+        dimension_p1 = source_midpoint + line_direction * (raw_p1 - source_midpoint).dot(line_direction)
+        dimension_p2 = source_midpoint + line_direction * (raw_p2 - source_midpoint).dot(line_direction)
+    else:
+        dimension_p1 = raw_p1
+        dimension_p2 = raw_p2
+    dimension_midpoint = (dimension_p1 + dimension_p2) * 0.5
+    p1_offset = (dimension_p1 - dimension_midpoint).dot(offset_direction)
+    p2_offset = (dimension_p2 - dimension_midpoint).dot(offset_direction)
+    d1 = dimension_p1 + offset_direction * (distance - p1_offset)
+    d2 = dimension_p2 + offset_direction * (distance - p2_offset)
     midpoint = (d1 + d2) * 0.5
 
     gap = max(0.0, float(extension_gap))
@@ -203,8 +229,8 @@ def build_layout(
     text_size = max(EPSILON, float(text_size))
 
     segments = [
-        (p1 + offset_direction * side * gap, d1 + offset_direction * side * overshoot),
-        (p2 + offset_direction * side * gap, d2 + offset_direction * side * overshoot),
+        (raw_p1 + offset_direction * side * gap, d1 + offset_direction * side * overshoot),
+        (raw_p2 + offset_direction * side * gap, d2 + offset_direction * side * overshoot),
     ]
 
     # Leave a SketchUp-like break behind the measurement when it fits.
@@ -237,8 +263,8 @@ def build_layout(
 
     text_position = midpoint + offset_direction * side * text_size * 0.20
     return DimensionLayout(
-        p1=p1,
-        p2=p2,
+        p1=raw_p1,
+        p2=raw_p2,
         d1=d1,
         d2=d2,
         midpoint=midpoint,

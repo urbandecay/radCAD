@@ -23,7 +23,11 @@ from .angular.formatting import format_dimension_angle
 from .angular.geometry import build_angle_layout
 from . import debug
 from .linear.formatting import format_dimension_length
-from .linear.geometry import dimension_basis, dimension_plane_from_face
+from .linear.geometry import (
+    dimension_basis,
+    dimension_plane_from_face,
+    projected_line_direction,
+)
 from .model import (
     create_angle_dimension,
     create_dimension,
@@ -154,11 +158,20 @@ def _snap_face_normals(snap_result):
     except (AttributeError, ValueError):
         normal_matrix = obj.matrix_world.to_3x3()
 
+    if obj.mode == "EDIT":
+        import bmesh
+        mesh = bmesh.from_edit_mesh(obj.data)
+        mesh.verts.ensure_lookup_table()
+        mesh.verts.index_update()
+        mesh.normal_update()
+        polygons = (({v.index for v in face.verts}, face.normal) for face in mesh.faces)
+    else:
+        polygons = ((set(face.vertices), face.normal) for face in obj.data.polygons)
     normals = []
-    for polygon in getattr(obj.data, "polygons", ()):
-        if not wanted.issubset({int(index) for index in polygon.vertices}):
+    for vertices, local_normal in polygons:
+        if not wanted.issubset(vertices):
             continue
-        normal = normal_matrix @ Vector(polygon.normal)
+        normal = normal_matrix @ Vector(local_normal)
         if normal.length_squared <= 1.0e-12:
             continue
         normal.normalize()
@@ -184,8 +197,9 @@ def _supporting_face_normal(snap_1, snap_2, preferred=None):
                 if abs(normal_1.dot(normal_2)) > 1.0 - 1.0e-6:
                     candidates.append(normal_1.copy())
                     break
-    candidates.extend(normals_1)
-    candidates.extend(normals_2)
+    if not candidates:
+        candidates.extend(normals_1)
+        candidates.extend(normals_2)
     if not candidates:
         return None
 
@@ -197,6 +211,24 @@ def _supporting_face_normal(snap_1, snap_2, preferred=None):
             key=lambda normal: 1.0 - abs(normal.dot(preferred)),
         ).normalized()
     return candidates[0].normalized()
+
+
+def _span_face_normals(snap_1, snap_2, p1, p2, fallback):
+    """Collect faces containing both snapped components on the same mesh."""
+    candidates = []
+    if (snap_1 is not None and snap_2 is not None
+            and getattr(snap_1, "target_object", None) is getattr(snap_2, "target_object", None)):
+        from types import SimpleNamespace
+        indices = tuple(getattr(snap_1, "element_indices", ())) + tuple(getattr(snap_2, "element_indices", ()))
+        if indices:
+            candidates = _snap_face_normals(SimpleNamespace(
+                target_object=snap_1.target_object,
+                target_matrix=getattr(snap_1, "target_matrix", None),
+                element_indices=indices,
+            ))
+    span = (Vector(p2) - Vector(p1)).normalized()
+    candidates = [normal for normal in candidates if abs(normal.dot(span)) < 1.0e-5]
+    return candidates or ([fallback.copy()] if fallback is not None else [])
 
 
 def _screen_direction(context, origin, direction):
@@ -248,7 +280,8 @@ def _cursor_face_plane_mode(
     if face_plane is None or normal_plane is None:
         return "FACE"
     face_basis = dimension_basis(p1, p2, face_plane)
-    normal_basis = dimension_basis(p1, p2, normal_plane)
+    normal_direction = projected_line_direction(p1, p2, normal_plane)
+    normal_basis = dimension_basis(p1, p2, normal_plane, normal_direction)
     if face_basis is None or normal_basis is None:
         return "FACE"
 
@@ -288,6 +321,9 @@ def _cursor_placement_point(
     plane_point,
     plane_normal,
     pick=None,
+    fallback_direction=None,
+    fallback_distance=0.0,
+    max_distance=None,
 ):
     """Return the third point projected onto the already selected plane.
 
@@ -297,6 +333,7 @@ def _cursor_placement_point(
     dimension out of the source plane.
     """
     pick = pick if pick is not None else pick_point(context, event)
+    plane_point = Vector(plane_point)
     if pick.snap_result is None:
         projected = project_to_plane(
             context,
@@ -309,6 +346,55 @@ def _cursor_placement_point(
             projected = pick.point.copy()
     else:
         projected = _project_point_to_plane(pick.point, plane_point, plane_normal)
+
+    projected_is_unusable = projected is None or (
+        max_distance is not None
+        and (projected - plane_point).length > max_distance
+    )
+    if fallback_direction is not None and projected_is_unusable:
+        fallback_direction = Vector(fallback_direction)
+        if fallback_direction.length_squared > 1.0e-12:
+            fallback_direction.normalize()
+
+            # In perspective, a ray that is almost parallel to the selected
+            # annotation plane can technically intersect it hundreds of
+            # units away. That intersection is mathematically valid but is
+            # not a usable placement for a dimension created beside the
+            # measured object. Recover the cursor's scalar offset in screen
+            # space along the one permitted offset axis instead.
+            screen_midpoint = location_3d_to_region_2d(
+                context.region,
+                context.region_data,
+                plane_point,
+            )
+            screen_offset_point = location_3d_to_region_2d(
+                context.region,
+                context.region_data,
+                plane_point + fallback_direction,
+            )
+            screen_offset = (
+                Vector(screen_offset_point) - Vector(screen_midpoint)
+                if screen_midpoint is not None and screen_offset_point is not None
+                else None
+            )
+            if screen_offset is not None and screen_offset.length_squared > 1.0e-10:
+                cursor = Vector((event.mouse_region_x, event.mouse_region_y))
+                distance = (
+                    (cursor - Vector(screen_midpoint)).dot(screen_offset)
+                    / screen_offset.length_squared
+                )
+                if max_distance is not None:
+                    distance = max(
+                        -float(max_distance),
+                        min(float(max_distance), distance),
+                    )
+                projected = plane_point + fallback_direction * distance
+            else:
+                projected = plane_point + fallback_direction * float(fallback_distance)
+        else:
+            projected = plane_point.copy()
+    if projected is None:
+        projected = plane_point.copy()
     if (projected - pick.point).length_squared > 1.0e-12:
         pick.snap_result = None
         state["snap_point"] = None
@@ -325,6 +411,7 @@ def _fixed_plane_offset(
     plane_normal,
     fallback_distance,
     dimension_direction=None,
+    max_distance=None,
 ):
     """Resolve a reposition offset while keeping an established plane fixed."""
     basis = dimension_basis(p1, p2, plane_normal, dimension_direction)
@@ -332,6 +419,11 @@ def _fixed_plane_offset(
         return None
 
     midpoint = (Vector(p1) + Vector(p2)) * 0.5
+    if max_distance is None:
+        max_distance = max(
+            (Vector(p2) - Vector(p1)).length * 10.0,
+            1.0,
+        )
     placement = project_to_plane(
         context,
         event.mouse_region_x,
@@ -339,8 +431,42 @@ def _fixed_plane_offset(
         midpoint,
         plane_normal,
     )
+    if placement is None or (
+        max_distance is not None
+        and (placement - midpoint).length > max_distance
+    ):
+        placement = None
+
     if placement is None:
-        return None
+        # A perpendicular annotation plane can be edge-on to the current
+        # view. In that case a mouse ray has no reliable intersection with
+        # the plane, even though the plane's offset axis is still visible on
+        # screen. Recover only the scalar offset along the established basis
+        # axis; never replace the selected dimension plane with a cursor-
+        # inferred direction.
+        screen_midpoint = location_3d_to_region_2d(
+            context.region,
+            context.region_data,
+            midpoint,
+        )
+        screen_offset_point = location_3d_to_region_2d(
+            context.region,
+            context.region_data,
+            midpoint + basis[1],
+        )
+        if screen_midpoint is not None and screen_offset_point is not None:
+            screen_offset = Vector(screen_offset_point) - Vector(screen_midpoint)
+            if screen_offset.length_squared > 1.0e-10:
+                cursor = Vector((event.mouse_region_x, event.mouse_region_y))
+                distance = (
+                    (cursor - Vector(screen_midpoint)).dot(screen_offset)
+                    / screen_offset.length_squared
+                )
+                distance = max(-float(max_distance), min(float(max_distance), distance))
+                placement = midpoint + basis[1] * distance
+
+    if placement is None:
+        placement = midpoint + basis[1] * float(fallback_distance)
 
     raw_offset = placement - midpoint
     distance = raw_offset.dot(basis[1])
@@ -1033,6 +1159,7 @@ class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
         self.pick_placement = None
         self.plane_normal = None
         self.face_normal = None
+        self.face_normals = []
         self.face_plane_mode = "FACE"
         self.face_plane_mode_override = None
         self.linear_direction = None
@@ -1147,27 +1274,54 @@ class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
                         picked_face_normal,
                     )
                 self.face_plane_mode = mode
+                # Each supporting face supplies one legal offset per mode.
+                # Choose the one closest to the cursor's screen direction.
+                cursor_origin = location_3d_to_region_2d(context.region, context.region_data, midpoint)
+                if cursor_origin is not None:
+                    cursor_delta = Vector((event.mouse_region_x, event.mouse_region_y)) - cursor_origin
+                    if cursor_delta.length_squared > 1.0e-10:
+                        cursor_delta.normalize()
+                        best_score = -1.0
+                        for face in self.face_normals:
+                            candidate_plane = dimension_plane_from_face(self.p1, self.p2, face, mode)
+                            candidate_basis = dimension_basis(self.p1, self.p2, candidate_plane)
+                            direction = _screen_direction(context, midpoint, candidate_basis[1]) if candidate_basis else None
+                            score = abs(cursor_delta.dot(direction)) if direction is not None else -1.0
+                            if score > best_score + 1.0e-4:
+                                best_score = score
+                                self.face_normal = face.copy()
                 placement_plane = dimension_plane_from_face(
                     self.p1,
                     self.p2,
                     self.face_normal,
                     mode,
-                    reference=probe.point - midpoint,
                 )
                 if placement_plane is None:
                     placement_plane = self.plane_normal
 
+                projected_direction = (
+                    projected_line_direction(self.p1, self.p2, placement_plane)
+                    if mode == "NORMAL"
+                    else None
+                )
+                basis = dimension_basis(
+                    self.p1,
+                    self.p2,
+                    placement_plane,
+                    projected_direction,
+                )
                 pick = _cursor_placement_point(
                     context,
                     event,
                     midpoint,
                     placement_plane,
                     pick=probe,
-                )
-                basis = dimension_basis(
-                    self.p1,
-                    self.p2,
-                    placement_plane,
+                    fallback_direction=basis[1] if basis is not None else None,
+                    fallback_distance=self.offset_distance,
+                    max_distance=max(
+                        (self.p2 - self.p1).length * 10.0,
+                        1.0,
+                    ),
                 )
                 if basis is not None:
                     self.plane_normal = basis[2]
@@ -1191,9 +1345,17 @@ class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
                     self.placement_point = pick.point.copy()
                     self.current = self.placement_point.copy()
                     self.pick_placement = None
-                self.linear_direction = None
+                self.linear_direction = (
+                    projected_direction
+                    if mode == "NORMAL"
+                    else None
+                )
                 self.preview_label = format_dimension_length(
-                    (self.p2 - self.p1).length,
+                    _linear_measure_length(
+                        self.p1,
+                        self.p2,
+                        self.linear_direction,
+                    ),
                     context.scene,
                 )
         debug.log_change(
@@ -1253,6 +1415,11 @@ class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
                 preferred=self.face_normal or picked_face,
             )
             self.face_normal = topology_face or self.face_normal or picked_face
+            self.face_normals = _span_face_normals(
+                self.pick_1, self.pick_2, self.p1, self.p2, self.face_normal,
+            )
+            if self.face_normals:
+                self.face_normal = self.face_normals[0].copy()
             self.linear_direction = None
             preferred_plane = (
                 dimension_plane_from_face(
@@ -1274,8 +1441,11 @@ class VIEW3D_OT_radcad_dimension_linear(bpy.types.Operator):
             self.current = (self.p1 + self.p2) * 0.5 + basis[1] * default_offset
             self.placement_point = self.current.copy()
             self.pick_placement = None
-            self.face_plane_mode = "FACE" if self.face_normal is not None else "FIXED"
-            self.face_plane_mode_override = None
+            # Default to face-normal extrusion; N selects in-face offsets.
+            self.face_plane_mode = "NORMAL" if self.face_normal is not None else "FIXED"
+            self.face_plane_mode_override = (
+                "NORMAL" if self.face_normal is not None else None
+            )
             self.stage = 2
             self._update(context, event)
             return {"RUNNING_MODAL"}
@@ -1422,6 +1592,7 @@ class VIEW3D_OT_radcad_dimension_reposition(bpy.types.Operator):
         self.context = context
         self.stage = 2
         self.dimension_type = getattr(data, "dimension_type", "LINEAR")
+        self.placement_mode = getattr(data, "placement_mode", "FACE")
         self.offset_distance = data.offset_distance
         self.placement_initialized = bool(
             getattr(data, "placement_initialized", False)
@@ -1447,6 +1618,12 @@ class VIEW3D_OT_radcad_dimension_reposition(bpy.types.Operator):
             self.linear_direction = Vector(data.linear_direction)
             if self.linear_direction.length_squared <= 1.0e-18:
                 self.linear_direction = None
+            if self.placement_mode == "NORMAL":
+                self.linear_direction = projected_line_direction(
+                    self.p1,
+                    self.p2,
+                    self.plane_normal,
+                )
             if self.placement_initialized:
                 placement_anchor = getattr(data, "placement_anchor", None)
                 if placement_anchor is not None:
@@ -1557,6 +1734,7 @@ class VIEW3D_OT_radcad_dimension_reposition(bpy.types.Operator):
             data.linear_direction = (
                 self.linear_direction.normalized()
                 if self.dimension_type == "LINEAR"
+                and self.placement_mode != "NORMAL"
                 and self.linear_direction is not None
                 and self.linear_direction.length_squared > 1.0e-18
                 else (0.0, 0.0, 0.0)
@@ -1743,6 +1921,11 @@ class VIEW3D_OT_radcad_dimension_pick(bpy.types.Operator):
                     data.extension_overshoot,
                 )
             else:
+                hit_direction = (
+                    layout.line_direction
+                    if getattr(data, "placement_mode", "FACE") == "NORMAL"
+                    else data.linear_direction
+                )
                 distance = dimension_hit_distance(
                     context,
                     mouse,
@@ -1757,7 +1940,7 @@ class VIEW3D_OT_radcad_dimension_pick(bpy.types.Operator):
                     data.line_width if data.line_width >= 0.5 else 1.0,
                     data.extension_gap,
                     data.extension_overshoot,
-                    data.linear_direction,
+                    hit_direction,
                 )
             if distance is not None and distance < best_distance:
                 picked = root
@@ -1787,6 +1970,7 @@ class VIEW3D_OT_radcad_dimension_pick(bpy.types.Operator):
             getattr(data, "placement_initialized", False)
             and getattr(data, "placement_mode", "FACE") != "PROJECTED"
         )
+        self._drag_placement_mode = getattr(data, "placement_mode", "FACE")
         self._drag_current_placement = None
         self._drag_plane_normal = self._drag_original_plane_normal.copy()
         self._drag_start_mouse = Vector(
@@ -1814,11 +1998,18 @@ class VIEW3D_OT_radcad_dimension_pick(bpy.types.Operator):
             p2 = resolve_anchor(data.anchor_2)
             if p1 is None or p2 is None:
                 return
-            dimension_direction = (
-                Vector(data.linear_direction)
-                if Vector(data.linear_direction).length_squared > 1.0e-18
-                else None
-            )
+            if self._drag_placement_mode == "NORMAL":
+                dimension_direction = projected_line_direction(
+                    p1,
+                    p2,
+                    self._drag_plane_normal,
+                )
+            else:
+                dimension_direction = (
+                    Vector(data.linear_direction)
+                    if Vector(data.linear_direction).length_squared > 1.0e-18
+                    else None
+                )
             if self._drag_has_placement:
                 resolved = _fixed_plane_offset(
                     context,

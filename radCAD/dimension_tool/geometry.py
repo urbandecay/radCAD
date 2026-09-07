@@ -6,6 +6,7 @@ from .linear.geometry import (
     build_layout,
     dimension_basis,
     dimension_plane_from_face,
+    projected_line_direction,
     signed_offset_from_point,
     text_rotation,
 )
@@ -17,6 +18,7 @@ __all__ = (
     "build_layout",
     "dimension_basis",
     "dimension_plane_from_face",
+    "projected_line_direction",
     "signed_offset_from_point",
     "text_rotation",
 )

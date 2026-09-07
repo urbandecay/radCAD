@@ -10,7 +10,7 @@ from .constants import COLLECTION_NAME, ROOT_PREFIX
 from . import debug
 from .formatting import dimension_label
 from .angular.geometry import build_angle_layout
-from .linear.geometry import build_layout, dimension_basis
+from .linear.geometry import build_layout, dimension_basis, projected_line_direction
 
 
 _UPDATE_SIGNATURES = {}
@@ -557,8 +557,10 @@ def create_dimension(
         if linear_direction is not None
         else Vector((0.0, 0.0, 0.0))
     )
-    if direction.length_squared > 1.0e-18:
+    if direction.length_squared > 1.0e-18 and data.placement_mode != "NORMAL":
         data.linear_direction = direction.normalized()
+    elif data.placement_mode == "NORMAL":
+        data.linear_direction = (0.0, 0.0, 0.0)
     data.offset_distance = offset_distance
     _apply_dimension_style(context, data)
 
@@ -655,11 +657,14 @@ def dimension_layout(root):
     p1 = resolve_anchor(data.anchor_1)
     p2 = resolve_anchor(data.anchor_2)
     _migrate_dimension_orientation(data, p1, p2)
-    linear_direction = Vector(data.linear_direction)
-    if linear_direction.length_squared <= 1.0e-18:
-        linear_direction = None
     plane_normal = resolve_dimension_plane(data)
     _migrate_linear_placement(data, p1, p2, plane_normal)
+    if getattr(data, "placement_mode", "FACE") == "NORMAL":
+        linear_direction = projected_line_direction(p1, p2, plane_normal)
+    else:
+        linear_direction = Vector(data.linear_direction)
+        if linear_direction.length_squared <= 1.0e-18:
+            linear_direction = None
     layout = build_layout(
         p1,
         p2,
