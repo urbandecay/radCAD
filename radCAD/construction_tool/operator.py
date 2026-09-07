@@ -18,7 +18,10 @@ from ..snapping_utils import (
 from ..units_utils import format_length, parse_length_input
 from .drawing import draw_construction_preview
 from .geometry import edge_reference_from_snap, offset_placement_from_cursor
-from .model import add_construction_line, has_visible_construction_lines
+from .model import (
+    add_construction_line, has_visible_construction_lines,
+    clear_construction_selection, selected_construction_line_indices,
+)
 from .native_snap import sync_scene_snap_proxy
 from .properties import tag_redraw_all_view3d
 from .selection import VIEW3D_OT_radcad_construction_pick
@@ -272,6 +275,14 @@ def register_translate_keymap():
         head=True,
     )
     _TRANSLATE_KEYMAP_ITEMS.append((view_keymap, pick_item))
+    shift_pick_item = view_keymap.keymap_items.new(
+        VIEW3D_OT_radcad_construction_pick.bl_idname,
+        "LEFTMOUSE",
+        "PRESS",
+        shift=True,
+        head=True,
+    )
+    _TRANSLATE_KEYMAP_ITEMS.append((view_keymap, shift_pick_item))
     delete_item = view_keymap.keymap_items.new(
         VIEW3D_OT_radcad_construction_delete.bl_idname,
         "DEL",
@@ -620,7 +631,7 @@ class VIEW3D_OT_radcad_construction_line(bpy.types.Operator):
             self.report({"WARNING"}, "Could not create a guide on that face")
             return {"RUNNING_MODAL"}
         if hasattr(context.scene, "radcad_active_construction_line"):
-            context.scene.radcad_active_construction_line = -1
+            clear_construction_selection(context.scene)
         self.finish(context)
         tag_redraw_all_view3d()
         return {"FINISHED"}
@@ -728,7 +739,7 @@ class VIEW3D_OT_radcad_construction_delete_last(bpy.types.Operator):
         if hasattr(context.scene, "radcad_active_construction_line"):
             active = context.scene.radcad_active_construction_line
             context.scene.radcad_active_construction_line = (
-                min(active, len(lines) - 1) if active >= 0 and lines else -1
+                active if 0 <= active < len(lines) else -1
             )
         sync_scene_snap_proxy(context.scene)
         tag_redraw_all_view3d()
@@ -737,26 +748,25 @@ class VIEW3D_OT_radcad_construction_delete_last(bpy.types.Operator):
 
 class VIEW3D_OT_radcad_construction_delete(bpy.types.Operator):
     bl_idname = "view3d.radcad_construction_delete"
-    bl_label = "Delete Construction Line"
-    bl_description = "Delete the selected construction line"
+    bl_label = "Delete Construction Lines"
+    bl_description = "Delete all selected construction lines"
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
     def poll(cls, context):
         scene = getattr(context, "scene", None)
-        lines = getattr(scene, "radcad_construction_lines", ())
-        index = getattr(scene, "radcad_active_construction_line", -1)
-        return 0 <= index < len(lines)
+        return bool(selected_construction_line_indices(scene))
 
     def execute(self, context):
         scene = context.scene
         lines = scene.radcad_construction_lines
-        index = scene.radcad_active_construction_line
-        if not 0 <= index < len(lines):
+        indices = selected_construction_line_indices(scene)
+        if not indices:
             return {"CANCELLED"}
 
-        lines.remove(index)
-        scene.radcad_active_construction_line = -1
+        for index in reversed(indices):
+            lines.remove(index)
+        clear_construction_selection(scene)
         sync_scene_snap_proxy(scene)
         tag_redraw_all_view3d()
         return {"FINISHED"}
@@ -776,7 +786,7 @@ class VIEW3D_OT_radcad_construction_clear(bpy.types.Operator):
     def execute(self, context):
         context.scene.radcad_construction_lines.clear()
         if hasattr(context.scene, "radcad_active_construction_line"):
-            context.scene.radcad_active_construction_line = -1
+            clear_construction_selection(context.scene)
         sync_scene_snap_proxy(context.scene)
         tag_redraw_all_view3d()
         return {"FINISHED"}

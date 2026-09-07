@@ -30,6 +30,7 @@ def _visibility_property_updated(_self, context):
 
 
 class RADCAD_PG_ConstructionLine(bpy.types.PropertyGroup):
+    selected: bpy.props.BoolProperty(default=False, options={"HIDDEN"})
     schema_version: bpy.props.IntProperty(default=0)
     anchor: bpy.props.FloatVectorProperty(
         name="Anchor",

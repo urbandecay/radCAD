@@ -3,6 +3,7 @@
 import bpy
 
 from . import native_snap, overlay, properties
+from .model import selected_construction_line_indices
 from .operator import CLASSES, register_translate_keymap, unregister_translate_keymap
 from ..registration_utils import safe_unregister_class
 
@@ -10,14 +11,12 @@ from ..registration_utils import safe_unregister_class
 def _draw_construction_delete_entry(menu, context):
     """Add construction-line deletion to Blender's Edit Mesh Delete menu."""
     scene = getattr(context, "scene", None)
-    lines = getattr(scene, "radcad_construction_lines", ())
-    index = getattr(scene, "radcad_active_construction_line", -1)
-    if not 0 <= index < len(lines):
+    if not selected_construction_line_indices(scene):
         return
     menu.layout.separator()
     menu.layout.operator(
         "view3d.radcad_construction_delete",
-        text="Construction Line",
+        text="Construction Lines",
         icon="TRASH",
     )
 

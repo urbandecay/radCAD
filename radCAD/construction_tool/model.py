@@ -93,3 +93,32 @@ def add_construction_line(scene, anchor, direction, plane_normal):
 
     sync_scene_snap_proxy(scene)
     return line
+
+
+def selected_construction_line_indices(scene):
+    """Include the active guide for compatibility with existing selections."""
+    active = getattr(scene, "radcad_active_construction_line", -1)
+    return [
+        index for index, line in enumerate(iter_construction_lines(scene))
+        if line.selected or index == active
+    ]
+
+
+def clear_construction_selection(scene):
+    for line in iter_construction_lines(scene):
+        line.selected = False
+    scene.radcad_active_construction_line = -1
+
+
+def select_construction_line(scene, index, extend=False):
+    lines = iter_construction_lines(scene)
+    selected = set(selected_construction_line_indices(scene)) if extend else set()
+    if extend and index in selected:
+        selected.remove(index)
+    else:
+        selected.add(index)
+    for i, line in enumerate(lines):
+        line.selected = i in selected
+    scene.radcad_active_construction_line = (
+        index if index in selected else max(selected, default=-1)
+    )

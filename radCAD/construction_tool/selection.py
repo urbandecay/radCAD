@@ -14,7 +14,10 @@ from ..modal_core import is_event_over_ui, is_number_input
 from ..modal_state import state
 from ..snapping_utils import snap_scene_geometry
 from ..units_utils import parse_length_input
-from .model import has_visible_construction_lines, iter_construction_lines
+from .model import (
+    has_visible_construction_lines, iter_construction_lines,
+    clear_construction_selection, select_construction_line,
+)
 from .native_snap import sync_scene_snap_proxy
 from .properties import tag_redraw_all_view3d
 from .snapping import CONSTRUCTION_LINE_HIT_RADIUS, pick_construction_line
@@ -59,11 +62,6 @@ class VIEW3D_OT_radcad_construction_pick(bpy.types.Operator):
             and context.region_data is not None
         )
 
-    @staticmethod
-    def _set_active(scene, index):
-        if hasattr(scene, "radcad_active_construction_line"):
-            scene.radcad_active_construction_line = index
-
     def invoke(self, context, event):
         if (
             is_event_over_ui(context, event)
@@ -81,7 +79,8 @@ class VIEW3D_OT_radcad_construction_pick(bpy.types.Operator):
             max_px=hit_radius,
         )
         if picked is None:
-            self._set_active(context.scene, -1)
+            if not event.shift:
+                clear_construction_selection(context.scene)
             tag_redraw_all_view3d()
             return {"PASS_THROUGH"}
 
@@ -93,6 +92,11 @@ class VIEW3D_OT_radcad_construction_pick(bpy.types.Operator):
         vectors = guide_vectors(line)
         if vectors is None:
             return {"PASS_THROUGH"}
+
+        select_construction_line(context.scene, index, extend=event.shift)
+        tag_redraw_all_view3d()
+        if event.shift:
+            return {"FINISHED"}
 
         anchor, direction, normal = vectors
         self.line_index = index
@@ -116,7 +120,6 @@ class VIEW3D_OT_radcad_construction_pick(bpy.types.Operator):
         self.distance_input_cursor = 0
         clear_construction_move_distance_input()
         set_construction_move_preview(self.original_anchor, self.original_anchor)
-        self._set_active(context.scene, index)
         context.window_manager.modal_handler_add(self)
         context.workspace.status_text_set(
             "Construction line: drag, type distance or L, Enter/Click confirm, Esc cancel"

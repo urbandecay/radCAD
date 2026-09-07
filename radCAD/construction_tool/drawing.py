@@ -207,7 +207,7 @@ def draw_persistent_construction_lines():
     for index, line in enumerate(iter_construction_lines(scene)):
         vectors = guide_vectors(line)
         if vectors is not None:
-            if index == selected_index:
+            if line.selected or index == selected_index:
                 selected_guides.append(vectors)
             else:
                 guides.append(vectors)
