@@ -364,7 +364,10 @@ def draw_compass_geometry(ctx, shaders, center, Xp, Yp, rotation_radians, size_p
 
     # Draw
     sh = shaders["POLYLINE"]
-    setup_polyline_shader(sh, color, 1.0, settings)
+    # The angle-dimension compass is specified in physical screen pixels;
+    # compensate for UI scaling so it remains exactly one pixel wide.
+    ui_scale = max(1.0, float(settings.get("UI_SCALE", 1.0)))
+    setup_polyline_shader(sh, color, 1.0 / ui_scale, settings)
     
     if circle_segs: batch_for_shader(sh, 'LINES', {"pos": circle_segs}).draw(sh)
     if tick_segs: batch_for_shader(sh, 'LINES', {"pos": tick_segs}).draw(sh)
