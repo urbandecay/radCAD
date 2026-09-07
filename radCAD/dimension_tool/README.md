@@ -36,6 +36,12 @@ can measure the same edge; their placement offsets and saved styles remain
 independent. Existing dimensions are only removed explicitly through the
 dimension delete/edit controls.
 
+Viewport annotations support multi-selection. Click a dimension to make it the
+only selected annotation; hold `Shift` and click additional dimensions to add
+or remove them. Selected annotations are highlighted together, while the most
+recent one remains the active editing target. Press `Delete` (or use the panel
+delete button) to remove the entire selected set in one operation.
+
 Module responsibilities:
 
 - `../operators/op_dimension_linear.py`: linear-dimension creation entry point.

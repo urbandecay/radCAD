@@ -11,16 +11,23 @@ _ADDON_KEYMAPS = []
 
 def _draw_dimension_delete_entry(menu, context):
     """Add dimension deletion to Blender's Edit Mesh Delete menu."""
-    from .model import selected_dimension
+    from .model import selected_dimensions
 
-    if selected_dimension(context) is None:
+    roots = selected_dimensions(context)
+    if not roots:
         return
-    root = selected_dimension(context)
-    dimension_type = getattr(root.radcad_dimension, "dimension_type", "LINEAR")
+    dimension_type = (
+        "LINEAR"
+        if any(getattr(item.radcad_dimension, "dimension_type", "LINEAR") == "LINEAR" for item in roots)
+        else "ANGLE"
+    )
     menu.layout.separator()
     menu.layout.operator(
         "view3d.radcad_dimension_delete",
-        text="Angle Dimension" if dimension_type == "ANGLE" else "Linear Dimension",
+        text=(
+            "Delete Dimensions" if len(roots) > 1
+            else ("Angle Dimension" if dimension_type == "ANGLE" else "Linear Dimension")
+        ),
         icon="TRASH",
     )
 
@@ -47,6 +54,13 @@ def _register_keymaps():
         value="PRESS",
     )
     _ADDON_KEYMAPS.append((keymap, keymap_item))
+    shift_item = keymap.keymap_items.new(
+        "view3d.radcad_dimension_pick",
+        type="LEFTMOUSE",
+        value="PRESS",
+        shift=True,
+    )
+    _ADDON_KEYMAPS.append((keymap, shift_item))
     delete_item = keymap.keymap_items.new(
         "view3d.radcad_dimension_delete",
         type="DEL",

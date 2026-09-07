@@ -28,6 +28,9 @@ class RADCAD_PG_dimension_anchor(bpy.types.PropertyGroup):
 
 class RADCAD_PG_dimension_data(bpy.types.PropertyGroup):
     is_dimension: bpy.props.BoolProperty(default=False)
+    # Viewport selection is independent from Blender object selection because
+    # dimension roots stay hidden and unselectable.
+    selected: bpy.props.BoolProperty(default=False, options={"HIDDEN"})
     # LINEAR is the default so dimensions saved before angle dimensions were
     # added continue to load unchanged.
     dimension_type: bpy.props.StringProperty(default="LINEAR", options={"HIDDEN"})

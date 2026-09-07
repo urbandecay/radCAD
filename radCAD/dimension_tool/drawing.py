@@ -837,7 +837,7 @@ def draw_persistent_dimensions_2d():
         if layout is None:
             continue
         data = root.radcad_dimension
-        selected = root == active
+        selected = root == active or bool(getattr(data, "selected", False))
         color = SELECTION_COLOR if selected else tuple(data.color)
         line_width = data.line_width if data.line_width >= 0.5 else 1.0
         if getattr(data, "dimension_type", "LINEAR") == "ANGLE":

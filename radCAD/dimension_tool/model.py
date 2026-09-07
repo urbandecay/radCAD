@@ -43,6 +43,29 @@ def selected_dimension(context):
     return dimension_root(context.active_object)
 
 
+def selected_dimensions(context):
+    """Return all selected annotations, keeping one active edit target."""
+    scene = getattr(context, "scene", None)
+    roots = iter_dimensions(scene)
+    selected = [
+        root for root in roots
+        if bool(getattr(getattr(root, "radcad_dimension", None), "selected", False))
+    ]
+    active = getattr(scene, "radcad_active_dimension", None) if scene is not None else None
+    if not selected and active in roots:
+        selected = [active]
+    return selected
+
+
+def clear_dimension_selection(scene):
+    for root in iter_dimensions(scene):
+        data = getattr(root, "radcad_dimension", None)
+        if data is not None:
+            data.selected = False
+    if scene is not None:
+        scene.radcad_active_dimension = None
+
+
 def iter_dimensions(scene=None):
     # bpy.data is intentionally replaced with _RestrictData while Blender is
     # inside an add-on register() call. Treat that phase as an empty database;
@@ -544,6 +567,7 @@ def create_dimension(
 
     data = root.radcad_dimension
     data.is_dimension = True
+    data.selected = False
     data.dimension_type = "LINEAR"
     set_anchor(data.anchor_1, p1, snap_1)
     set_anchor(data.anchor_2, p2, snap_2)
@@ -778,3 +802,10 @@ def delete_dimension(root):
     collection = bpy.data.collections.get(COLLECTION_NAME)
     if collection is not None and not collection.objects and not collection.children:
         bpy.data.collections.remove(collection, do_unlink=True)
+
+
+def delete_dimensions(roots):
+    """Delete a stable snapshot of dimensions as one undoable operation."""
+    for root in list(roots):
+        if root is not None and root.name in bpy.data.objects:
+            delete_dimension(root)

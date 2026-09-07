@@ -32,11 +32,13 @@ from .linear.geometry import (
 from .model import (
     create_angle_dimension,
     create_dimension,
-    delete_dimension,
+    delete_dimensions,
     dimension_layout,
     iter_dimensions,
     resolve_anchor,
     resolve_dimension_plane,
+    clear_dimension_selection,
+    selected_dimensions,
     selected_dimension,
     set_anchor,
     set_dimension_plane,
@@ -1968,11 +1970,29 @@ class VIEW3D_OT_radcad_dimension_pick(bpy.types.Operator):
                 best_distance = distance
 
         if picked is None:
-            if context.scene.radcad_active_dimension is not None:
-                context.scene.radcad_active_dimension = None
+            if not event.shift:
+                clear_dimension_selection(context.scene)
                 context.area.tag_redraw()
             return {"PASS_THROUGH"}
 
+        if event.shift:
+            # Preserve an active selection from before multi-selection existed.
+            for root in selected_dimensions(context):
+                root.radcad_dimension.selected = True
+            picked.radcad_dimension.selected = not bool(picked.radcad_dimension.selected)
+            selected = [
+                root for root in iter_dimensions(context.scene)
+                if bool(getattr(root.radcad_dimension, "selected", False))
+            ]
+            if picked.radcad_dimension.selected:
+                context.scene.radcad_active_dimension = picked
+            elif context.scene.radcad_active_dimension == picked:
+                context.scene.radcad_active_dimension = selected[-1] if selected else None
+            context.area.tag_redraw()
+            return {"FINISHED"}
+
+        clear_dimension_selection(context.scene)
+        picked.radcad_dimension.selected = True
         context.scene.radcad_active_dimension = picked
         context.area.tag_redraw()
 
@@ -2127,8 +2147,12 @@ class VIEW3D_OT_radcad_dimension_delete(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return selected_dimension(context) is not None
+        return bool(selected_dimensions(context)) or selected_dimension(context) is not None
 
     def execute(self, context):
-        delete_dimension(selected_dimension(context))
+        roots = selected_dimensions(context)
+        if not roots:
+            root = selected_dimension(context)
+            roots = [root] if root is not None else []
+        delete_dimensions(roots)
         return {"FINISHED"}
