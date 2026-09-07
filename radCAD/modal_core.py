@@ -377,6 +377,7 @@ class ModalManager:
         return point, None
 
     def get_snap_data(self, ctx, x, y):
+        state["line_hover_normal"] = None
         if state.get("tool_mode") == "POINT_EDGE_CENTER":
             return self.get_edge_center_snap_data(ctx, x, y)
 
@@ -428,6 +429,10 @@ class ModalManager:
                 ),
             )
             if snap_result is not None:
+                if state.get("tool_mode") == "LINE_POLY":
+                    from .snapping_utils import component_face_normal
+                    state["line_hover_normal"] = component_face_normal(
+                        snap_result, region_2d_to_vector_3d(reg, rv3d, (x, y)))
                 if snap_result.kind == "SURFACE":
                     surface_result = snap_result
                 else:
@@ -498,6 +503,7 @@ class ModalManager:
                     if use_self:
                         snapped_pos = best_self_pt
                         snapped_normal = None
+                        state["line_hover_normal"] = None
 
         # --- FALLBACK TO SURFACE/PLANE (STILL ACTIVE FOR FREEHAND) ---
         state["snap_point"] = None 
@@ -548,6 +554,8 @@ class ModalManager:
         if mesh_snap_enabled:
             depsgraph = ctx.evaluated_depsgraph_get()
             hit, loc, norm, _, _, _ = ctx.scene.ray_cast(depsgraph, ray_origin, view_vec)
+            if hit and state.get("tool_mode") == "LINE_POLY":
+                state["line_hover_normal"] = norm.copy()
             if hit:
                 state["geometry_snap"] = False
                 state["last_surface_hit"] = loc

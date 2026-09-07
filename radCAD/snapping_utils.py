@@ -13,6 +13,35 @@ from .snap_context_l import SnapContext
 ELEMENT_SNAP_RADIUS_PX = 15.0
 
 
+def component_face_normal(result, view_direction):
+    """Resolve a real incident face, never an averaged vertex normal."""
+    if result.normal is not None:
+        return result.normal.copy()
+    obj = result.target_object
+    indices = set(result.element_indices)
+    if obj is None or obj.type != 'MESH' or not indices:
+        return None
+    matrix = result.target_matrix if result.target_matrix is not None else obj.matrix_world
+    normal_matrix = matrix.to_3x3().inverted_safe().transposed()
+    candidates = []
+    if obj.mode == 'EDIT':
+        bm = bmesh.from_edit_mesh(obj.data)
+        bm.verts.ensure_lookup_table()
+        if max(indices) >= len(bm.verts):
+            return None
+        faces = bm.verts[min(indices)].link_faces
+        for face in faces:
+            if not face.hide and indices.issubset({v.index for v in face.verts}):
+                candidates.append(normal_matrix @ face.normal)
+    else:
+        for face in obj.data.polygons:
+            if not face.hide and indices.issubset(face.vertices):
+                candidates.append(normal_matrix @ face.normal)
+    candidates = [n.normalized() for n in candidates if n.length_squared > 1e-12]
+    # At a shared corner choose the incident face most directly facing the view.
+    return max(candidates, key=lambda n: -n.dot(view_direction), default=None)
+
+
 @dataclass
 class SnapResult:
     location: Vector
@@ -447,7 +476,8 @@ def _component_result(ctx, hit, x, y, max_px, snap_verts, snap_edges, snap_edge_
     target = snap_obj.data[0]
     element_size = len(element)
     if element_size == 1 and snap_verts:
-        return SnapResult(location.copy(), "VERT", None, target, tuple(element), (1.0,))
+        return SnapResult(location.copy(), "VERT", None, target, tuple(element), (1.0,),
+                          target_matrix=snap_obj.mat.copy())
 
     if element_size == 2:
         if snap_edge_center:

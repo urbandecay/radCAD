@@ -537,6 +537,8 @@ class LineTool_Poly(SurfaceDrawTool):
         self.points, self.current, self.constraint_axis = [], None, None
         self.shift_lock_vec = None
         self.locked_length = None # Store confirmed length input
+        self.face_normal = None
+        self.state["line_normal_locked"] = False
 
     def update(self, context, event, snap_point, snap_normal):
         if snap_point is None: snap_point = Vector((0,0,0))
@@ -546,6 +548,8 @@ class LineTool_Poly(SurfaceDrawTool):
 
         if self.stage == 0:
             self.update_initial_plane(context, event, snap_point, snap_normal)
+            normal = self.state.get("line_hover_normal")
+            self.face_normal = normal.copy() if normal is not None else None
             self.current, self.preview_pts = snap_point, []
             return
         
@@ -610,6 +614,8 @@ class LineTool_Poly(SurfaceDrawTool):
             ray_v = view3d_utils.region_2d_to_vector_3d(context.region, context.region_data, (event.mouse_region_x, event.mouse_region_y))
             res = geometry.intersect_line_line(ray_o, ray_o + ray_v, ref, ref + self.constraint_axis)
             if res: target = res[1]
+            else:
+                target = ref + self.constraint_axis * (target - ref).dot(self.constraint_axis)
 
             # Match Shift + snap behavior: use the snapped point to determine
             # the distance along the constrained axis instead of discarding
@@ -715,6 +721,8 @@ class LineTool_Poly(SurfaceDrawTool):
 
     def handle_click(self, context, event, snap_point, snap_normal, button_id=None):
         if self.stage == 0:
+            normal = self.state.get("line_hover_normal")
+            self.face_normal = normal.copy() if normal is not None else self.face_normal
             self.pivot = snap_point
             self.points.append(snap_point)
             self.state["locked"], self.state["locked_normal"], self.stage = True, self.Zp, 1
@@ -732,6 +740,10 @@ class LineTool_Poly(SurfaceDrawTool):
         if (self.current - self.points[-1]).length < 1e-5: return None
         self.points.append(self.current)
         self.constraint_axis = self.state["constraint_axis"] = None
+        self.state["line_normal_locked"] = False
+        normal = self.state.get("line_hover_normal")
+        if normal is not None:
+            self.face_normal = normal.copy()
         self.shift_lock_vec = None # Reset shift lock so next segment can start fresh
         self.locked_length = None # Reset length lock
         
@@ -744,8 +756,18 @@ class LineTool_Poly(SurfaceDrawTool):
         return 'NEXT_STAGE'
 
     def handle_input(self, context, event):
+        if self.mode == "LINE_POLY" and event.type == 'N' and event.value == 'PRESS':
+            if self.stage == 0 or self.face_normal is None:
+                self.core.report({'INFO'}, "Start a line on a face, edge or vertex first")
+                return True
+            enabled = not self.state.get("line_normal_locked", False)
+            self.state["line_normal_locked"] = enabled
+            self.constraint_axis = self.state["constraint_axis"] = self.face_normal.normalized() if enabled else None
+            self.shift_lock_vec = None
+            return True
         if super().handle_plane_lock_input(context, event): return True
         if event.type in {'X', 'Y', 'Z'} and event.value == 'PRESS':
+            self.state["line_normal_locked"] = False
             axes = {'X': Vector((1, 0, 0)), 'Y': Vector((0, 1, 0)), 'Z': Vector((0, 0, 1))}
             self.constraint_axis = self.state["constraint_axis"] = None if self.constraint_axis == axes[event.type] else axes[event.type]
             return True

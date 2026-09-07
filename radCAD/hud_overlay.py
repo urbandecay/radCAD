@@ -240,7 +240,11 @@ def draw_hotkeys_panel():
                 lines.append(("Alt: Bypass Axis Snap", None))
         elif state.get("tool_mode") == "ELLIPSE_ENDPOINTS" and state["stage"] == 1:
             lines.append(("D: Set Diameter", None))
-        elif state.get("tool_mode") in {"LINE_POLY", "POINT_BY_LINE"}:            lines.append(("L: Set Length", None)) # --- NEW: Line Length Hint ---
+        elif state.get("tool_mode") in {"LINE_POLY", "POINT_BY_LINE"}:
+            lines.append(("L: Set Length", None))
+            if state.get("tool_mode") == "LINE_POLY":
+                normal_status = "ON" if state.get("line_normal_locked", False) else "OFF"
+                lines.append((f"N: Face Normal ({normal_status})", None))
         elif state.get("tool_mode") in {"RECTANGLE_CENTER_CORNER", "RECTANGLE_CORNER_CORNER"}:
             square_state = "ON" if state.get("rectangle_square_locked", False) else "OFF"
             lines.append((f"Shift: Square ({square_state})", None))
