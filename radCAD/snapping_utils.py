@@ -279,6 +279,49 @@ def _closest_points_on_segments(p1, q1, p2, q2):
     return p1 + d1 * s, p2 + d2 * t, s, t
 
 
+def _axis_segment_intersection(origin, direction, start, end):
+    """Intersect an infinite drawing axis with a finite edge in world space."""
+    edge = end - start
+    a = direction.length_squared
+    e = edge.length_squared
+    if a <= 1.0e-12 or e <= 1.0e-12:
+        return None
+    offset = origin - start
+    b = direction.dot(edge)
+    denominator = a * e - b * b
+    if denominator <= 1.0e-12 * a * e:
+        return None
+    c = direction.dot(offset)
+    f = edge.dot(offset)
+    edge_t = (a * f - b * c) / denominator
+    if not 0.0 <= edge_t <= 1.0:
+        return None
+    point = origin + direction * ((b * f - e * c) / denominator)
+    tolerance = 1.0e-6 * max(1.0, edge.length)
+    if (point - (start + edge * edge_t)).length > tolerance:
+        return None
+    return point
+
+
+def snap_axis_intersection(ctx, obj, x, y, origin, direction, max_px):
+    """Intersect the hovered edge with the active drawing axis.
+
+    Called after the regular mesh query has prepared the viewport snap buffer.
+    The cursor selects the edge, not the intersection: the crossing can be
+    arbitrarily far along that edge from the cursor.
+    Screen-only crossings at different depths are deliberately rejected.
+    """
+    hit = _snap_engine.query(x, y, obj)
+    if hit is None:
+        return None
+    _snap_obj, _location, element, coordinates = hit
+    if coordinates is None or len(element) != 2 or len(coordinates) != 2:
+        return None
+    return _axis_segment_intersection(
+        origin, direction, Vector(coordinates[0]), Vector(coordinates[1])
+    )
+
+
 def _intersection_result(ctx, obj, x, y, max_px, center_hit=None):
     """Return a true 3D segment intersection near the cursor, if present."""
     candidates = _snap_engine.query_edge_candidates(

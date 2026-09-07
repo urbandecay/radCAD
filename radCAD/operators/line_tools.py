@@ -626,6 +626,22 @@ class LineTool_Poly(SurfaceDrawTool):
                 target = inf_loc
                 self.state["current_axis_vector"] = inf_axis
 
+        # Resolve the actual edge/axis crossing before applying a typed length.
+        # Projecting the hovered edge point only matches its height/distance;
+        # it does not generally land on the edge itself.
+        axis = self.state.get("current_axis_vector")
+        if axis is not None and self.state.get("snap_intersections", False):
+            from ..snapping_utils import snap_axis_intersection
+            intersection = snap_axis_intersection(
+                context, context.edit_object,
+                event.mouse_region_x, event.mouse_region_y, ref, axis,
+                self.state.get("snap_strength", 6.0) * 2.0,
+            )
+            if intersection is not None:
+                target = intersection
+                self.state["snap_point"] = intersection.copy()
+                self.state["geometry_snap"] = True
+
         # --- LENGTH LOCK ---
         # Apply confirmed input length OR active typing length to the DETERMINED direction
         
