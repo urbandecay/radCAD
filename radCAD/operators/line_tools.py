@@ -540,6 +540,31 @@ class LineTool_Poly(SurfaceDrawTool):
         self.face_normal = None
         self.state["line_normal_locked"] = False
 
+    def _snap_axis_intersection(self, context, event, origin, axis):
+        """Find the hovered edge's distance along Line's locked direction."""
+        if not (
+            self.state.get("snap_intersections", False)
+            or self.state.get("snap_edges", False)
+        ) or origin is None:
+            return None
+        edit_object = getattr(context, "edit_object", None)
+        if edit_object is None:
+            return None
+        try:
+            from ..snapping_utils import snap_axis_intersection_near_vertex
+
+            return snap_axis_intersection_near_vertex(
+                context,
+                edit_object,
+                event.mouse_region_x,
+                event.mouse_region_y,
+                origin,
+                axis,
+                self.state.get("snap_strength", 6.0) * 2.0,
+            )
+        except (AttributeError, TypeError, RuntimeError):
+            return None
+
     def update(self, context, event, snap_point, snap_normal):
         if snap_point is None: snap_point = Vector((0,0,0))
         
@@ -596,11 +621,6 @@ class LineTool_Poly(SurfaceDrawTool):
                     dist = v.dot(self.shift_lock_vec)
                     target = ref + self.shift_lock_vec * dist
 
-                # --- SNAP + SHIFT LOCK: Project snap_point onto the locked axis ---
-                if self.state.get("geometry_snap") and snap_point is not None:
-                    diff = snap_point - ref
-                    target = ref + self.shift_lock_vec * diff.dot(self.shift_lock_vec)
-
                 self.state["current_axis_vector"] = self.shift_lock_vec
         else:
             self.shift_lock_vec = None
@@ -617,13 +637,6 @@ class LineTool_Poly(SurfaceDrawTool):
             else:
                 target = ref + self.constraint_axis * (target - ref).dot(self.constraint_axis)
 
-            # Match Shift + snap behavior: use the snapped point to determine
-            # the distance along the constrained axis instead of discarding
-            # it in favor of the cursor/ray intersection.
-            if self.state.get("geometry_snap") and snap_point is not None:
-                delta = snap_point - ref
-                target = ref + self.constraint_axis * delta.dot(self.constraint_axis)
-
         # 2. Passive axis inference must not replace an explicit geometry snap.
         elif not self.shift_lock_vec and not self.state.get("geometry_snap", False):
             strength = max(0.1, min(89.0, self.state.get("snap_strength", 6.0)))
@@ -636,17 +649,17 @@ class LineTool_Poly(SurfaceDrawTool):
         # Projecting the hovered edge point only matches its height/distance;
         # it does not generally land on the edge itself.
         axis = self.state.get("current_axis_vector")
-        if axis is not None and self.state.get("snap_intersections", False):
-            from ..snapping_utils import snap_axis_intersection
-            intersection = snap_axis_intersection(
-                context, context.edit_object,
-                event.mouse_region_x, event.mouse_region_y, ref, axis,
-                self.state.get("snap_strength", 6.0) * 2.0,
-            )
+        if axis is not None:
+            intersection = self._snap_axis_intersection(context, event, ref, axis)
             if intersection is not None:
                 target = intersection
                 self.state["snap_point"] = intersection.copy()
                 self.state["geometry_snap"] = True
+            elif self.state.get("geometry_snap") and snap_point is not None:
+                # A loose vertex has no edge direction to resolve.  Preserve
+                # Blender's normal vertex-snap projection for that case.
+                axis = axis.normalized()
+                target = ref + axis * (snap_point - ref).dot(axis)
 
         # --- LENGTH LOCK ---
         # Apply confirmed input length OR active typing length to the DETERMINED direction
