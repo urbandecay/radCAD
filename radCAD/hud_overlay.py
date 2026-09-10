@@ -259,7 +259,8 @@ def draw_hotkeys_panel():
                 lines.append((f"{axis_name}: Axis Lock (ON)", None))
             else:
                 lines.append(("X/Y/Z: Axis Lock", None))
-            lines.append(("Shift: Edge Direction", None))
+            edge_state = "ON" if state.get("move_edge_lock_active", False) else "OFF"
+            lines.append((f"Shift: Toggle Edge Direction ({edge_state})", None))
             lines.append(("L: Set Distance", None))
             floor_state = "ON" if state.get("move_floor_snap", False) else "OFF"
             lines.append((f"F7: Floor Snap ({floor_state})", None))

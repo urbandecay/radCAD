@@ -173,18 +173,6 @@ def _orthographic_view_axis_normal(rv3d, tolerance=0.999):
     return axis if alignment >= 0.0 else -axis
 
 
-def _edge_direction_from_snap_result(snap_result):
-    """Return a world-space edge direction carried by a mesh snap result."""
-    if snap_result is None or snap_result.kind not in {"EDGE", "EDGE_CENTER"}:
-        return None
-    coordinates = getattr(snap_result, "element_coordinates", ())
-    if len(coordinates) != 2:
-        return None
-    direction = Vector(coordinates[1]) - Vector(coordinates[0])
-    if direction.length_squared <= 1.0e-12:
-        return None
-    return direction.normalized()
-
 def apply_custom_orbit(context, pivot, dx, dy):
     rv3d = context.region_data
     if not rv3d: return
@@ -400,11 +388,6 @@ class ModalManager:
 
     def get_snap_data(self, ctx, x, y):
         state["line_hover_normal"] = None
-        if state.get("tool_mode") == "MOVE":
-            # Move can use an edge only as a direction reference while Shift
-            # is held.  Keep this separate from the normal snap point so the
-            # user's F1-F6 choices still control the actual snap target.
-            state["move_hover_edge_direction"] = None
         if state.get("tool_mode") == "POINT_EDGE_CENTER":
             return self.get_edge_center_snap_data(ctx, x, y)
 
@@ -439,10 +422,6 @@ class ModalManager:
         if (
             (state.get("tool_mode") != "CURVE_FREEHAND" and mesh_snap_enabled)
             or guide_snap_available
-            or (
-                state.get("tool_mode") == "MOVE"
-                and state.get("move_shift_active", False)
-            )
         ):
             try:
                 from .snapping_utils import snap_scene_geometry
@@ -470,43 +449,11 @@ class ModalManager:
                     from .snapping_utils import component_face_normal
                     state["line_hover_normal"] = component_face_normal(
                         snap_result, region_2d_to_vector_3d(reg, rv3d, (x, y)))
-                if state.get("tool_mode") == "MOVE":
-                    state["move_hover_edge_direction"] = _edge_direction_from_snap_result(
-                        snap_result
-                    )
                 if snap_result.kind == "SURFACE":
                     surface_result = snap_result
                 else:
                     snapped_pos = snap_result.location
                     snapped_normal = snap_result.normal
-
-            # The line tool's edge snap can be disabled while Move still
-            # needs to identify an edge under Shift.  Probe mesh edges only
-            # for that direction reference; do not replace the normal snap
-            # result or change the visible snap marker.
-            if (
-                state.get("tool_mode") == "MOVE"
-                and state.get("move_shift_active", False)
-            ):
-                from .snapping_utils import snap_mesh
-
-                edge_probe = snap_mesh(
-                    ctx,
-                    ctx.edit_object,
-                    x,
-                    y,
-                    max_px=snap_radius,
-                    snap_verts=False,
-                    snap_edges=True,
-                    snap_edge_center=True,
-                    snap_face_center=False,
-                    snap_faces=False,
-                    include_surface=False,
-                    snap_intersections=False,
-                )
-                edge_direction = _edge_direction_from_snap_result(edge_probe)
-                if edge_direction is not None:
-                    state["move_hover_edge_direction"] = edge_direction
 
             # --- PREVIEW SNAPPING (SELF-SNAP) ---
             self_snap_targets = []
@@ -706,9 +653,6 @@ class ModalManager:
 
             mouse_x, mouse_y = self.viewport_mouse_coords(event)
             move_event = _ViewportMouseEvent(event, mouse_x, mouse_y)
-            if state.get("tool_mode") == "MOVE":
-                state["move_shift_active"] = bool(getattr(event, "shift", False))
-
             def update_tool(update_context):
                 snap_pt, snap_n = self.get_snap_data(update_context, mouse_x, mouse_y)
                 self.active_tool.update(update_context, move_event, snap_pt, snap_n)
@@ -1117,11 +1061,6 @@ def modal_arc_common(self, ctx, ev):
         if tool is not None:
             tool.cancel(ctx)
         return {'CANCELLED'}
-
-    if state.get("tool_mode") == "MOVE":
-        # The snap query runs before the tool update on click events too, so
-        # expose the modifier state for the edge-direction probe.
-        state["move_shift_active"] = bool(getattr(ev, "shift", False))
 
     if ev.type in {'LEFTMOUSE', 'RIGHTMOUSE', 'MOUSEMOVE', 'WHEELUPMOUSE', 'WHEELDOWNMOUSE', 'MIDDLEMOUSE'}:
         reg = self.manager.region

@@ -147,9 +147,8 @@ state = {
     "move_delta": None,
     "move_distance": 0.0,
     "move_distance_active": False,
-    "move_shift_active": False,
+    "move_edge_lock_active": False,
     "move_floor_snap": False,
-    "move_hover_edge_direction": None,
     "move_edge_direction": None,
 }
 
@@ -383,8 +382,7 @@ def reset_state_from_context(ctx):
         "move_delta": None,
         "move_distance": 0.0,
         "move_distance_active": False,
-        "move_shift_active": False,
+        "move_edge_lock_active": False,
         "move_floor_snap": False,
-        "move_hover_edge_direction": None,
         "move_edge_direction": None,
     })

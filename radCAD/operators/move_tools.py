@@ -15,6 +15,8 @@ _AXES = {
     "Z": Vector((0.0, 0.0, 1.0)),
 }
 
+_SHIFT_KEYS = {"LEFT_SHIFT", "RIGHT_SHIFT", "SHIFT"}
+
 
 def _unit_or_none(value):
     if value is None:
@@ -82,6 +84,7 @@ class MoveTool(CAD_BaseTool):
         self.move_distance_active = False
         self.committed = False
         self.selection = []
+        self.connected_edge_candidates = []
         self.selection_median = None
 
         self._capture_selection(context)
@@ -103,17 +106,39 @@ class MoveTool(CAD_BaseTool):
                 for vert in bm.verts
                 if vert.select and not vert.hide
             }
+            selected_face_vertices = set()
             for edge in bm.edges:
                 if edge.select and not edge.hide:
                     selected.update(vert for vert in edge.verts if not vert.hide)
             for face in bm.faces:
                 if face.select and not face.hide:
-                    selected.update(vert for vert in face.verts if not vert.hide)
+                    face_vertices = {vert for vert in face.verts if not vert.hide}
+                    selected.update(face_vertices)
+                    selected_face_vertices.update(face_vertices)
 
             if not selected:
                 continue
 
             matrix_world = obj.matrix_world.copy()
+            # Shift is based on the selected face's local mesh edges, rather
+            # than whichever edge happens to be nearest the mouse cursor.
+            # Include both face edges and edges leaving the face: depending
+            # on which side of a rail is selected, its lengthwise edges can
+            # be either on the face or just beyond its boundary.
+            direction_vertices = selected_face_vertices or selected
+            for edge in bm.edges:
+                if edge.hide or any(vert.hide for vert in edge.verts):
+                    continue
+                first, second = edge.verts
+                touches_selected_face = (
+                    first in direction_vertices or second in direction_vertices
+                )
+                if selected_face_vertices and not touches_selected_face:
+                    continue
+                world_edge = (matrix_world @ second.co) - (matrix_world @ first.co)
+                direction = _unit_or_none(world_edge)
+                if direction is not None:
+                    self.connected_edge_candidates.append((direction, world_edge.length))
             positions = tuple(
                 (vert, vert.co.copy())
                 for vert in selected
@@ -142,6 +167,40 @@ class MoveTool(CAD_BaseTool):
     @property
     def has_selection(self):
         return bool(self.selection)
+
+    def _connected_edge_axis(self):
+        """Resolve the dominant local edge axis around the selected face."""
+        if not self.connected_edge_candidates:
+            return None
+        clusters = []
+        for direction, length in self.connected_edge_candidates:
+            cluster = next(
+                (
+                    item
+                    for item in clusters
+                    if abs(item["axis"].dot(direction)) > 1.0 - 1.0e-4
+                ),
+                None,
+            )
+            if cluster is None:
+                clusters.append(
+                    {
+                        "axis": direction.copy(),
+                        "total_length": length,
+                        "longest_edge": length,
+                    }
+                )
+            else:
+                cluster["total_length"] += length
+                cluster["longest_edge"] = max(cluster["longest_edge"], length)
+
+        if not clusters:
+            return None
+        dominant = max(
+            clusters,
+            key=lambda item: (item["longest_edge"], item["total_length"]),
+        )
+        return dominant["axis"].copy()
 
     def _sync_state(self):
         self.state["stage"] = self.stage
@@ -286,15 +345,6 @@ class MoveTool(CAD_BaseTool):
         if self.stage == 0 or self.move_plane_normal is None:
             self._set_plane_from_normal(snap_normal, context)
 
-        if event.shift:
-            hovered_edge = _unit_or_none(
-                self.state.get("move_hover_edge_direction")
-            )
-            if self.edge_lock_direction is None and hovered_edge is not None:
-                self.edge_lock_direction = hovered_edge
-        else:
-            self.edge_lock_direction = None
-
         if self.stage == 0:
             self.current = snap_point.copy() if snap_point is not None else None
             self.preview_pts = []
@@ -402,13 +452,7 @@ class MoveTool(CAD_BaseTool):
                 return None
             if self.move_plane_normal is None:
                 self._set_plane_from_normal(snap_normal, context)
-            if getattr(event, "shift", False):
-                edge_direction = _unit_or_none(
-                    self.state.get("move_hover_edge_direction")
-                )
-                if edge_direction is not None:
-                    self.edge_lock_direction = edge_direction
-            else:
+            if not self.state.get("move_edge_lock_active", False):
                 self.edge_lock_direction = None
             self.pivot = snap_point.copy()
             self.reference_screen = self._event_region_coords(context, event)
@@ -428,11 +472,38 @@ class MoveTool(CAD_BaseTool):
         return "FINISHED"
 
     def handle_input(self, context, event):
-        del context
         if event.value != "PRESS":
             return False
 
+        if event.type in _SHIFT_KEYS:
+            if getattr(event, "is_repeat", False):
+                return True
+            if self.state.get("move_edge_lock_active", False):
+                self.state["move_edge_lock_active"] = False
+                self.edge_lock_direction = None
+                self.state["current_axis_vector"] = None
+                self._sync_state()
+                return True
+
+            edge_direction = self._connected_edge_axis()
+            if edge_direction is None:
+                self.state["move_edge_lock_active"] = False
+                self.core.report(
+                    {"INFO"},
+                    "Connected edges do not define one direction; select an end face with parallel connecting edges",
+                )
+            else:
+                self.state["move_edge_lock_active"] = True
+                self.edge_lock_direction = edge_direction
+                self.constraint_axis = None
+                self.state["constraint_axis"] = None
+            self._sync_state()
+            return True
+
         if event.type in _AXES:
+            self.edge_lock_direction = None
+            self.state["move_edge_lock_active"] = False
+            self.state["move_edge_direction"] = None
             axis = _AXES[event.type]
             if self.constraint_axis is not None and self.constraint_axis == axis:
                 self.constraint_axis = None
