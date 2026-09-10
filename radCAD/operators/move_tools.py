@@ -85,6 +85,7 @@ class MoveTool(CAD_BaseTool):
         self.committed = False
         self.selection = []
         self.connected_edge_candidates = []
+        self.vertex_slide_directions = []
         self.selection_median = None
 
         self._capture_selection(context)
@@ -101,20 +102,29 @@ class MoveTool(CAD_BaseTool):
                 continue
 
             bm = bmesh.from_edit_mesh(obj.data)
-            selected = {
+            selected_vertices = {
                 vert
                 for vert in bm.verts
                 if vert.select and not vert.hide
             }
+            selected = set(selected_vertices)
+            selected_edges = [
+                edge
+                for edge in bm.edges
+                if edge.select and not edge.hide
+            ]
+            selected_faces = [
+                face
+                for face in bm.faces
+                if face.select and not face.hide
+            ]
             selected_face_vertices = set()
-            for edge in bm.edges:
-                if edge.select and not edge.hide:
-                    selected.update(vert for vert in edge.verts if not vert.hide)
-            for face in bm.faces:
-                if face.select and not face.hide:
-                    face_vertices = {vert for vert in face.verts if not vert.hide}
-                    selected.update(face_vertices)
-                    selected_face_vertices.update(face_vertices)
+            for edge in selected_edges:
+                selected.update(vert for vert in edge.verts if not vert.hide)
+            for face in selected_faces:
+                face_vertices = {vert for vert in face.verts if not vert.hide}
+                selected.update(face_vertices)
+                selected_face_vertices.update(face_vertices)
 
             if not selected:
                 continue
@@ -125,20 +135,42 @@ class MoveTool(CAD_BaseTool):
             # Include both face edges and edges leaving the face: depending
             # on which side of a rail is selected, its lengthwise edges can
             # be either on the face or just beyond its boundary.
-            direction_vertices = selected_face_vertices or selected
-            for edge in bm.edges:
-                if edge.hide or any(vert.hide for vert in edge.verts):
-                    continue
-                first, second = edge.verts
-                touches_selected_face = (
-                    first in direction_vertices or second in direction_vertices
-                )
-                if selected_face_vertices and not touches_selected_face:
-                    continue
-                world_edge = (matrix_world @ second.co) - (matrix_world @ first.co)
-                direction = _unit_or_none(world_edge)
-                if direction is not None:
-                    self.connected_edge_candidates.append((direction, world_edge.length))
+            select_mode = getattr(
+                getattr(context, "tool_settings", None),
+                "mesh_select_mode",
+                (True, False, False),
+            )
+            vertex_select_mode = bool(select_mode[0]) and not any(select_mode[1:])
+            if vertex_select_mode and selected_vertices:
+                # In vertex mode Blender's selection flush can leave related
+                # edge flags set.  The selected vertices are still the source
+                # of the vertex-slide neighbor list.
+                for vertex in selected_vertices:
+                    source = matrix_world @ vertex.co
+                    for edge in vertex.link_edges:
+                        if edge.hide:
+                            continue
+                        other = edge.verts[1] if edge.verts[0] == vertex else edge.verts[0]
+                        direction = _unit_or_none((matrix_world @ other.co) - source)
+                        if direction is not None:
+                            self.vertex_slide_directions.append(direction)
+            elif selected_face_vertices or selected_edges:
+                direction_vertices = selected_face_vertices or selected
+                for edge in bm.edges:
+                    if edge.hide or any(vert.hide for vert in edge.verts):
+                        continue
+                    first, second = edge.verts
+                    touches_selected = (
+                        first in direction_vertices or second in direction_vertices
+                    )
+                    if not touches_selected:
+                        continue
+                    world_edge = (matrix_world @ second.co) - (matrix_world @ first.co)
+                    direction = _unit_or_none(world_edge)
+                    if direction is not None:
+                        self.connected_edge_candidates.append(
+                            (direction, world_edge.length)
+                        )
             positions = tuple(
                 (vert, vert.co.copy())
                 for vert in selected
@@ -201,6 +233,18 @@ class MoveTool(CAD_BaseTool):
             key=lambda item: (item["longest_edge"], item["total_length"]),
         )
         return dominant["axis"].copy()
+
+    def _vertex_slide_axis(self, mouse_delta):
+        """Choose the connected edge closest to Blender's mouse direction."""
+        if not self.vertex_slide_directions:
+            return None
+        mouse_direction = _unit_or_none(mouse_delta)
+        if mouse_direction is None:
+            return None
+        return max(
+            self.vertex_slide_directions,
+            key=lambda direction: abs(mouse_direction.dot(direction)),
+        ).copy()
 
     def _sync_state(self):
         self.state["stage"] = self.stage
@@ -364,6 +408,13 @@ class MoveTool(CAD_BaseTool):
             else None
         )
 
+        mouse_delta = self._native_view_delta(context, event)
+        if (
+            self.state.get("move_edge_lock_active", False)
+            and self.edge_lock_direction is None
+        ):
+            self.edge_lock_direction = self._vertex_slide_axis(mouse_delta)
+
         use_snap_target = bool(
             snap_point is not None
             and (
@@ -374,7 +425,7 @@ class MoveTool(CAD_BaseTool):
         if use_snap_target:
             free_delta = snap_point.copy() - self.pivot
         else:
-            free_delta = self._native_view_delta(context, event)
+            free_delta = mouse_delta
         self.last_free_target = self.pivot + free_delta
 
         axis = self.constraint_axis
@@ -485,8 +536,13 @@ class MoveTool(CAD_BaseTool):
                 self._sync_state()
                 return True
 
-            edge_direction = self._connected_edge_axis()
-            if edge_direction is None:
+            if self.vertex_slide_directions:
+                edge_direction = self._vertex_slide_axis(
+                    self._native_view_delta(context, event)
+                )
+            else:
+                edge_direction = self._connected_edge_axis()
+            if edge_direction is None and not self.vertex_slide_directions:
                 self.state["move_edge_lock_active"] = False
                 self.core.report(
                     {"INFO"},
