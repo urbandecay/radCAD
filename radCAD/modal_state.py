@@ -139,6 +139,7 @@ state = {
     "is_perpendicular": False,
     "ui_hitboxes": {},
     "snap_point": None,
+    "snap_kind": None,
     "current_axis_vector": None, # NEW: Tracks axis alignment for coloring
     "constraint_axis": None,
 
@@ -377,6 +378,7 @@ def reset_state_from_context(ctx):
         "last_surface_hit": None, "last_surface_normal": None,
         "input_mode": None, "input_string": "", "input_screen_pos": None, "cursor_index": 0,
         "geometry_snap": False, "is_perpendicular": False, "ui_hitboxes": {}, "snap_point": None,
+        "snap_kind": None,
         "constraint_axis": None,
         "current_axis_vector": None, # Reset axis tracker
         "move_delta": None,

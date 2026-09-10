@@ -388,6 +388,7 @@ class ModalManager:
 
     def get_snap_data(self, ctx, x, y):
         state["line_hover_normal"] = None
+        state["snap_kind"] = None
         if state.get("tool_mode") == "POINT_EDGE_CENTER":
             return self.get_edge_center_snap_data(ctx, x, y)
 
@@ -454,6 +455,7 @@ class ModalManager:
                 else:
                     snapped_pos = snap_result.location
                     snapped_normal = snap_result.normal
+                state["snap_kind"] = snap_result.kind
 
             # --- PREVIEW SNAPPING (SELF-SNAP) ---
             self_snap_targets = []

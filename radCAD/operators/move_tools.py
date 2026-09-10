@@ -366,6 +366,77 @@ class MoveTool(CAD_BaseTool):
             return self.move_distance
         return None
 
+    def _snap_axis_intersection(self, context, event, axis):
+        """Find where the hovered target edge crosses a locked move path."""
+        if not (
+            self.state.get("snap_intersections", False)
+            or self.state.get("snap_edges", False)
+        ) or self.pivot is None:
+            return None
+        coords = self._event_region_coords(context, event)
+        edit_object = getattr(context, "edit_object", None)
+        if coords is None or edit_object is None:
+            return None
+        try:
+            from ..snapping_utils import snap_axis_intersection_near_vertex
+
+            return snap_axis_intersection_near_vertex(
+                context,
+                edit_object,
+                coords[0],
+                coords[1],
+                self.pivot,
+                axis,
+                self.state.get("snap_strength", 6.0) * 2.0,
+            )
+        except (AttributeError, TypeError, RuntimeError):
+            return None
+
+    def _native_edge_snap_target(self, context, event, snap_point):
+        """Resolve Move's target as Blender does: a real point on the edge."""
+        if not self.state.get("snap_edges", False):
+            return snap_point.copy() if snap_point is not None else None
+        if self.state.get("snap_kind") in {
+            "VERT",
+            "EDGE",
+            "EDGE_CENTER",
+            "INTERSECTION",
+        }:
+            return snap_point.copy() if snap_point is not None else None
+
+        coords = self._event_region_coords(context, event)
+        edit_object = getattr(context, "edit_object", None)
+        if coords is None or edit_object is None:
+            return snap_point.copy() if snap_point is not None else None
+        try:
+            from ..snapping_utils import snap_mesh
+
+            result = snap_mesh(
+                context,
+                edit_object,
+                coords[0],
+                coords[1],
+                max_px=self.state.get("snap_strength", 6.0) * 2.0,
+                # The regular snap query may prefer a vertex or a face for
+                # display purposes.  Native Move still asks the edge snapper
+                # for the actual target when Edge is enabled.
+                snap_verts=False,
+                snap_edges=True,
+                snap_edge_center=self.state.get("snap_edge_center", False),
+                snap_face_center=False,
+                snap_faces=False,
+                include_surface=False,
+                snap_intersections=False,
+            )
+            if result is not None and result.kind in {"EDGE", "EDGE_CENTER"}:
+                self.state["snap_point"] = result.location.copy()
+                self.state["snap_kind"] = result.kind
+                self.state["geometry_snap"] = True
+                return result.location.copy()
+        except (AttributeError, TypeError, RuntimeError):
+            pass
+        return snap_point.copy() if snap_point is not None else None
+
     def _apply_translation(self, delta):
         for item in self.selection:
             matrix_world = item["matrix_world"]
@@ -422,11 +493,19 @@ class MoveTool(CAD_BaseTool):
                 or self.state.get("move_floor_snap", False)
             )
         )
-        if use_snap_target:
-            free_delta = snap_point.copy() - self.pivot
+        snap_target = None
+        if self.state.get("snap_edges", False):
+            snap_target = self._native_edge_snap_target(
+                context,
+                event,
+                snap_point,
+            )
+        if snap_target is None and use_snap_target:
+            snap_target = snap_point.copy()
+        if snap_target is not None:
+            free_delta = snap_target - self.pivot
         else:
             free_delta = mouse_delta
-        self.last_free_target = self.pivot + free_delta
 
         axis = self.constraint_axis
         if axis is None and self.edge_lock_direction is not None:
@@ -434,6 +513,15 @@ class MoveTool(CAD_BaseTool):
 
         if axis is not None:
             axis = axis.normalized()
+            path_intersection = self._snap_axis_intersection(context, event, axis)
+            if path_intersection is not None:
+                # Edge/Intersection snap means the target edge controls the distance. Projecting
+                # the target snap point onto the locked path only finds a
+                # nearby distance; this uses the actual path/target crossing.
+                free_delta = path_intersection - self.pivot
+                self.state["snap_point"] = path_intersection.copy()
+                self.state["geometry_snap"] = True
+            self.last_free_target = self.pivot + free_delta
             scalar = free_delta.dot(axis)
             self.state["current_axis_vector"] = axis.copy()
             if abs(scalar) > 1.0e-10:
@@ -441,6 +529,7 @@ class MoveTool(CAD_BaseTool):
             else:
                 self.last_move_direction = axis.copy()
         else:
+            self.last_free_target = self.pivot + free_delta
             self.state["current_axis_vector"] = None
             if free_delta.length_squared > 1.0e-12:
                 self.last_move_direction = free_delta.normalized()

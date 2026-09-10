@@ -332,6 +332,38 @@ def _axis_segment_intersection(origin, direction, start, end):
     return point
 
 
+def _axis_line_intersection(origin, direction, start, end):
+    """Return the native Blender ray/ray distance on the move axis.
+
+    Blender's constrained edge snap uses ``isect_ray_ray_v3`` here.  That
+    routine returns the parameter on the first ray for every non-parallel
+    pair; it does not require the two 3D lines to be exactly coplanar.  The
+    viewport supplies the target edge, so the edge's finite endpoints are
+    used to choose the target, while its direction supplies the constraint.
+    """
+    edge = end - start
+    if direction.length_squared <= 1.0e-12 or edge.length_squared <= 1.0e-12:
+        return None
+
+    # This is the same cross-product form as Blender's
+    # isect_ray_ray_epsilon_v3/isect_ray_ray_v3.  Do not add a coplanarity
+    # or finite-segment test: those were the reason Move fell back to the
+    # cursor position in the failing view.
+    normal = edge.cross(direction)
+    normal_length_squared = normal.length_squared
+    if normal_length_squared <= 1.0e-20:
+        return None
+
+    offset = start - origin
+    # Blender forms ``c = n - (origin_b - origin_a)`` before taking the
+    # second cross product.  The ``n`` term is harmless in the final dot
+    # product, but keeping the same form preserves Blender's numerical
+    # behavior for large world coordinates.
+    correction = normal - offset
+    axis_parameter = correction.cross(edge).dot(normal) / normal_length_squared
+    return origin + direction * axis_parameter
+
+
 def snap_axis_intersection(ctx, obj, x, y, origin, direction, max_px):
     """Intersect the hovered edge with the active drawing axis.
 
@@ -347,8 +379,83 @@ def snap_axis_intersection(ctx, obj, x, y, origin, direction, max_px):
     if coordinates is None or len(element) != 2 or len(coordinates) != 2:
         return None
     return _axis_segment_intersection(
-        origin, direction, Vector(coordinates[0]), Vector(coordinates[1])
+        origin,
+        direction,
+        Vector(coordinates[0]),
+        Vector(coordinates[1]),
     )
+
+
+def snap_axis_intersection_near_vertex(ctx, obj, x, y, origin, direction, max_px):
+    """Intersect an axis with the hovered edge, including a vertex hover.
+
+    Move can be constrained to an edge direction or an X/Y/Z axis while the
+    cursor is snapped to a target corner.  The raw snap result is then a
+    vertex, so the normal axis helper has no edge to intersect.  Use the
+    closest nearby edge whose screen segment contains that vertex hover, and
+    keep the actual 3D crossing.
+    """
+    direct = snap_axis_intersection(ctx, obj, x, y, origin, direction, max_px)
+    if direct is not None:
+        return direct
+
+    hit = _snap_engine.query(x, y, obj)
+    candidates = _snap_engine.query_edge_candidates(
+        x,
+        y,
+        obj,
+        max_px,
+        center_hit=hit,
+    )
+    mouse = Vector((x, y))
+    best = None
+    best_distance_sq = float("inf")
+    for _snap_obj, _location, element, coordinates in candidates:
+        if len(element) != 2 or len(coordinates) != 2:
+            continue
+        first = location_3d_to_region_2d(
+            ctx.region,
+            ctx.region_data,
+            Vector(coordinates[0]),
+            default=None,
+        )
+        second = location_3d_to_region_2d(
+            ctx.region,
+            ctx.region_data,
+            Vector(coordinates[1]),
+            default=None,
+        )
+        if first is None or second is None:
+            continue
+        screen_edge = second - first
+        length_sq = screen_edge.length_squared
+        if length_sq <= 1.0e-12:
+            continue
+        factor = max(0.0, min(1.0, (mouse - first).dot(screen_edge) / length_sq))
+        closest = first + screen_edge * factor
+        distance_sq = (mouse - closest).length_squared
+        if distance_sq > max_px * max_px:
+            continue
+        intersection = _axis_segment_intersection(
+            origin,
+            direction,
+            Vector(coordinates[0]),
+            Vector(coordinates[1]),
+        )
+        if intersection is None:
+            # Blender's constrained edge snap intersects the movement axis
+            # with the target edge line.  The edge's finite endpoints only
+            # decide which target is hovered; they do not clip that line.
+            intersection = _axis_line_intersection(
+                origin,
+                direction,
+                Vector(coordinates[0]),
+                Vector(coordinates[1]),
+            )
+        if intersection is not None and distance_sq < best_distance_sq:
+            best = intersection
+            best_distance_sq = distance_sq
+    return best
 
 
 def _intersection_result(ctx, obj, x, y, max_px, center_hit=None):
