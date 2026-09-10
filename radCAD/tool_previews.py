@@ -286,7 +286,7 @@ def setup_polyline_shader(sh, color, width, settings):
     except Exception:
         pass
 
-def draw_compass_geometry(ctx, shaders, center, Xp, Yp, rotation_radians, size_px, angle_inc, color, settings):
+def draw_compass_geometry(ctx, shaders, center, Xp, Yp, rotation_radians, size_px, angle_inc, color, settings, pixel_width=None):
     """Draws the compass using the Polyline shader."""
     if center is None or Xp is None or Yp is None: return
     
@@ -363,16 +363,24 @@ def draw_compass_geometry(ctx, shaders, center, Xp, Yp, rotation_radians, size_p
     cross_segs = apply_view_bias(cross_segs, ctx, lift_mult=lift, persp_percent=persp)
 
     # Draw
-    sh = shaders["POLYLINE"]
-    # The angle-dimension compass is specified in physical screen pixels;
-    # compensate for UI scaling so it remains exactly one pixel wide.
-    ui_scale = max(1.0, float(settings.get("UI_SCALE", 1.0)))
-    setup_polyline_shader(sh, color, 1.0 / ui_scale, settings)
-    
-    if circle_segs: batch_for_shader(sh, 'LINES', {"pos": circle_segs}).draw(sh)
-    if tick_segs: batch_for_shader(sh, 'LINES', {"pos": tick_segs}).draw(sh)
-    if arc_segs: batch_for_shader(sh, 'LINES', {"pos": arc_segs}).draw(sh)
-    if cross_segs: batch_for_shader(sh, 'LINES', {"pos": cross_segs}).draw(sh)
+    if pixel_width is None:
+        sh = shaders["POLYLINE"]
+        setup_polyline_shader(sh, color, 1.0, settings)
+    else:
+        # Native lines avoid the polyline shader's expanded antialias fringe.
+        sh = shaders["UNIFORM"]
+        sh.bind()
+        sh.uniform_float("color", color)
+        previous_width = gpu.state.line_width_get()
+        gpu.state.line_width_set(pixel_width)
+    try:
+        if circle_segs: batch_for_shader(sh, 'LINES', {"pos": circle_segs}).draw(sh)
+        if tick_segs: batch_for_shader(sh, 'LINES', {"pos": tick_segs}).draw(sh)
+        if arc_segs: batch_for_shader(sh, 'LINES', {"pos": arc_segs}).draw(sh)
+        if cross_segs: batch_for_shader(sh, 'LINES', {"pos": cross_segs}).draw(sh)
+    finally:
+        if pixel_width is not None:
+            gpu.state.line_width_set(previous_width)
 
 def draw_line(ctx, shaders, p1, p2, color, settings):
     """Draws a single high-quality line."""
@@ -1035,7 +1043,7 @@ def draw_cb_3d():
                 draw_points(ctx, shaders, center_pts, (0, 0, 0, 1), settings.get("PREVIEW_VERTEX_SIZE", 5), settings, custom_lift=settings.get("LIFT_ARC", 20.0) + 50.0)
 
         # UPDATED: Added all Line Curve Tools
-        elif mode in ["LINE_POLY", "POINT_BY_LINE", "CURVE_INTERPOLATE", "CURVE_FREEHAND", "LINE_PERP_FROM_CURVE", "LINE_PERP_FROM_EDGE", "LINE_PERP_TO_TWO_CURVES", "LINE_TANGENT_FROM_CURVE", "LINE_TAN_TAN"]:
+        elif mode in ["LINE_POLY", "POINT_BY_LINE", "MOVE", "CURVE_INTERPOLATE", "CURVE_FREEHAND", "LINE_PERP_FROM_CURVE", "LINE_PERP_FROM_EDGE", "LINE_PERP_TO_TWO_CURVES", "LINE_TANGENT_FROM_CURVE", "LINE_TAN_TAN"]:
             
             pts = state.get("preview_pts", [])
             if pts:
@@ -1044,7 +1052,7 @@ def draw_cb_3d():
                 
                 # Point by Line uses the exact same preview as LINE_POLY.
                 # Its only difference is that the final commit omits edges.
-                if mode in {"LINE_POLY", "POINT_BY_LINE"} and len(pts) >= 2:
+                if mode in {"LINE_POLY", "POINT_BY_LINE", "MOVE"} and len(pts) >= 2:
                     # Draw fixed segments (all except last segment)
                     if len(pts) > 2:
                         draw_polyline(ctx, shaders, pts[:-1], base_color, settings)
@@ -1055,7 +1063,6 @@ def draw_cb_3d():
                     
                     axis_vec = state.get("current_axis_vector")
                     if axis_vec:
-                        # --- FIX: Only Line tools respect this toggle ---
                         active_col = get_axis_aligned_color(axis_vec, base_color, settings)
                     
                     draw_polyline(ctx, shaders, active_seg, active_col, settings)

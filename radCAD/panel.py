@@ -139,8 +139,9 @@ IMPLEMENTED_TOOLS = {
     "point_edge_center",
     "rectangle_from_center",
     "rectangle_from_corners",
-    "rectangle_3_points", 
+    "rectangle_3_points",
     "dimension_linear",
+    "move",
 }
 
 TOOL_OPERATORS = {
@@ -176,6 +177,7 @@ TOOL_OPERATORS = {
     "rectangle_from_corners": "view3d.rectangle_cor_cor",
     "rectangle_3_points": "view3d.rectangle_3_points",
     "dimension_linear": "view3d.radcad_dimension_linear",
+    "move": "view3d.radcad_move",
 }
 
 SVG_FILES = {
@@ -210,6 +212,7 @@ SVG_FILES = {
     "rectangle_from_center": "rectangle_from_center.svg",
     "rectangle_from_corners": "rectangle_from_corners.svg",
     "rectangle_3_points": "rectangle_3_points.svg",
+    "move": "move.svg",
     "erase": "erase.svg",
 }
 
@@ -235,6 +238,7 @@ TOOL_LABELS = {
     "polygon_cen_tan": "Polygon Center Tangent",
     "polygon_cor_cor": "Polygon Corner Corner",
     "polygon_size_size": "Polygon Side Size",
+    "move": "Move",
 }
 
 preview_collection = None
@@ -599,6 +603,18 @@ class RADCAD_PT_Rotate(bpy.types.Panel):
         )
 
 
+class RADCAD_PT_Move(bpy.types.Panel):
+    bl_label = "Move"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "rCAD"
+    bl_parent_id = "RADCAD_PT_Main"
+
+    def draw(self, context):
+        draw_header(self.layout, context.scene.radcad_move_icon)
+        draw_tool_button(self.layout, "move")
+
+
 class RADCAD_PT_ConstructionLine(bpy.types.Panel):
     bl_label = "Construction Lines"
     bl_space_type = "VIEW_3D"
@@ -639,6 +655,7 @@ classes = (
     RADCAD_PT_Dimension,
     RADCAD_PT_Erase,
     RADCAD_PT_Rotate,
+    RADCAD_PT_Move,
     RADCAD_PT_ConstructionLine,
 )
 
@@ -669,6 +686,7 @@ def register():
     bpy.types.Scene.radcad_rectangle_icon = bpy.props.StringProperty(default="rectangle_default")
     bpy.types.Scene.radcad_point_icon = bpy.props.StringProperty(default="point_default")
     bpy.types.Scene.radcad_dimension_icon = bpy.props.StringProperty(default="dimension_linear")
+    bpy.types.Scene.radcad_move_icon = bpy.props.StringProperty(default="move")
 
     for cls in classes:
         bpy.utils.register_class(cls)
@@ -686,6 +704,7 @@ def unregister():
         "radcad_rectangle_icon",
         "radcad_point_icon",
         "radcad_dimension_icon",
+        "radcad_move_icon",
     ):
         safe_delete_property(bpy.types.Scene, property_name)
 

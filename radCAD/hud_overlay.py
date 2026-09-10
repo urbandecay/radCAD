@@ -224,6 +224,9 @@ def draw_hotkeys_panel():
         plane_lock_state = "ON" if state.get("locked") else "OFF"
         lines.append((f"L: Lock Plane ({plane_lock_state})", None))
 
+    if tool_mode == "MOVE" and state["stage"] == 0:
+        lines.append(("Click: Set Base Point", None))
+
     # --- INSERT SPACER IF RADIUS/DISTANCE IS ABOUT TO BE SHOWN ---
     if state["stage"] >= 1:
         lines.append((None, None))
@@ -245,6 +248,23 @@ def draw_hotkeys_panel():
             if state.get("tool_mode") == "LINE_POLY":
                 normal_status = "ON" if state.get("line_normal_locked", False) else "OFF"
                 lines.append((f"N: Face Normal ({normal_status})", None))
+        elif state.get("tool_mode") == "MOVE":
+            axis = state.get("constraint_axis")
+            edge = state.get("move_edge_direction")
+            if axis is not None:
+                axis_name = max(
+                    (("X", abs(axis.x)), ("Y", abs(axis.y)), ("Z", abs(axis.z))),
+                    key=lambda item: item[1],
+                )[0]
+                lines.append((f"{axis_name}: Axis Lock (ON)", None))
+            else:
+                lines.append(("X/Y/Z: Axis Lock", None))
+            lines.append(("Shift: Edge Direction", None))
+            lines.append(("L: Set Distance", None))
+            floor_state = "ON" if state.get("move_floor_snap", False) else "OFF"
+            lines.append((f"F7: Floor Snap ({floor_state})", None))
+            if edge is not None:
+                lines.append(("Edge Direction (ON)", None))
         elif state.get("tool_mode") in {"RECTANGLE_CENTER_CORNER", "RECTANGLE_CORNER_CORNER"}:
             square_state = "ON" if state.get("rectangle_square_locked", False) else "OFF"
             lines.append((f"Shift: Square ({square_state})", None))
@@ -373,6 +393,15 @@ def draw_bottom_bar():
 
     if tool_mode == "ROTATE":
         buttons = buttons[:-1]
+    elif tool_mode == "MOVE":
+        buttons = buttons[:-1]
+        buttons.append(
+            (
+                "F7: Floor Snap",
+                state.get("move_floor_snap", False),
+                "move_floor_snap",
+            )
+        )
 
     # Tangency tools only need contact generation and weld controls.
     if tool_mode in TANGENCY_ONLY_TOOLS:
@@ -677,6 +706,14 @@ def draw_hud_2d():
                     r_txt = get_display_str(label, state['input_string'], True)
                     h1 = draw_ui_box_generic(px, current_y, r_txt, active=True)
                     current_y -= (h1 + 4)
+            elif state["input_mode"] == 'MOVE_DISTANCE':
+                move_txt = get_display_str(
+                    "Move:",
+                    state["input_string"],
+                    True,
+                )
+                h_move = draw_ui_box_generic(px, current_y, move_txt, active=True)
+                current_y -= (h_move + 4)
             else:
                 # Tan-Tan-Tan Radius Display
                 if state.get("choosing_solution") and state.get("tan_solutions"):
@@ -822,6 +859,17 @@ def draw_hud_2d():
                          current_y -= (h1 + 4)
                 elif tool_mode in ["LINE_TANGENT_FROM_CURVE", "ROTATE"]:
                     pass
+                elif tool_mode == "MOVE":
+                    move_value = state.get("move_distance") if state.get(
+                        "move_distance_active"
+                    ) else state.get("radius", 0.0)
+                    move_label = "Move: " if state.get("move_distance_active") else "Distance: "
+                    if move_value is None:
+                        move_value = 0.0
+                    sign = "-" if move_value < 0.0 else ""
+                    move_txt = move_label + sign + format_length(abs(move_value))
+                    h_move = draw_ui_box_generic(px, current_y, move_txt)
+                    current_y -= (h_move + 4)
                 else:
                     label = "R: "
                     if tool_mode in {"LINE_POLY", "POINT_BY_LINE"}: label = "" # --- REMOVED 'L' for line-like tools

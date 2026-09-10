@@ -7,6 +7,21 @@ from .modal_state import state
 from .units_utils import format_length, parse_length_input
 from .plane_utils import world_to_plane
 
+
+def _parse_signed_length_input(value):
+    """Parse a distance without losing a leading minus sign."""
+    text = str(value).strip()
+    if not text:
+        raise ValueError
+    sign = 1.0
+    if text[0] in {"-", "+"}:
+        if text[0] == "-":
+            sign = -1.0
+        text = text[1:].strip()
+    if not text:
+        raise ValueError
+    return sign * parse_length_input(text)
+
 def apply_input_value(ctx):
     val_str = state["input_string"]
     if not val_str:
@@ -16,6 +31,8 @@ def apply_input_value(ctx):
         # Check for segments first (must be int)
         if state["input_mode"] == 'SEGMENTS':
             val_meters = 0 # Dummy for flow
+        elif state["input_mode"] == 'MOVE_DISTANCE':
+            val_meters = _parse_signed_length_input(val_str)
         else:
             val_meters = parse_length_input(val_str)
     except ValueError:
@@ -196,6 +213,11 @@ def apply_input_value(ctx):
             if state["input_mode"] == 'RADIUS':
                 state["radius"] = abs(val_meters)
 
+    # --- MOVE DISTANCE INPUT ---
+    elif state["input_mode"] == 'MOVE_DISTANCE' and tool_mode == "MOVE":
+        state["move_distance"] = val_meters
+        state["move_distance_active"] = True
+
     # --- ANGLE INPUT (1-POINT ONLY) ---
     elif state["input_mode"] == 'ANGLE':
         try:
@@ -232,6 +254,7 @@ def apply_input_value(ctx):
         "RECTANGLE_CENTER_CORNER",
         "RECTANGLE_CORNER_CORNER",
         "RECTANGLE_3_POINTS",
+        "MOVE",
     }
     state["input_mode"] = None
     state["input_screen_pos"] = None

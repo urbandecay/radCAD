@@ -56,6 +56,7 @@ op_point_by_line = _import("operators.op_point_by_line")
 op_point_center = _import("operators.op_point_center")
 op_point_edge_center = _import("operators.op_point_edge_center")
 op_rotate = _import("operators.op_rotate")
+op_move = _import("operators.op_move")
 op_dimension_linear = _import("operators.op_dimension_linear")
 op_dimension_angle = _import("operators.op_dimension_angle")
 op_dimension_edit = _import("operators.op_dimension_edit")
@@ -114,6 +115,7 @@ def register():
     bpy.utils.register_class(op_point_center.VIEW3D_OT_point_center)
     bpy.utils.register_class(op_point_edge_center.VIEW3D_OT_point_edge_center)
     bpy.utils.register_class(op_rotate.VIEW3D_OT_radcad_rotate)
+    bpy.utils.register_class(op_move.VIEW3D_OT_radcad_move)
 
     if hasattr(panel, "register"):
         panel.register()
@@ -130,6 +132,7 @@ def unregister():
     construction_tool.unregister()
 
     safe_unregister_class(op_rotate.VIEW3D_OT_radcad_rotate)
+    safe_unregister_class(op_move.VIEW3D_OT_radcad_move)
     safe_unregister_class(op_point_edge_center.VIEW3D_OT_point_edge_center)
     safe_unregister_class(op_point_center.VIEW3D_OT_point_center)
     safe_unregister_class(op_point_by_line.VIEW3D_OT_point_by_line)

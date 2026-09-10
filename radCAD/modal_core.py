@@ -4,7 +4,12 @@ import bpy
 import bmesh
 from mathutils import Vector, Matrix
 from mathutils.geometry import intersect_line_plane
-from bpy_extras.view3d_utils import region_2d_to_origin_3d, region_2d_to_vector_3d, location_3d_to_region_2d
+from bpy_extras.view3d_utils import (
+    region_2d_to_origin_3d,
+    region_2d_to_vector_3d,
+    region_2d_to_location_3d,
+    location_3d_to_region_2d,
+)
 
 from .modal_state import state, reset_state_from_context
 from .orientation_utils import orthonormal_basis_from_normal
@@ -167,6 +172,19 @@ def _orthographic_view_axis_normal(rv3d, tolerance=0.999):
         return None
     return axis if alignment >= 0.0 else -axis
 
+
+def _edge_direction_from_snap_result(snap_result):
+    """Return a world-space edge direction carried by a mesh snap result."""
+    if snap_result is None or snap_result.kind not in {"EDGE", "EDGE_CENTER"}:
+        return None
+    coordinates = getattr(snap_result, "element_coordinates", ())
+    if len(coordinates) != 2:
+        return None
+    direction = Vector(coordinates[1]) - Vector(coordinates[0])
+    if direction.length_squared <= 1.0e-12:
+        return None
+    return direction.normalized()
+
 def apply_custom_orbit(context, pivot, dx, dy):
     rv3d = context.region_data
     if not rv3d: return
@@ -326,6 +344,10 @@ class ModalManager:
         elif t_mode == "ROTATE":
             from .operators import rotate_tools
             self.active_tool = rotate_tools.RotateTool(self, ctx)
+
+        elif t_mode == "MOVE":
+            from .operators import move_tools
+            self.active_tool = move_tools.MoveTool(self, ctx)
             
         else: 
             from .operators import arc_tools
@@ -378,6 +400,11 @@ class ModalManager:
 
     def get_snap_data(self, ctx, x, y):
         state["line_hover_normal"] = None
+        if state.get("tool_mode") == "MOVE":
+            # Move can use an edge only as a direction reference while Shift
+            # is held.  Keep this separate from the normal snap point so the
+            # user's F1-F6 choices still control the actual snap target.
+            state["move_hover_edge_direction"] = None
         if state.get("tool_mode") == "POINT_EDGE_CENTER":
             return self.get_edge_center_snap_data(ctx, x, y)
 
@@ -388,6 +415,10 @@ class ModalManager:
         reg, rv3d = self.region, self.rv3d
         if not reg or not rv3d: return Vector((0,0,0)), Vector((0,0,1))
         snap_radius = self.state.get("snap_strength", 6.0) * 2.0
+        move_floor_snap = (
+            state.get("tool_mode") == "MOVE"
+            and state.get("move_floor_snap", False)
+        )
         mesh_snap_enabled = (
             state.get("snap_verts", True) or
             state.get("snap_edges", True) or
@@ -408,6 +439,10 @@ class ModalManager:
         if (
             (state.get("tool_mode") != "CURVE_FREEHAND" and mesh_snap_enabled)
             or guide_snap_available
+            or (
+                state.get("tool_mode") == "MOVE"
+                and state.get("move_shift_active", False)
+            )
         ):
             try:
                 from .snapping_utils import snap_scene_geometry
@@ -421,7 +456,9 @@ class ModalManager:
                 snap_edge_center=state.get("snap_edge_center", True),
                 snap_faces=state.get("snap_faces", False),
                 snap_face_center=state.get("snap_face_center", True),
-                include_surface=True,
+                # Move's optional floor mode is a world Z=0 plane below;
+                # it must not turn on unrestricted scene-surface raycasts.
+                include_surface=(state.get("tool_mode") != "MOVE"),
                 snap_intersections=state.get("snap_intersections", False),
                 enable_mesh=(
                     state.get("tool_mode") != "CURVE_FREEHAND"
@@ -433,11 +470,43 @@ class ModalManager:
                     from .snapping_utils import component_face_normal
                     state["line_hover_normal"] = component_face_normal(
                         snap_result, region_2d_to_vector_3d(reg, rv3d, (x, y)))
+                if state.get("tool_mode") == "MOVE":
+                    state["move_hover_edge_direction"] = _edge_direction_from_snap_result(
+                        snap_result
+                    )
                 if snap_result.kind == "SURFACE":
                     surface_result = snap_result
                 else:
                     snapped_pos = snap_result.location
                     snapped_normal = snap_result.normal
+
+            # The line tool's edge snap can be disabled while Move still
+            # needs to identify an edge under Shift.  Probe mesh edges only
+            # for that direction reference; do not replace the normal snap
+            # result or change the visible snap marker.
+            if (
+                state.get("tool_mode") == "MOVE"
+                and state.get("move_shift_active", False)
+            ):
+                from .snapping_utils import snap_mesh
+
+                edge_probe = snap_mesh(
+                    ctx,
+                    ctx.edit_object,
+                    x,
+                    y,
+                    max_px=snap_radius,
+                    snap_verts=False,
+                    snap_edges=True,
+                    snap_edge_center=True,
+                    snap_face_center=False,
+                    snap_faces=False,
+                    include_surface=False,
+                    snap_intersections=False,
+                )
+                edge_direction = _edge_direction_from_snap_result(edge_probe)
+                if edge_direction is not None:
+                    state["move_hover_edge_direction"] = edge_direction
 
             # --- PREVIEW SNAPPING (SELF-SNAP) ---
             self_snap_targets = []
@@ -530,7 +599,7 @@ class ModalManager:
         
         is_locked = state.get("locked")
         locked_normal = state.get("locked_normal")
-        if is_locked and locked_normal:
+        if is_locked and locked_normal and state.get("tool_mode") != "MOVE":
             l_point = state.get("pivot") or state.get("locked_plane_point") or Vector((0,0,0))
             ray_origin = region_2d_to_origin_3d(reg, rv3d, (x,y))
             ray_vector = region_2d_to_vector_3d(reg, rv3d, (x,y))
@@ -544,14 +613,14 @@ class ModalManager:
         view_vec = region_2d_to_vector_3d(reg, rv3d, (x,y))
         ray_origin = region_2d_to_origin_3d(reg, rv3d, (x,y))
 
-        if surface_result is not None:
+        if surface_result is not None and state.get("tool_mode") != "MOVE":
             nrm = surface_result.normal if surface_result.normal is not None else Vector((0,0,1))
             state["geometry_snap"] = False
             state["last_surface_hit"] = surface_result.location
             state["last_surface_normal"] = nrm
             return surface_result.location, nrm
 
-        if mesh_snap_enabled:
+        if state.get("tool_mode") != "MOVE" and mesh_snap_enabled:
             depsgraph = ctx.evaluated_depsgraph_get()
             hit, loc, norm, _, _, _ = ctx.scene.ray_cast(depsgraph, ray_origin, view_vec)
             if hit and state.get("tool_mode") == "LINE_POLY":
@@ -561,6 +630,41 @@ class ModalManager:
                 state["last_surface_hit"] = loc
                 state["last_surface_normal"] = norm
                 return loc, norm
+
+        if move_floor_snap:
+            # Floor Snap is deliberately explicit.  It is the old CAD
+            # world-floor projection, isolated behind the Move overlay
+            # toggle rather than being an implicit fallback for every move.
+            floor_normal = Vector((0.0, 0.0, 1.0))
+            denominator = view_vec.dot(floor_normal)
+            if abs(denominator) > 1.0e-6:
+                floor_t = -ray_origin.dot(floor_normal) / denominator
+                floor_point = ray_origin + view_vec * floor_t
+                state["geometry_snap"] = False
+                state["last_surface_hit"] = floor_point
+                state["last_surface_normal"] = floor_normal
+                return floor_point, floor_normal
+
+        # Native Blender Translate uses a view-relative delta at the
+        # selection's depth when geometry snapping is not active.  It does
+        # not project the cursor onto the world floor.  Return a point on
+        # that same depth plane so Move's base-point preview and snap HUD
+        # have a useful 3D position without introducing an implicit floor.
+        if state.get("tool_mode") == "MOVE" and not move_floor_snap:
+            depth_point = getattr(self.active_tool, "selection_median", None)
+            if depth_point is None:
+                depth_point = state.get("pivot") or Vector((0.0, 0.0, 0.0))
+            view_plane_point = region_2d_to_location_3d(
+                reg,
+                rv3d,
+                (x, y),
+                depth_point,
+            )
+            if view_plane_point is not None:
+                state["geometry_snap"] = False
+                state["last_surface_hit"] = view_plane_point
+                state["last_surface_normal"] = -view_vec
+                return view_plane_point, -view_vec
 
         # --- FALLBACK: VOID DRAWING (Smart Ortho Alignment) ---
         plane_normal = Vector((0, 0, 1))
@@ -602,6 +706,8 @@ class ModalManager:
 
             mouse_x, mouse_y = self.viewport_mouse_coords(event)
             move_event = _ViewportMouseEvent(event, mouse_x, mouse_y)
+            if state.get("tool_mode") == "MOVE":
+                state["move_shift_active"] = bool(getattr(event, "shift", False))
 
             def update_tool(update_context):
                 snap_pt, snap_n = self.get_snap_data(update_context, mouse_x, mouse_y)
@@ -644,6 +750,16 @@ class ModalManager:
         state["preview_pts"] = getattr(t, "preview_pts", [])
         state["intersection_pts"] = getattr(t, "intersection_pts", [])
         state["spline_geom"] = getattr(t, "spline_geom", [])
+        if state.get("tool_mode") == "MOVE":
+            state["move_delta"] = getattr(t, "move_delta", None)
+            state["move_distance"] = getattr(t, "move_distance", 0.0)
+            state["move_distance_active"] = getattr(
+                t, "move_distance_active", False
+            )
+            state["constraint_axis"] = getattr(t, "constraint_axis", None)
+            state["move_edge_direction"] = getattr(
+                t, "edge_lock_direction", None
+            )
         state["Xp"] = t.Xp
         state["Yp"] = t.Yp
         state["Zp"] = t.Zp
@@ -668,6 +784,13 @@ class ModalManager:
         if "a1" in state: t.a1 = state["a1"]
         if "accum_angle" in state: t.accum_angle = state["accum_angle"]
         if "a_prev_raw" in state: t.a_prev_raw = state["a_prev_raw"]
+        if state.get("tool_mode") == "MOVE":
+            if hasattr(t, "move_distance"):
+                t.move_distance = state.get("move_distance", 0.0)
+            if hasattr(t, "move_distance_active"):
+                t.move_distance_active = state.get(
+                    "move_distance_active", False
+                )
 
 def get_or_create_grey_material():
     mat_name = "radCAD_Grey"
@@ -897,6 +1020,7 @@ def begin_modal(self, ctx, ev):
         "RECTANGLE_CENTER_CORNER": ("rectangle", "rectangle_from_center"),
         "RECTANGLE_CORNER_CORNER": ("rectangle", "rectangle_from_corners"),
         "RECTANGLE_3_POINTS": ("rectangle", "rectangle_3_points"),
+        "MOVE": ("move", "move"),
     }
     panel_icon = tool_icons.get(state.get("tool_mode"))
     if panel_icon is not None:
@@ -962,6 +1086,7 @@ def finish_modal(self, ctx):
             "RECTANGLE_CENTER_CORNER",
             "RECTANGLE_CORNER_CORNER",
             "RECTANGLE_3_POINTS",
+            "MOVE",
         }:
             tool_mode = state.get("tool_mode", "")
             if tool_mode in {"1POINT", "2POINT", "3POINT"}:
@@ -976,6 +1101,8 @@ def finish_modal(self, ctx):
                 ctx.scene.radcad_ellipse_icon = "ellipse"
             elif tool_mode.startswith("RECTANGLE_"):
                 ctx.scene.radcad_rectangle_icon = "rectangle_default"
+            elif tool_mode == "MOVE":
+                ctx.scene.radcad_move_icon = "move"
             else:
                 ctx.scene.radcad_polygon_icon = "polygon_default"
         free_snap_context()
@@ -990,6 +1117,11 @@ def modal_arc_common(self, ctx, ev):
         if tool is not None:
             tool.cancel(ctx)
         return {'CANCELLED'}
+
+    if state.get("tool_mode") == "MOVE":
+        # The snap query runs before the tool update on click events too, so
+        # expose the modifier state for the edge-direction probe.
+        state["move_shift_active"] = bool(getattr(ev, "shift", False))
 
     if ev.type in {'LEFTMOUSE', 'RIGHTMOUSE', 'MOUSEMOVE', 'WHEELUPMOUSE', 'WHEELDOWNMOUSE', 'MIDDLEMOUSE'}:
         reg = self.manager.region
@@ -1022,6 +1154,7 @@ def modal_arc_common(self, ctx, ev):
                          "RECTANGLE_CENTER_CORNER",
                          "RECTANGLE_CORNER_CORNER",
                          "RECTANGLE_3_POINTS",
+                         "MOVE",
                      }
                      # Force immediate update with fresh coordinates
                      self.manager.on_move(ctx, ev)
@@ -1042,11 +1175,22 @@ def modal_arc_common(self, ctx, ev):
 
     # --- Commit / Finish ---
     if (ev.type in {'SPACE', 'RET', 'NUMPAD_ENTER'} and ev.value == 'PRESS') or (ev.type == 'RIGHTMOUSE' and ev.value == 'PRESS'):
-        if ev.type == 'RIGHTMOUSE' and state.get("tool_mode") == "ROTATE":
+        if ev.type == 'RIGHTMOUSE' and state.get("tool_mode") in {"ROTATE", "MOVE"}:
             if self.manager.active_tool:
                 self.manager.active_tool.cancel(ctx)
             finish_modal(self, ctx)
             return {'CANCELLED'}
+
+        # Move requires an explicit first click to establish its base point.
+        # Do not finish the operation with a zero-length move when Enter or
+        # Space is pressed before that click.
+        if (
+            state.get("tool_mode") == "MOVE"
+            and self.manager.active_tool
+            and getattr(self.manager.active_tool, "stage", 0) == 0
+        ):
+            self.manager.report({"INFO"}, "Pick a base point before confirming")
+            return {'RUNNING_MODAL'}
 
         if self.manager.active_tool:
             if state["tool_mode"] in {"LINE_POLY", "POINT_BY_LINE"}:
@@ -1071,7 +1215,12 @@ def modal_arc_common(self, ctx, ev):
                     from .operators.curve_tools import solve_catmull_rom_chain
                     state["preview_pts"] = solve_catmull_rom_chain(tool.control_points, num_segments=num_segs)
 
-        if state.get("tool_mode") == "ROTATE":
+        if state.get("tool_mode") == "MOVE" and self.manager.active_tool:
+            # Refresh once on confirmation so a very fast Enter/Space click
+            # uses the latest cursor snap.
+            self.manager.on_move(ctx, ev)
+
+        if state.get("tool_mode") in {"ROTATE", "MOVE"}:
             if self.manager.active_tool:
                 self.manager.active_tool.confirm(ctx)
         else:
@@ -1114,7 +1263,7 @@ def modal_arc_common(self, ctx, ev):
             return {'RUNNING_MODAL'} 
 
     if ev.type == 'WHEELUPMOUSE':
-        if state.get("tool_mode") not in ["POINT_BY_ARCS", "LINE_POLY", "POINT_BY_LINE", "ROTATE", "RECTANGLE_3_POINTS"]:
+        if state.get("tool_mode") not in ["POINT_BY_ARCS", "LINE_POLY", "POINT_BY_LINE", "ROTATE", "MOVE", "RECTANGLE_3_POINTS"]:
             step = 2 if state.get("tool_mode") == "POLYGON_EDGE" else 1
             state["segments"] = min(256, state["segments"] + step)
             if self.manager.active_tool: 
@@ -1126,7 +1275,7 @@ def modal_arc_common(self, ctx, ev):
         return {'RUNNING_MODAL'}
         
     if ev.type == 'WHEELDOWNMOUSE':
-        if state.get("tool_mode") not in ["POINT_BY_ARCS", "LINE_POLY", "POINT_BY_LINE", "ROTATE", "RECTANGLE_3_POINTS"]:
+        if state.get("tool_mode") not in ["POINT_BY_ARCS", "LINE_POLY", "POINT_BY_LINE", "ROTATE", "MOVE", "RECTANGLE_3_POINTS"]:
             step = 2 if state.get("tool_mode") == "POLYGON_EDGE" else 1
             state["segments"] = max(1 if "CURVE" in state.get("tool_mode", "") else 3, state["segments"] - step)
             if self.manager.active_tool: 
@@ -1156,8 +1305,12 @@ def modal_arc_common(self, ctx, ev):
         if ev.type == 'F4': state["snap_face_center"] = not state.get("snap_face_center", False); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
         if ev.type == 'F5': state["snap_faces"] = not state.get("snap_faces", False); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
         if ev.type == 'F6': state["snap_intersections"] = not state.get("snap_intersections", False); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
+        if ev.type == 'F7' and state.get("tool_mode") == "MOVE":
+            state["move_floor_snap"] = not state.get("move_floor_snap", False)
+            ctx.area.tag_redraw()
+            return {'RUNNING_MODAL'}
         if ev.type == 'C': state["use_angle_snap"] = not state.get("use_angle_snap", True); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
-        if ev.type == 'W' and state.get("tool_mode") != "ROTATE": state["auto_weld"] = not state.get("auto_weld", True); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
+        if ev.type == 'W' and state.get("tool_mode") not in {"ROTATE", "MOVE"}: state["auto_weld"] = not state.get("auto_weld", True); ctx.area.tag_redraw(); return {'RUNNING_MODAL'}
         if (
             ev.type == 'T'
             and state.get("tool_mode") in {
@@ -1247,6 +1400,8 @@ def modal_arc_common(self, ctx, ev):
                 target_mode = 'RECTANGLE_SQUARE'
             elif tool_mode == "CURVE_FREEHAND":
                 target_mode = 'MIN_DIST'
+            elif tool_mode == "MOVE":
+                target_mode = 'MOVE_DISTANCE'
             elif tool_mode not in [
                 "ELLIPSE_CORNERS",
                 "ROTATE",
@@ -1286,6 +1441,11 @@ def modal_arc_common(self, ctx, ev):
                     elif k == "snap_intersections": state["snap_intersections"] = not state.get("snap_intersections", False)
                     elif k == "toggle_angle": state["use_angle_snap"] = not state.get("use_angle_snap", True)
                     elif k == "weld_btn": state["auto_weld"] = not state.get("auto_weld", True)
+                    elif k == "move_floor_snap":
+                        state["move_floor_snap"] = not state.get(
+                            "move_floor_snap",
+                            False,
+                        )
                     elif k == "snap_tangent_curve_btn":
                         state["snap_tangent_curve"] = not state.get(
                             "snap_tangent_curve",
@@ -1314,12 +1474,17 @@ def modal_arc_common(self, ctx, ev):
                  result = self.manager.active_tool.handle_click(ctx, ev, snap_pt, snap_n, button_id=clicked_ui_id)
                  state["stage"] = self.manager.active_tool.stage
                  if result == 'FINISHED':
-                     if state.get("tool_mode") != "ROTATE":
+                     if state.get("tool_mode") not in {"ROTATE", "MOVE"}:
                          commit_arc_to_mesh(ctx)
                      finish_modal(self, ctx)
                      return {'FINISHED'}
                  elif result == 'NEXT_STAGE':
-                     self.manager.on_move(ctx, ev)
+                     # Move's first click only establishes the base point.
+                     # Do not run a stage-1 update on the same event: that can
+                     # interpret the click coordinates as a second target and
+                     # visibly translate the selection before the cursor moves.
+                     if state.get("tool_mode") != "MOVE":
+                         self.manager.on_move(ctx, ev)
                      ctx.area.tag_redraw()
                      return {'RUNNING_MODAL'}
 

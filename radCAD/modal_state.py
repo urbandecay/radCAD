@@ -140,7 +140,17 @@ state = {
     "ui_hitboxes": {},
     "snap_point": None,
     "current_axis_vector": None, # NEW: Tracks axis alignment for coloring
-    "constraint_axis": None
+    "constraint_axis": None,
+
+    # Move-tool state.  These live in the shared dictionary so the HUD and
+    # snapping layer can describe the active translation constraint.
+    "move_delta": None,
+    "move_distance": 0.0,
+    "move_distance_active": False,
+    "move_shift_active": False,
+    "move_floor_snap": False,
+    "move_hover_edge_direction": None,
+    "move_edge_direction": None,
 }
 
 style = {
@@ -369,5 +379,12 @@ def reset_state_from_context(ctx):
         "input_mode": None, "input_string": "", "input_screen_pos": None, "cursor_index": 0,
         "geometry_snap": False, "is_perpendicular": False, "ui_hitboxes": {}, "snap_point": None,
         "constraint_axis": None,
-        "current_axis_vector": None # Reset axis tracker
+        "current_axis_vector": None, # Reset axis tracker
+        "move_delta": None,
+        "move_distance": 0.0,
+        "move_distance_active": False,
+        "move_shift_active": False,
+        "move_floor_snap": False,
+        "move_hover_edge_direction": None,
+        "move_edge_direction": None,
     })
